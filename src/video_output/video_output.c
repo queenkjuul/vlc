@@ -1800,11 +1800,6 @@ static int vout_Start(vout_thread_sys_t *vout, vlc_video_context *vctx, const vo
     crop = sys->source.crop;
     num = sys->source.dar.num;
     den = sys->source.dar.den;
-    vlc_queuedmutex_lock(&sys->display_lock);
-    vlc_mutex_unlock(&sys->window_lock);
-
-    /* Reinitialize chrono to ensure we re-compute any new render timing. */
-    VoutResetChronoLocked(sys);
 
     /* Setup the window size, protected by the display_lock */
     dcfg.display.width = sys->window_width;
@@ -1817,12 +1812,20 @@ static int vout_Start(vout_thread_sys_t *vout, vlc_video_context *vctx, const vo
         goto error;
     }
 
-    sys->display = vout_OpenWrapper(&vout->obj, sys->splitter_name, &dcfg,
+    vout_display_t *display = vout_OpenWrapper(&vout->obj, sys->splitter_name, &dcfg,
                                     &sys->original, vctx);
+    vlc_queuedmutex_lock(&sys->display_lock);
+    vlc_mutex_unlock(&sys->window_lock);
+    sys->display = display;
+
     if (sys->display == NULL) {
         vlc_queuedmutex_unlock(&sys->display_lock);
         goto error;
     }
+
+    /* Reinitialize chrono to ensure we re-compute any new render timing. */
+    VoutResetChronoLocked(sys);
+
 
     vout_SetDisplayCrop(sys->display, &crop);
 
