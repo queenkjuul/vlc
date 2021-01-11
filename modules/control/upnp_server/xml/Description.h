@@ -1,0 +1,51 @@
+#define MEDIASERVER_DESC \
+"<?xml version=\"1.0\" encoding=\"utf-8\"?>" \
+"<root xmlns=\"urn:schemas-upnp-org:device-1-0\">" \
+"  <specVersion>" \
+"    <major>1</major>" \
+"    <minor>0</minor>" \
+"  </specVersion>" \
+"  <device>" \
+"    <deviceType>urn:schemas-upnp-org:device:MediaServer:1</deviceType>" \
+"    <friendlyName>VLC Media Server</friendlyName>" \
+"    <manufacturer>VideoLAN</manufacturer>" \
+"    <manufacturerURL>http://videolan.org/</manufacturerURL>" \
+"    <modelDescription>VLC UPnP Media Server</modelDescription>" \
+"    <modelName>VLC</modelName>" \
+"    <modelNumber>%s</modelNumber>" \
+"    <modelURL>http://videolan.org/vlc/</modelURL>" \
+"    <UDN>uuid:%s</UDN>" \
+"    <iconList>" \
+"      <icon>" \
+"        <mimetype>image/png</mimetype>" \
+"        <width>48</width>" \
+"        <height>48</height>" \
+"        <depth>8</depth>" \
+"        <url>vlc.png</url>" \
+"      </icon>" \
+"      <icon>" \
+"        <mimetype>image/png</mimetype>" \
+"        <width>512</width>"              \
+"        <height>512</height>" \
+"        <depth>8</depth>"               \
+"        <url>vlc512x512.png</url>" \
+"      </icon>"                          \
+"    </iconList>" \
+"    <serviceList>" \
+"      <service>" \
+"        <serviceType>urn:schemas-upnp-org:service:ConnectionManager:1</serviceType>" \
+"        <serviceId>urn:upnp-org:serviceId:ConnectionManager</serviceId>" \
+"        <SCPDURL>/ConnectionManager.xml</SCPDURL>" \
+"        <controlURL>/ConnectionManager/Control</controlURL>" \
+"        <eventSubURL>/ConnectionManager/Event</eventSubURL>" \
+"      </service>" \
+"      <service>" \
+"        <serviceType>urn:schemas-upnp-org:service:ContentDirectory:1</serviceType>" \
+"        <serviceId>urn:upnp-org:serviceId:ContentDirectory</serviceId>" \
+"        <SCPDURL>/ContentDirectory.xml</SCPDURL>" \
+"        <controlURL>/ContentDirectory/Control/</controlURL>" \
+"        <eventSubURL>/ContentDirectory/Event</eventSubURL>" \
+"      </service>" \
+"    </serviceList>" \
+"  </device>" \
+"</root>"
