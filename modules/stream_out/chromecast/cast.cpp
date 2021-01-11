@@ -1077,7 +1077,7 @@ bool sout_stream_sys_t::UpdateOutput( sout_stream_t *p_stream )
         if ( i_codec_video == 0 && p_original_video )
         {
             try {
-                ssout << vlc_sout_renderer_GetVcodecOption( p_stream,
+                ssout << vlc_sout_renderer_GetVcodecOption( VLC_OBJECT(p_stream),
                                         { VLC_CODEC_H264, VLC_CODEC_VP8 },
                                         &i_codec_video,
                                         &p_original_video->video, i_quality );
