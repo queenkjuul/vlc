@@ -30,7 +30,6 @@
 #include <vector>
 
 #include <vlc_common.h>
-#include <vlc_sout.h>
 
 #define PERF_TEXT N_( "Performance warning" )
 #define PERF_LONGTEXT N_( "Display a performance warning when transcoding" )
@@ -79,7 +78,7 @@ static const int conversion_quality_list[] = {
 };
 
 std::string
-vlc_sout_renderer_GetVcodecOption(sout_stream_t *p_stream,
+vlc_sout_renderer_GetVcodecOption(vlc_object_t *object,
         std::vector<vlc_fourcc_t> codecs,
         vlc_fourcc_t *out_codec, const video_format_t *p_vid, int i_quality);
 
