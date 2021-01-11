@@ -4,6 +4,7 @@
 
 #include <functional>
 #include <memory>
+#include <type_traits>
 
 namespace ml
 {
@@ -34,16 +35,13 @@ using Playlist = Object<vlc_ml_playlist_t, VLC_ML_GET_PLAYLIST>;
 using Show = Object<vlc_ml_show_t, VLC_ML_GET_SHOW>;
 using Artist = Object<vlc_ml_artist_t, VLC_ML_GET_ARTIST>;
 
-struct None
-{
-};
-
 template <typename ListType,
           vlc_ml_list_queries ListQuery,
           vlc_ml_list_queries CountQuery,
           typename Object>
 struct List : Object
 {
+  using Entry = typename std::decay<decltype(ListType().p_items[0])>::type;
     static size_t count( vlc_medialibrary_t& ml, opt::Option<int64_t> id ) noexcept
     {
         size_t res;
@@ -81,7 +79,18 @@ using AllVideoList = List<vlc_ml_media_list_t, VLC_ML_LIST_VIDEOS, VLC_ML_COUNT_
 using AllAlbumList = List<vlc_ml_album_list_t, VLC_ML_LIST_ALBUMS, VLC_ML_COUNT_ALBUMS, Media>;
 using ArtistAlbumList =
     List<vlc_ml_album_list_t, VLC_ML_LIST_ARTIST_ALBUMS, VLC_ML_COUNT_ARTIST_ALBUMS, Album>;
+using ArtistTracksList =
+    List<vlc_ml_media_list_t, VLC_ML_LIST_ARTIST_TRACKS, VLC_ML_COUNT_ARTIST_TRACKS, Media>;
 using AllArtistsList = List<vlc_ml_artist_list_t, VLC_ML_LIST_ARTISTS, VLC_ML_COUNT_ARTISTS, Media>;
 using AlbumTracksList =
     List<vlc_ml_media_list_t, VLC_ML_LIST_ALBUM_TRACKS, VLC_ML_COUNT_ALBUM_TRACKS, Album>;
+using PlaylistsList =
+    List<vlc_ml_playlist_list_t, VLC_ML_LIST_PLAYLISTS, VLC_ML_COUNT_PLAYLISTS, Playlist>;
+using PlaylistMediaList =
+    List<vlc_ml_media_list_t, VLC_ML_LIST_PLAYLIST_MEDIA, VLC_ML_COUNT_PLAYLIST_MEDIA, Media>;
+using ShowsList =
+    List<vlc_ml_show_list_t, VLC_ML_LIST_SHOWS, VLC_ML_COUNT_SHOW_EPISODES, Show>;
+using ShowsMediaList =
+    List<vlc_ml_media_list_t, VLC_ML_LIST_SHOW_EPISODES, VLC_ML_COUNT_SHOW_EPISODES, Media>;
+
 } // namespace ml

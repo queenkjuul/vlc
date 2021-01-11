@@ -4,45 +4,63 @@
 #include <vlc_stream.h>
 #include <vlc_stream_extractor.h>
 
+#include <iostream>
+
 const char Fifo::VAR_NAME[] = "upnp-fifo";
+
 
 size_t Fifo::read( uint8_t buf[], size_t buflen ) noexcept
 {
+   //static constexpr auto MIN_FIFO_SIZE = 1048576u / 4u;
     size_t bytes_read = 0;
-    size_t min_buff = buflen;
 
+    vlc_tick_t start = vlc_tick_now();
     vlc_fifo_Lock( queue );
+    
 
-    while ( !eof && vlc_fifo_GetBytes( queue ) < min_buff )
+    size_t bytes;
+    while ( !eof && ( bytes = vlc_fifo_GetBytes( queue ) ) == 0 )
     {
         vlc_fifo_Wait( queue );
     }
+    buflen = MIN(buflen, bytes);
 
-    if ( eof )
-    {
-        min_buff = vlc_fifo_GetBytes( queue );
-    }
+   // if ( eof )
+   // {
+   //     buflen = vlc_fifo_GetBytes( queue );
+   // }
 
-    while ( bytes_read < min_buff )
+    while ( bytes_read < buflen )
     {
         block_t* block = vlc_fifo_DequeueUnlocked( queue );
-        // TODO maybe send whats possible to send and shrink the block
-        // before requeuing it
-        if ( bytes_read + block->i_buffer >= min_buff )
+        assert(block);
+
+        const size_t to_copy = MIN( block->i_buffer, buflen - bytes_read );
+        memcpy( buf + bytes_read, block->p_buffer, to_copy );
+        bytes_read += to_copy;
+
+        block->p_buffer += to_copy;
+        block->i_buffer -= to_copy;
+
+        if ( block->i_buffer == 0 )
+            block_Release( block );
+        else
         {
+            block_t* all = vlc_fifo_DequeueAllUnlocked( queue );
+            block->p_next = all;
             vlc_fifo_QueueUnlocked( queue, block );
-            break;
+            assert(bytes_read == buflen);
         }
-        memcpy( buf + bytes_read, block->p_buffer, block->i_buffer );
-        bytes_read += block->i_buffer;
-        block_Release( block );
     }
 
+    vlc_fifo_Signal( queue );
     vlc_fifo_Unlock( queue );
 
+    std::cerr << start - vlc_tick_now() << "\n";
     return bytes_read;
 }
 
+#define HTTPD_BUFFER_PACE INT64_C(2 * 1024 * 1024) /* 2 MB */
 int Server::AccessOpen( vlc_object_t* p_this )
 {
     sout_access_out_t* p_access = reinterpret_cast<sout_access_out_t*>( p_this );
@@ -58,8 +76,13 @@ int Server::AccessOpen( vlc_object_t* p_this )
         block_ChainProperties( data, nullptr, &size, nullptr );
 
         vlc_fifo_Lock( fifo->queue );
+        //while(vlc_fifo_GetBytes(fifo->queue) >= HTTPD_BUFFER_PACE) {
+        //  std::cerr << "Waiting\n";
+        //  vlc_fifo_Wait(fifo->queue);
+        //}
         vlc_fifo_QueueUnlocked( fifo->queue, data );
         vlc_fifo_Unlock( fifo->queue );
+
 
         // No needs to signal the fifo cond_var as vlc_fifo_QueueUnlocked
         // already does it
@@ -74,7 +97,7 @@ int Server::AccessOpen( vlc_object_t* p_this )
         case ACCESS_OUT_CONTROLS_PACE:
         {
             bool* pb = va_arg( args, bool* );
-            *pb = true;
+            *pb = false;
             break;
         }
 
@@ -99,7 +122,7 @@ int Server::AccessOpen( vlc_object_t* p_this )
 
 void Server::AccessClose( vlc_object_t* p_this )
 {
-    msg_Dbg( p_this, "Closing fifo\n" );
+    msg_Dbg( p_this, "Closing fifo" );
 
     Fifo* fifo = static_cast<Fifo*>( var_InheritAddress( p_this, Fifo::VAR_NAME ) );
     assert( fifo );
@@ -111,5 +134,5 @@ void Server::AccessClose( vlc_object_t* p_this )
 
     vlc_fifo_Signal( queue );
 
-    msg_Dbg( p_this, "fifo closed\n" );
+    msg_Dbg( p_this, "fifo closed" );
 }

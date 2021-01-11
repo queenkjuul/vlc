@@ -21,6 +21,7 @@
  *****************************************************************************/
 
 #include "Common.hpp"
+#include "cds/cds.hpp"
 
 #include "../../services_discovery/upnp-wrapper.hpp"
 
@@ -133,6 +134,7 @@ typedef struct intf_sys_t
     std::atomic<unsigned int> i_update_id;
 
     TranscodeProfileList transcode_profiles;
+    std::vector<std::unique_ptr<cds::Object>> hierarchy;
 
 } intf_sys_t;
 
