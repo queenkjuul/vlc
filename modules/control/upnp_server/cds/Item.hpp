@@ -12,9 +12,11 @@ class Item : public Object
     const TranscodeProfileList& transcode_profiles;
 
     public:
-    Item( const char* id, vlc_medialibrary_t&, const TranscodeProfileList& ) noexcept;
+    Item( const int64_t id, vlc_medialibrary_t&, const TranscodeProfileList& ) noexcept;
     void dump_metadata( xml::Element&, const Object::ExtraId& ) const final;
 
-    void dump_mlobject_metadata( xml::Element& dest, const vlc_ml_media_t& media ) const noexcept;
+    static void dump_mlobject_metadata( xml::Element& dest,
+                                        const vlc_ml_media_t& media,
+                                        const TranscodeProfileList& transcode_profiles ) noexcept;
 };
 } // namespace cds

@@ -5,12 +5,19 @@
 namespace cds
 {
 
-FixedContainer::FixedContainer( const char* id,
-                                const char* parent_id,
+FixedContainer::FixedContainer( const int64_t id,
+                                const int64_t parent_id,
                                 const char* name,
                                 std::initializer_list<ObjRef> children ) noexcept
     : Container( id, parent_id, name, children.size() )
     , children( children )
+{
+}
+
+FixedContainer::FixedContainer( const int64_t id,
+                                const int64_t parent_id,
+                                const char* name) noexcept
+    : Container( id, parent_id, name, 0 )
 {
 }
 

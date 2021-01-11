@@ -21,18 +21,19 @@ struct Object
 
     using ExtraId = opt::Option<ExtraIdData>;
 
-    const char* id;
-    const char* parent_id;
+    int64_t id;
+    int64_t parent_id;
     const char* name;
     const Type type;
 
-    Object( const char* id, const char* parent_id, const char* name, const Type type ) noexcept
+    Object( int64_t id, int64_t parent_id, const char* name, const Type type ) noexcept
         : id( id )
         , parent_id( parent_id )
         , name( name )
         , type( type )
     {
     }
+    virtual ~Object() = default;
 
     xml::Element browse_metadata( xml::Document& doc, const ExtraId& extra_id ) const
     {
@@ -47,8 +48,6 @@ struct Object
     {
         auto ret = doc.create_element( type == Type::Item ? "item" : "container" );
 
-        assert( ( extra_id.has_value() && !extra_id->parent.empty() ) || parent_id );
-
         if ( extra_id.has_value() )
         {
 
@@ -57,9 +56,8 @@ struct Object
         }
         else
         {
-            ret.set_attribute( "id", id );
-            assert( parent_id );
-            ret.set_attribute( "parentID", parent_id );
+            ret.set_attribute( "id", std::to_string(id).c_str() );
+            ret.set_attribute( "parentID", std::to_string(parent_id).c_str() );
         }
 
         if ( name )
@@ -74,11 +72,11 @@ struct Object
     std::string get_dynamic_id( const ExtraId& extra_id ) const noexcept
     {
         if ( !extra_id.has_value() )
-            return std::string( id );
+            return std::to_string( id );
         const std::string ml_id_str = std::to_string( extra_id->ml_id );
         if (!extra_id->parent.empty())
-          return std::string( id ) + ':' + ml_id_str + '(' + extra_id->parent + ')';
-        return std::string( id ) + ':' + ml_id_str;
+          return std::to_string( id ) + ':' + ml_id_str + '(' + extra_id->parent + ')';
+        return std::to_string( id ) + ':' + ml_id_str;
     }
     virtual void dump_metadata( xml::Element& dest, const ExtraId& extra_id ) const = 0;
 };

@@ -22,8 +22,8 @@ class Container : public Object
         size_t total_matches;
     };
 
-    Container( const char* id,
-               const char* parent_id,
+    Container( const int64_t id,
+               const int64_t parent_id,
                const char* name,
                size_t child_count ) noexcept
         : Object( id, parent_id, name, Object::Type::Container )

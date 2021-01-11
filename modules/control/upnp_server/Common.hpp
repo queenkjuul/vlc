@@ -7,17 +7,13 @@
 #include <vlc_common.h>
 #include <vlc_media_library.h>
 
+#include <vector>
+
 struct TranscodeProfile
 {
     const char* psz_name;
-    vlc_ml_media_type_t i_type;
-
-    // We only use transcode for resolution for the PoC, so this is quite empty for the moment
-    struct {
-      unsigned width;
-      unsigned height;
-    } resolution;
-    const char *mux;
+    int i_conversion_quality;
+    const std::vector<vlc_fourcc_t> codecs_fallbacks;
 };
 
 struct TranscodeProfileList {

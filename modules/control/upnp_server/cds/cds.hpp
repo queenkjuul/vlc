@@ -55,32 +55,75 @@ inline std::tuple<unsigned, Object::ExtraId> parse_id( const std::string& id )
     return { parsed_id.value(), opt::nullopt };
 }
 
+template <typename MLHelper>
+auto& add_ml_container( std::vector<std::unique_ptr<Object>>& hierarchy,
+                        const char* name,
+                        vlc_medialibrary_t& ml,
+                        const TranscodeProfileList& profiles,
+                        const Object& child )
+{
+    const int64_t id = hierarchy.size();
+    hierarchy.push_back( std::make_unique<MLContainer<MLHelper>>( id, -1, name,ml, profiles, child ));
+    return static_cast<Object&>( *hierarchy.back() );
+}
+
 inline auto init_hierarchy( vlc_medialibrary_t& ml, const TranscodeProfileList& transcode_profiles )
 {
-    static Item media( "10", ml, transcode_profiles );
+  std::vector<std::unique_ptr<Object>> hierarchy;
 
-    static MLContainer<ml::AllVideoList, decltype( media )> all_videos( "9", "8", "All video", ml,
-                                                                        media );
-    static FixedContainer video( "8", "0", "Video", { all_videos } );
+  const auto add_fixed_container =
+      [&]( const char* name, std::initializer_list<FixedContainer::ObjRef> children ) -> Object& {
+      const int64_t id = hierarchy.size();
+      for ( Object& child : children )
+          child.parent_id = id;
+      auto up = std::make_unique<FixedContainer>( id, -1, name, children );
+      hierarchy.emplace_back( std::move( up ) );
+      return *hierarchy.back();
+  };
 
-    static MLContainer<ml::AlbumTracksList, decltype( media )> album( "3", "2", nullptr, ml,
-                                                                      media );
 
-    static MLContainer<ml::ArtistAlbumList, decltype( album )> artists_albums( "7", "6", nullptr,
-                                                                               ml, album );
-    static MLContainer<ml::AllArtistsList, decltype( artists_albums )> artists_by_album(
-        "6", "5", "By album", ml, artists_albums );
+  const auto add_ml_container = [&]( auto MLHelper, const char* name, Object& child) -> Object& {
+      const int64_t id = hierarchy.size();
+      child.parent_id = id;
+      hierarchy.push_back( std::make_unique<MLContainer<decltype( MLHelper )>>(
+          id, -1, name, ml, transcode_profiles, child ) );
+      return static_cast<Object&>( *hierarchy.back() );
+  };
 
-    static FixedContainer artists( "5", "1", "Artists", { artists_by_album } );
-    static MLContainer<ml::AllAudioList, decltype( media )> all_audio( "4", "1", "All audio", ml,
-                                                                       media );
-    static MLContainer<ml::AllAlbumList, decltype( album )> all_albums( "2", "1", "All albums", ml,
-                                                                        album );
-    static FixedContainer music( "1", "0", "Music", { all_albums, all_audio, artists } );
+  hierarchy.push_back( std::make_unique<FixedContainer>( 0, -1, "Home" ) );
+  hierarchy.push_back( std::make_unique<Item>( 1, ml, transcode_profiles ) );
 
-    static FixedContainer home( "0", "-1", "VLC Media Server", { music, video } );
-    return std::array<std::reference_wrapper<const Object>, 11>{
-        home,           music, all_albums, album, all_audio, artists, artists_by_album,
-        artists_albums, video, all_videos, media };
+  const auto& item = static_cast<const Item&>( *hierarchy[1] );
+
+  const auto add_ml_media_container = [&]( auto MLHelper, const char* name) -> Object& {
+      const int64_t id = hierarchy.size();
+      hierarchy.push_back( std::make_unique<MLContainer<decltype( MLHelper )>>(
+          id, -1, name, ml, transcode_profiles, item ) );
+      return static_cast<Object&>( *hierarchy.back() );
+  };
+
+  static_cast<FixedContainer&>( *hierarchy[0] ).add_children( {
+      add_fixed_container( "Video", {
+          add_ml_media_container( ml::AllVideoList{}, "All Video" ),
+          add_ml_container( ml::ShowsList{}, "Shows",
+              add_ml_media_container( ml::ShowsMediaList{}, nullptr ))
+      } ),
+      add_fixed_container( "Music", {
+          add_ml_media_container( ml::AllAudioList{}, "All Audio" ),
+          add_ml_container( ml::AllAlbumList{}, "Albums",
+                            add_ml_media_container( ml::AlbumTracksList{}, nullptr ) ),
+          add_fixed_container( "Artists", {
+              add_ml_container( ml::AllArtistsList{}, "By Tracks",
+                    add_ml_media_container(ml::ArtistTracksList{}, nullptr ) ),
+              add_ml_container( ml::AllArtistsList{}, "By Albums",
+                    add_ml_container(ml::ArtistAlbumList{}, nullptr,
+                          add_ml_media_container( ml::AlbumTracksList{}, nullptr ) ) )
+          })
+      } ),
+      add_ml_container( ml::PlaylistsList{}, "Playlists",
+          add_ml_media_container(ml::PlaylistMediaList{}, nullptr ) )
+  } );
+
+  return hierarchy;
 }
 } // namespace cds
