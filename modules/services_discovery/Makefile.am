@@ -35,6 +35,7 @@ libupnp_plugin_la_SOURCES = services_discovery/upnp.cpp services_discovery/upnp.
 					control/upnp_server/upnp_server.h \
           control/upnp_server/xml/Description.h \
           control/upnp_server/upnp_server.cpp \
+          control/upnp_server/sout.cpp \
 					control/upnp_server/Option.hpp \
 					control/upnp_server/ml.hpp \
 					control/upnp_server/utils.hpp \
