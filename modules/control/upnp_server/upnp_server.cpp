@@ -29,8 +29,6 @@
 #include <vlc_interface.h>
 #include <vlc_player.h>
 #include <vlc_rand.h>
-#include <vlc_sout.h>
-#include <vlc_stream.h>
 #include <vlc_stream_extractor.h>
 #include <vlc_url.h>
 
@@ -42,8 +40,6 @@
 
 #include "cds/cds.hpp"
 #include "utils.hpp"
-
-static constexpr char FIFO_VAR_NAME[] = "upnp-fifo";
 
 static void medialibrary_event_callback( void* p_data, const struct vlc_ml_event_t* p_event )
 {
@@ -90,42 +86,43 @@ static bool cds_browse( UpnpActionRequest* p_request, intf_thread_t* p_intf )
     const uint32_t u_requested_count =
         strtoul( xml_getChildElementValue( (IXML_Element*)action_rq, "RequestedCount" ), NULL, 10 );
 
-    xml::Document p_response;
-    xml::Element p_root_element = p_response.create_element( "DIDL-Lite" );
+    xml::Document result;
+    xml::Element didl_lite = result.create_element( "DIDL-Lite" );
 
-    p_root_element.set_attribute( "xmlns", "urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" );
-    p_root_element.set_attribute( "xmlns:dc", "http://purl.org/dc/elements/1.1/" );
-    p_root_element.set_attribute( "xmlns:upnp", "urn:schemas-upnp-org:metadata-1-0/upnp/" );
+    // Standard upnp attributes
+    didl_lite.set_attribute( "xmlns", "urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" );
+    didl_lite.set_attribute( "xmlns:dc", "http://purl.org/dc/elements/1.1/" );
+    didl_lite.set_attribute( "xmlns:upnp", "urn:schemas-upnp-org:metadata-1-0/upnp/" );
 
     const std::string id = psz_object_id;
     static const auto hierarchy = cds::init_hierarchy( *p_ml, p_sys->transcode_profiles );
 
-    unsigned obj_id;
+    unsigned obj_idx;
     cds::Object::ExtraId extra_id;
-    std::tie( obj_id, extra_id ) = cds::parse_id( id );
+    std::tie( obj_idx, extra_id ) = cds::parse_id( id );
 
     std::string str_nb_returned;
     std::string str_total_matches;
-    const cds::Object& obj = hierarchy[obj_id];
+    const cds::Object& obj = hierarchy[obj_idx];
     if ( strcmp( psz_browse_flag, "BrowseDirectChildren" ) == 0 && obj.type == cds::Object::Type::Container)
     {
         const auto browse_stats = static_cast<const cds::Container&>( obj ).browse_direct_children(
-            p_root_element, { u_starting_index, u_requested_count }, extra_id );
+            didl_lite, { u_starting_index, u_requested_count }, extra_id );
         str_nb_returned = std::to_string( browse_stats.result_count );
         str_total_matches = std::to_string( browse_stats.total_matches );
     }
     else if ( strcmp( psz_browse_flag, "BrowseMetadata" ) == 0 )
     {
-        p_root_element.add_child( obj.browse_metadata( p_response, extra_id ) );
+        didl_lite.add_child( obj.browse_metadata( result, extra_id ) );
         str_nb_returned = "1";
         str_total_matches = "1";
     }
 
-    p_response.set_entry( std::move( p_root_element ) );
+    result.set_entry( std::move( didl_lite ) );
 
     const char* action_name = UpnpActionRequest_get_ActionName_cstr( p_request );
 
-    const auto up_reponse_str = p_response.to_wrapped_cstr();
+    const auto up_reponse_str = result.to_wrapped_cstr();
     const auto str_update_id = std::to_string( p_sys->i_update_id.load() );
 
     auto* p_answer = UpnpActionRequest_get_ActionResult( p_request );
@@ -328,12 +325,6 @@ getinfo_cb( const char* fname, UpnpFileInfo* info, const void* cookie, const boo
     return UPNP_E_SUCCESS;
 }
 
-struct Fifo
-{
-    block_fifo_t* queue = block_FifoNew();
-    bool eof = false;
-};
-
 struct FileHandler
 {
     struct vlc_object_t obj;
@@ -384,12 +375,12 @@ open_cb( const char* fname, enum UpnpOpenFileMode, intf_thread_t* intf, const bo
         int res = input_item_AddOption( item, transcode_line.c_str(), VLC_INPUT_OPTION_TRUSTED );
         assert( res == VLC_SUCCESS );
 
-        msg_Info( intf, "Transcoding '%s' with transcoding profile '%s'",
+        msg_Info( intf, "Transcoding '%s' with profile '%s'",
                   file_info.media->psz_title, file_info.transcode_profile->psz_name );
         msg_Dbg( intf, "Transcode chain: %s", transcode_line.c_str() );
 
-        var_Create( VLC_OBJECT( fhandler ), FIFO_VAR_NAME, VLC_VAR_ADDRESS );
-        var_SetAddress( VLC_OBJECT( fhandler ), FIFO_VAR_NAME, &fhandler->fifo );
+        var_Create( VLC_OBJECT( fhandler ), Fifo::VAR_NAME, VLC_VAR_ADDRESS );
+        var_SetAddress( VLC_OBJECT( fhandler ), Fifo::VAR_NAME, &fhandler->fifo );
 
         vlc_player_Lock( fhandler->p_player );
         vlc_player_SetCurrentMedia( fhandler->p_player, item );
@@ -407,54 +398,24 @@ open_cb( const char* fname, enum UpnpOpenFileMode, intf_thread_t* intf, const bo
 }
 
 int read_cb(
-    UpnpWebFileHandle fileHnd, char* buf, size_t buflen, const void*, const bool* transcoding )
+    UpnpWebFileHandle fileHnd, uint8_t buf[], size_t buflen, const void*, const bool* transcoding )
 {
     assert( fileHnd );
     assert( transcoding );
 
-    size_t read = 0;
+    size_t bytes_read;
     if ( *transcoding )
     {
-
-        const Fifo& fifo = static_cast<FileHandler*>( fileHnd )->fifo;
-
-        vlc_fifo_Lock( fifo.queue );
-
-        size_t min_buff = buflen;
-
-        while ( !fifo.eof && vlc_fifo_GetBytes( fifo.queue ) < min_buff )
-        {
-            vlc_fifo_Wait( fifo.queue );
-        }
-
-        if ( fifo.eof )
-            min_buff = vlc_fifo_GetBytes( fifo.queue );
-
-        while ( read < min_buff )
-        {
-            block_t* block = vlc_fifo_DequeueUnlocked( fifo.queue );
-            // TODO maybe send whats possible to send and shrink the block
-            // before requeuing it
-            if ( read + block->i_buffer >= min_buff )
-            {
-                vlc_fifo_QueueUnlocked( fifo.queue, block );
-                break;
-            }
-            memcpy( buf + read, block->p_buffer, block->i_buffer );
-            read += block->i_buffer;
-            block_Release( block );
-        }
-
-        vlc_fifo_Unlock( fifo.queue );
+        Fifo& fifo = static_cast<FileHandler*>( fileHnd )->fifo;
+        bytes_read = fifo.read(buf, buflen);
     }
     else
     {
         stream_t* stream = static_cast<stream_t*>( fileHnd );
-
-        read = vlc_stream_Read( stream, buf, buflen );
+        bytes_read= vlc_stream_Read( stream, buf, buflen );
     }
 
-    return read;
+    return bytes_read;
 }
 
 int seek_cb(
@@ -502,7 +463,7 @@ int close_cb( UpnpWebFileHandle fileHnd, const void*, const bool* transcoding )
         vlc_player_Delete( handler->p_player );
 
         block_FifoRelease( handler->fifo.queue );
-        var_SetAddress( VLC_OBJECT( handler ), FIFO_VAR_NAME, nullptr );
+        var_SetAddress( VLC_OBJECT( handler ), Fifo::VAR_NAME, nullptr );
         vlc_object_delete( VLC_OBJECT( handler ) );
 
         return 0;
@@ -718,74 +679,5 @@ void CloseServer( vlc_object_t* p_this )
 namespace StreamOut
 {
 
-int Open( vlc_object_t* p_this )
-{
-    sout_access_out_t* p_access = reinterpret_cast<sout_access_out_t*>( p_this );
-
-    p_access->p_sys = var_InheritAddress( p_this, FIFO_VAR_NAME );
-
-    p_access->pf_write = []( sout_access_out_t* access, block_t* data ) -> ssize_t {
-        Fifo* fifo = static_cast<Fifo*>( access->p_sys );
-
-        // TODO: set a maximum size for the fifo
-
-        size_t size = 0;
-        block_ChainProperties( data, nullptr, &size, nullptr );
-
-        vlc_fifo_Lock( fifo->queue );
-        vlc_fifo_QueueUnlocked( fifo->queue, data );
-        vlc_fifo_Unlock( fifo->queue );
-
-        // No needs to signal the fifo cond_var as vlc_fifo_QueueUnlocked
-        // already does it
-
-        return size;
-    };
-
-    p_access->pf_control = []( sout_access_out_t* aout, int i_query, va_list args ) -> int {
-        msg_Dbg(aout, "fifo control\n");
-        switch ( i_query )
-        {
-        case ACCESS_OUT_CONTROLS_PACE:
-        {
-            bool* pb = va_arg( args, bool* );
-            *pb = true;
-            break;
-        }
-
-        case ACCESS_OUT_CAN_SEEK:
-        {
-            bool* pb = va_arg( args, bool* );
-            *pb = false;
-            break;
-        }
-
-        default:
-            return VLC_EGENERIC;
-        }
-        return VLC_SUCCESS;
-    };
-
-    p_access->pf_seek = nullptr;
-    p_access->pf_read = nullptr;
-
-    return VLC_SUCCESS;
-}
-
-void Close( vlc_object_t* p_this )
-{
-    msg_Dbg(p_this, "Closing fifo\n");
-
-    Fifo* fifo = static_cast<Fifo*>( var_InheritAddress( p_this, FIFO_VAR_NAME ) );
-    assert( fifo );
-
-    vlc_fifo_Lock( fifo->queue );
-    fifo->eof = true;
-    vlc_fifo_Unlock( fifo->queue );
-
-    vlc_fifo_Signal( fifo->queue );
-
-    msg_Dbg(p_this, "fifo closed\n");
-}
 } // namespace StreamOut
 } // namespace Server

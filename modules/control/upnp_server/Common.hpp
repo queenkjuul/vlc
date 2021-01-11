@@ -7,7 +7,6 @@
 #include <vlc_common.h>
 #include <vlc_media_library.h>
 
-
 struct TranscodeProfile
 {
     const char* psz_name;

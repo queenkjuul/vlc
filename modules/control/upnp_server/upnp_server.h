@@ -136,15 +136,21 @@ typedef struct intf_sys_t
 
 } intf_sys_t;
 
+
+struct Fifo
+{
+    static const char VAR_NAME[];
+    block_fifo_t* queue = block_FifoNew();
+    bool eof = false;
+
+    size_t read(uint8_t buf[], size_t buflen) noexcept;
+};
+
 namespace Server
 {
 int OpenServer( vlc_object_t* p_this );
 void CloseServer( vlc_object_t* p_this );
 
-namespace StreamOut
-{
-
-int Open( vlc_object_t* );
-void Close( vlc_object_t* );
-} // namespace StreamOut
+int AccessOpen( vlc_object_t* );
+void AccessClose( vlc_object_t* );
 } // namespace Server

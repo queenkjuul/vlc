@@ -197,7 +197,7 @@ vlc_module_begin()
         set_subcategory( SUBCAT_SOUT_ACO );
         add_shortcut( "upnp-out" )
         set_capability( "sout access", 0 );
-        set_callbacks( Server::StreamOut::Open, Server::StreamOut::Close );
+        set_callbacks( Server::AccessOpen, Server::AccessClose );
 
 vlc_module_end()
 
