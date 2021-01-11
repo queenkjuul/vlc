@@ -41,6 +41,7 @@
 #include <limits.h>
 #include <algorithm>
 #include <set>
+#include <iostream>
 #include <string>
 
 /*
@@ -180,6 +181,24 @@ vlc_module_begin()
         add_string(SOUT_CFG_PREFIX "base_url", NULL, BASE_URL_TEXT, BASE_URL_LONGTEXT, false)
         add_string(SOUT_CFG_PREFIX "url", NULL, URL_TEXT, URL_LONGTEXT, false)
         add_renderer_opts(SOUT_CFG_PREFIX)
+
+    add_submodule()
+        set_shortname( "UPnP Server" );
+        set_description( N_( "Universal Plug'n'Play Server" ) );
+        set_category( CAT_INTERFACE );
+        set_subcategory( SUBCAT_INTERFACE_MAIN );
+        set_capability( "interface", 0 );
+        set_callbacks( Server::OpenServer, Server::CloseServer );
+
+    add_submodule()
+        set_shortname( "server sout" );
+        set_description( N_( "Universal Plug'n'Play Server" ) );
+        set_category( CAT_SOUT );
+        set_subcategory( SUBCAT_SOUT_ACO );
+        add_shortcut( "upnp-out" )
+        set_capability( "sout access", 0 );
+        set_callbacks( Server::StreamOut::Open, Server::StreamOut::Close );
+
 vlc_module_end()
 
 /*

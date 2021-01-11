@@ -31,10 +31,32 @@ libupnp_plugin_la_SOURCES = services_discovery/upnp.cpp services_discovery/upnp.
 			    stream_out/dlna/profile_names.hpp \
 			    stream_out/dlna/dlna_common.hpp \
 			    stream_out/dlna/dlna.hpp \
-			    stream_out/dlna/dlna.cpp
+			    stream_out/dlna/dlna.cpp \
+					control/upnp_server/upnp_server.h \
+          control/upnp_server/xml/Description.h \
+          control/upnp_server/upnp_server.cpp \
+					control/upnp_server/Option.hpp \
+					control/upnp_server/ml.hpp \
+					control/upnp_server/utils.hpp \
+					control/upnp_server/utils.cpp \
+					control/upnp_server/cds/Object.hpp \
+					control/upnp_server/cds/Container.hpp \
+					control/upnp_server/cds/FixedContainer.hpp \
+					control/upnp_server/cds/FixedContainer.cpp \
+					control/upnp_server/cds/Item.hpp \
+					control/upnp_server/cds/Item.cpp \
+					control/upnp_server/cds/MLContainer.hpp \
+					control/upnp_server/cds/MLContainerList.hpp \
+					control/upnp_server/cds/cds.hpp
 libupnp_plugin_la_CXXFLAGS = $(AM_CXXFLAGS) $(UPNP_CFLAGS)
 libupnp_plugin_la_LDFLAGS = $(AM_LDFLAGS) -rpath '$(sddir)'
 libupnp_plugin_la_LIBADD = $(UPNP_LIBS)
+libupnp_plugin_la_RES = control/upnp_server/xml/ContentDirectory.xml \
+control/upnp_server/xml/ConnectionManager.xml \
+../share/icons/48x48/vlc.png \
+../share/vlc512x512.png
+dist_libupnp_plugin_la_DATA = $(libupnp_plugin_la_RES)
+libupnp_plugin_ladir = $(prefix)/share/upnp_server
 EXTRA_LTLIBRARIES += libupnp_plugin.la
 sd_LTLIBRARIES += $(LTLIBupnp)
 if HAVE_OSX
