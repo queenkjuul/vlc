@@ -47,6 +47,8 @@ private:
     std::string m_name;
     std::string m_extension;
     std::string m_linkedFile;
+    int64_t m_size = 0;
+    time_t m_lastModificationTime = 0;
 };
 
   } /* namespace medialibrary */

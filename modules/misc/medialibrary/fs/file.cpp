@@ -25,6 +25,12 @@
 #include "file.h"
 #include "util.h"
 
+#include <vlc_common.h>
+#include <vlc_url.h>
+
+#include <sys/stat.h>
+#include <iostream>
+
 namespace vlc {
   namespace medialibrary {
 
@@ -33,6 +39,16 @@ SDFile::SDFile(const std::string &mrl)
     , m_name(utils::fileName(mrl))
     , m_extension(utils::extension(mrl))
 {
+    if (mrl.rfind("file://") == 0 )
+    {
+        char* uri = vlc_uri2path(mrl.c_str());
+        struct stat st;
+        if (stat(uri, &st) == 0) {
+            m_size = st.st_size;
+            m_lastModificationTime = st.st_mtime;
+        }
+        delete uri;
+    }
 }
 
 const std::string &
@@ -56,13 +72,13 @@ SDFile::extension() const
 time_t
 SDFile::lastModificationDate() const
 {
-    return 0;
+    return m_lastModificationTime;
 }
 
 int64_t
 SDFile::size() const
 {
-    return 0;
+    return m_size;
 }
 
 IFile::LinkedFileType SDFile::linkedType() const
