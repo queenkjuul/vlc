@@ -15,6 +15,15 @@ std::string file_extension( const std::string& file ) noexcept
     return file.substr( pos + 1 );
 }
 
+std::string album_thumbnail_url( const vlc_ml_album_t& album ) noexcept
+{
+
+    const auto thumbnail_extension =
+        file_extension( std::string( album.thumbnails[VLC_ML_THUMBNAIL_SMALL].psz_mrl ) );
+    return get_server_url() + "thumbnail/small/album/" + std::to_string( album.i_id ) + "." +
+           thumbnail_extension;
+}
+
 std::vector<MediaTrackRef> get_media_tracks(const vlc_ml_media_t& media, vlc_ml_track_type_t type) noexcept
 {
   std::vector<MediaTrackRef> ret;

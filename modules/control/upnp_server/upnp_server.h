@@ -20,6 +20,8 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
  *****************************************************************************/
 
+#pragma once
+
 #include "Common.hpp"
 #include "cds/cds.hpp"
 
@@ -138,14 +140,15 @@ typedef struct intf_sys_t
 
 } intf_sys_t;
 
-
 struct Fifo
 {
     static const char VAR_NAME[];
-    block_fifo_t* queue = block_FifoNew();
     bool eof = false;
 
-    size_t read(uint8_t buf[], size_t buflen) noexcept;
+    std::unique_ptr<block_fifo_t, decltype( &block_FifoRelease )> queue = { block_FifoNew(),
+                                                                            &block_FifoRelease };
+
+    size_t read( uint8_t buf[], size_t buflen ) noexcept;
 };
 
 namespace Server

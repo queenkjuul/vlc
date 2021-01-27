@@ -22,9 +22,9 @@ template <typename MLObject, vlc_ml_get_queries GetQuery>
 struct Object
 {
     using Ptr = std::unique_ptr<MLObject, std::function<void( MLObject* )>>;
-    static Ptr get( vlc_medialibrary_t& p_ml, const int64_t id ) noexcept
+    static Ptr get( vlc_medialibrary_t& ml, const int64_t id ) noexcept
     {
-        MLObject* obj = static_cast<MLObject*>( vlc_ml_get( &p_ml, GetQuery, id ) );
+        MLObject* obj = static_cast<MLObject*>( vlc_ml_get( &ml, GetQuery, id ) );
         return Ptr{ obj, &ml_object_release<MLObject> };
     }
 };

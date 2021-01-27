@@ -105,6 +105,7 @@ static void dump_resources( xml::Element& dest,
             elem.set_attribute( "size", std::to_string( main_files[0].get().i_size ).c_str() );
         }
 
+
         return elem;
     };
 
@@ -120,6 +121,7 @@ static void dump_resources( xml::Element& dest,
 
 void Item::dump_mlobject_metadata( xml::Element& dest,
                                    const vlc_ml_media_t& media,
+                                   vlc_medialibrary_t &ml,
                                    const TranscodeProfileList& transcode_profiles ) noexcept
 {
 
@@ -146,6 +148,25 @@ void Item::dump_mlobject_metadata( xml::Element& dest,
     dest.add_children( doc.create_element( "upnp:class", doc.create_text_node( object_class ) ),
                        doc.create_element( "dc:title", doc.create_text_node( media.psz_title ) ),
                        doc.create_element( "dc:date", doc.create_text_node( date.c_str() ) ));
+    switch ( media.i_subtype )
+    {
+    case VLC_ML_MEDIA_SUBTYPE_ALBUMTRACK:
+    {
+        const auto album = ml::Album::get( ml, media.album_track.i_album_id );
+        if ( album != nullptr )
+        {
+            const auto album_thumbnail_url = utils::album_thumbnail_url( *album );
+            dest.add_children(
+                doc.create_element( "upnp:album", doc.create_text_node( album->psz_title ) ),
+                doc.create_element( "upnp:artist", doc.create_text_node( album->psz_artist ) ),
+                doc.create_element( "upnp:albumArtURI",
+                                    doc.create_text_node( album_thumbnail_url.c_str() ) ) );
+        }
+        break;
+    }
+    default:
+        break;
+    }
 
     dump_resources(dest, media, transcode_profiles, file_extension);
 }
@@ -155,6 +176,6 @@ void Item::dump_metadata( xml::Element& dest, const Object::ExtraId& extra_id ) 
     assert( extra_id.has_value() );
     const auto media = ml::Media::get( m_medialib, extra_id->ml_id );
 
-    dump_mlobject_metadata( dest, *media.get(), transcode_profiles );
+    dump_mlobject_metadata( dest, *media.get(), m_medialib, transcode_profiles );
 }
 } // namespace cds

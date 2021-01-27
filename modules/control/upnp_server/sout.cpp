@@ -15,13 +15,13 @@ size_t Fifo::read( uint8_t buf[], size_t buflen ) noexcept
     size_t bytes_read = 0;
 
     vlc_tick_t start = vlc_tick_now();
-    vlc_fifo_Lock( queue );
+    vlc_fifo_Lock( queue.get() );
     
 
     size_t bytes;
-    while ( !eof && ( bytes = vlc_fifo_GetBytes( queue ) ) == 0 )
+    while ( !eof && ( bytes = vlc_fifo_GetBytes( queue.get() ) ) == 0 )
     {
-        vlc_fifo_Wait( queue );
+        vlc_fifo_Wait( queue.get() );
     }
     buflen = MIN(buflen, bytes);
 
@@ -32,7 +32,7 @@ size_t Fifo::read( uint8_t buf[], size_t buflen ) noexcept
 
     while ( bytes_read < buflen )
     {
-        block_t* block = vlc_fifo_DequeueUnlocked( queue );
+        block_t* block = vlc_fifo_DequeueUnlocked( queue.get() );
         assert(block);
 
         const size_t to_copy = MIN( block->i_buffer, buflen - bytes_read );
@@ -46,15 +46,15 @@ size_t Fifo::read( uint8_t buf[], size_t buflen ) noexcept
             block_Release( block );
         else
         {
-            block_t* all = vlc_fifo_DequeueAllUnlocked( queue );
+            block_t* all = vlc_fifo_DequeueAllUnlocked( queue.get() );
             block->p_next = all;
-            vlc_fifo_QueueUnlocked( queue, block );
+            vlc_fifo_QueueUnlocked( queue.get(), block );
             assert(bytes_read == buflen);
         }
     }
 
-    vlc_fifo_Signal( queue );
-    vlc_fifo_Unlock( queue );
+    vlc_fifo_Signal( queue.get() );
+    vlc_fifo_Unlock( queue.get() );
 
     std::cerr << start - vlc_tick_now() << "\n";
     return bytes_read;
@@ -75,13 +75,13 @@ int Server::AccessOpen( vlc_object_t* p_this )
         size_t size = 0;
         block_ChainProperties( data, nullptr, &size, nullptr );
 
-        vlc_fifo_Lock( fifo->queue );
+        vlc_fifo_Lock( fifo->queue.get() );
         //while(vlc_fifo_GetBytes(fifo->queue) >= HTTPD_BUFFER_PACE) {
         //  std::cerr << "Waiting\n";
         //  vlc_fifo_Wait(fifo->queue);
         //}
-        vlc_fifo_QueueUnlocked( fifo->queue, data );
-        vlc_fifo_Unlock( fifo->queue );
+        vlc_fifo_QueueUnlocked( fifo->queue.get(), data );
+        vlc_fifo_Unlock( fifo->queue.get() );
 
 
         // No needs to signal the fifo cond_var as vlc_fifo_QueueUnlocked
@@ -127,7 +127,7 @@ void Server::AccessClose( vlc_object_t* p_this )
     Fifo* fifo = static_cast<Fifo*>( var_InheritAddress( p_this, Fifo::VAR_NAME ) );
     assert( fifo );
 
-    auto* queue = fifo->queue;
+    auto* queue = fifo->queue.get();
     vlc_fifo_Lock( queue );
     fifo->eof = true;
     vlc_fifo_Unlock( queue );
