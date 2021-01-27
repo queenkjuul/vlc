@@ -342,6 +342,9 @@ static xml::Document make_server_identity(const char *uuid) {
         ret.create_element("minor", ret.create_text_node( "0"))
       ),
       ret.create_element("device",
+      //DLNA
+        ret.create_element("dlna:X_DLNADOC", ret.create_text_node("DMS-1.50")),
+
         ret.create_element("deviceType", ret.create_text_node("urn:schemas-upnp-org:device:MediaServer:1")),
         ret.create_element("presentationUrl", ret.create_text_node(url.c_str())),
         ret.create_element("friendlyName", ret.create_text_node("VLC Media Server")),

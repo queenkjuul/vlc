@@ -4,6 +4,7 @@
 #include "../utils.hpp"
 
 #include "../stream_out/renderer_common.hpp"
+#include "../stream_out/dlna/dlna.hpp"
 
 #include <sstream>
 #include <chrono>
@@ -95,8 +96,11 @@ static void dump_resources( xml::Element& dest,
             elem.set_attribute( "resolution", resolution.str().c_str() );
         }
 
+        const auto mime_type = utils::get_mimetype( media.i_type, mux );
         const auto protocol_info =
-            std::string( "http-get:*:" ) + utils::get_mimetype( media.i_type, mux ).combine() + ":*";
+            std::string( "http-get:*:" ) + mime_type.combine() + ":" +
+            utils::get_dlna_extra_protocol_info( mime_type.file_type, profile != nullptr );
+
         elem.set_attribute( "protocolInfo", protocol_info.c_str() );
 
         if ( !profile )
@@ -109,8 +113,10 @@ static void dump_resources( xml::Element& dest,
         return elem;
     };
 
+    // Native resource (no transcode)
     dest.add_child( make_resource( nullptr ) );
 
+    // Transcoded resources
     for (unsigned i = 0; i < profiles.u_size; ++i)
     {
         const auto* profile = profiles.p_profiles + i;
@@ -118,6 +124,7 @@ static void dump_resources( xml::Element& dest,
             dest.add_child( make_resource( profile ) );
     }
 
+    // Thumbnails
     for (int i= 0 ; i < VLC_ML_THUMBNAIL_SIZE_COUNT; ++i) {
         const auto& thumbnail = media.thumbnails[i];
         if ( thumbnail.i_status != VLC_ML_THUMBNAIL_STATUS_AVAILABLE )
@@ -126,7 +133,9 @@ static void dump_resources( xml::Element& dest,
         const auto url = utils::thumbnail_url( media, static_cast<vlc_ml_thumbnail_size_t>( i ) );
         auto elem = doc.create_element( "res", doc.create_text_node( url.c_str() ) );
 
-        const auto protocol_info = std::string( "http-get:*:image/" ) + thumbnail_extension + ":*";
+        const auto dlna_extra = utils::get_dlna_extra_protocol_info( thumbnail_extension, false );
+        const auto protocol_info =
+            std::string( "http-get:*:image/" ) + thumbnail_extension + ":" + dlna_extra;
         elem.set_attribute( "protocolInfo", protocol_info.c_str() );
         
         dest.add_child(std::move(elem));

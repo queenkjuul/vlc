@@ -15,7 +15,6 @@ size_t Fifo::read( uint8_t buf[], size_t buflen ) noexcept
     size_t bytes_read = 0;
 
     vlc_fifo_Lock( queue.get() );
-    
 
     size_t bytes = 0;
     while ( !eof && ( bytes = vlc_fifo_GetBytes( queue.get() ) ) == 0 )
