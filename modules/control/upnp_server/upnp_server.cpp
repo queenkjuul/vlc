@@ -43,6 +43,7 @@
 
 #include "cds/cds.hpp"
 #include "utils.hpp"
+#include "FileHandler.hpp"
 
 static void medialibrary_event_callback( void* p_data, const struct vlc_ml_event_t* p_event )
 {
@@ -229,337 +230,77 @@ static int Callback( Upnp_EventType event_type, const void* p_event, void* p_coo
 
 // UPNP Callbacks
 
-struct FileInfo
-{
-    const TranscodeProfile* transcode_profile;
-    std::string extension;
-    vlc_ml_media_t* media;
-};
-
-int parse_url( const char* url, intf_sys_t* p_sys, FileInfo* file_info )
-{
-    std::stringstream ss( url );
-
-    std::string token;
-    const TranscodeProfile* profile = nullptr;
-
-    std::getline( ss, token, '/' );
-    if ( !token.empty() )
-        return VLC_EGENERIC;
-
-    std::getline( ss, token, '/' );
-    if ( token != "media" )
-        return VLC_EGENERIC;
-    std::getline( ss, token, '/' );
-    if ( token != "native" )
-    {
-        for ( unsigned i = 0; i < p_sys->transcode_profiles.u_size; ++i )
-        {
-            const TranscodeProfile& current_profile = p_sys->transcode_profiles.p_profiles[i];
-            if ( token == current_profile.psz_name )
-            {
-                profile = &current_profile;
-                break;
-            }
-        }
-        if ( profile == nullptr )
-            return VLC_EGENERIC;
-    }
-
-    std::getline( ss, token );
-    const auto extension_idx = token.find( '.' );
-    if ( extension_idx == std::string::npos )
-        return VLC_EGENERIC;
-
-    int media_id;
-    try
-    {
-        media_id = std::stoi( token.substr( 0, extension_idx ) );
-    }
-    catch ( const std::invalid_argument& )
-    {
-        return VLC_EGENERIC;
-    }
-
-    vlc_ml_media_t* media = vlc_ml_get_media( p_sys->p_ml, media_id );
-    if ( media == nullptr )
-        return VLC_EGENERIC;
-    *file_info = { profile, token.substr( extension_idx + 1 ), media };
-    return VLC_SUCCESS;
-}
-
 static int
-getinfo_cb( const char* fname, UpnpFileInfo* info, intf_thread_t* intf, const bool** transcoding )
+getinfo_cb( const char* url, UpnpFileInfo* info, intf_thread_t* intf, FileHandler** fhandler )
 {
-    msg_Dbg( intf, "GetInfo callback on: %s", fname );
-    FileInfo file_info;
-    if ( parse_url( fname, intf->p_sys, &file_info ) != VLC_SUCCESS )
-        return UPNP_E_FILE_NOT_FOUND;
+    msg_Dbg( intf, "GetInfo callback on: %s", url );
 
     UpnpFileInfo_set_IsReadable( info, true );
     UpnpFileInfo_set_IsDirectory( info, false );
 
-    const bool is_transcoding = file_info.transcode_profile != nullptr;
-    *transcoding = new bool( is_transcoding );
+    auto file_handler = parse_url( url, *intf->p_sys );
 
-    const std::string mime_type = utils::get_mimetype(
-        file_info.media->i_type,
-        (transcoding && file_info.extension != "webm") ? "mkv" : file_info.extension );
-    UpnpFileInfo_set_ContentType( info, mime_type.c_str() );
+    if ( file_handler == nullptr )
+        return UPNP_E_FILE_NOT_FOUND;
 
-    const auto &media_files = utils::get_media_files(*file_info.media, VLC_ML_FILE_TYPE_MAIN);
-    if (media_files.empty())
-    {
-      vlc_ml_release( file_info.media );
-      return UPNP_E_FILE_NOT_FOUND;
-    }
+    file_handler->get_info( *info );
 
-    const vlc_ml_file_t &first = media_files.front();
-
-    const int64_t size = is_transcoding ? -1 : first.i_size;
-    UpnpFileInfo_set_FileLength( info, size );
-
-    UpnpFileInfo_set_LastModified( info, first.i_last_modification_date );
-
-    auto *head = const_cast<UpnpListHead*>(UpnpFileInfo_get_ExtraHeadersList( info ));
-
-    for ( UpnpListIter iter = UpnpListBegin( head ); iter != UpnpListEnd( head );
-          iter = UpnpListNext( head, iter ) )
-    {
-        const char* name = UpnpExtraHeaders_get_name_cstr( (UpnpExtraHeaders*)iter );
-        msg_Info( intf, "extra hdr: %s", name );
-    }
-
-   // {
-   // UpnpExtraHeaders* h = UpnpExtraHeaders_new();
-   // UpnpExtraHeaders_set_resp( h, "transferMode.dlna.org: Streaming" );
-   // UpnpListInsert( head, UpnpListEnd( head ),
-   //                 const_cast<UpnpListHead*>( UpnpExtraHeaders_get_node( h ) ) );
-   // }
-   // {
-   // UpnpExtraHeaders* h = UpnpExtraHeaders_new();
-   // UpnpExtraHeaders_set_resp( h, "contentFeatures.dlna.org: DLNA.ORG_PN=DLNA.ORG_PN=AVC_MP4_EU;DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01200000000000000000000000000000" );
-   // UpnpListInsert( head, UpnpListEnd( head ),
-   //                 const_cast<UpnpListHead*>( UpnpExtraHeaders_get_node( h ) ) );
-   // }
-
-    vlc_ml_release( file_info.media );
+    // Passing the filehandler ownership to the open callback to avoid reparsing the url
+    // FIXME: this leaks if the open callback is never called afterwise. We need to ensure if that's
+    // a possibility
+    *fhandler = file_handler.release();
 
     return UPNP_E_SUCCESS;
 }
 
-struct FileHandler
-{
-    struct vlc_object_t obj;
-    Fifo fifo;
-    vlc_player_t* p_player;
-
-    static void release( FileHandler* fhandler )
-    {
-        vlc_player_Delete( fhandler->p_player );
-        block_FifoRelease( fhandler->fifo.queue );
-        var_SetAddress( &fhandler->obj, Fifo::VAR_NAME, nullptr );
-        vlc_object_delete( &fhandler->obj );
-    }
-};
-vlc_object_cast( FileHandler );
-
-
-static const char DEFAULT_MUXER[] = "avformat{mux=matroska,options={live=1},reset-ts}";
-static const char DEFAULT_MUXER_WEBM[] = "avformat{mux=webm,options={live=1},reset-ts}";
-
 static UpnpWebFileHandle
-open_cb( const char* fname, enum UpnpOpenFileMode, intf_thread_t* intf, const bool* transcoding )
+open_cb( const char* url, enum UpnpOpenFileMode, intf_thread_t* intf, FileHandler* file_handler )
 {
-    msg_Dbg(intf, "Opening: %s", fname);
-    assert( transcoding );
+    msg_Dbg( intf, "Opening: %s", url );
 
-    FileInfo file_info;
-    if ( parse_url( fname, intf->p_sys, &file_info ) != VLC_SUCCESS )
+    FileHandler* ret = file_handler;
+    if ( !ret )
+        ret = parse_url( url, *intf->p_sys ).release();
+
+    if ( ret == nullptr )
         return nullptr;
 
-    const auto& main_files = utils::get_media_files(*file_info.media, VLC_ML_FILE_TYPE_MAIN);
-    if ( main_files.empty() )
-    {
-        vlc_ml_release( file_info.media );
+    if ( !ret->open( intf ) ) {
+        msg_Err( intf, "Failed to open %s", url );
+        delete ret;
         return nullptr;
     }
-
-    const vlc_ml_file_t& main_file = main_files.front();
-    const char* psz_mrl = main_file.psz_mrl;
-
-    if ( *transcoding )
-    {
-        FileHandler* fhandler = static_cast<FileHandler*>(
-            vlc_object_create( VLC_OBJECT( intf ), sizeof( *fhandler ) ) );
-
-        fhandler->fifo = {};
-        fhandler->p_player =
-            vlc_player_New( VLC_OBJECT( fhandler ), VLC_PLAYER_LOCK_NORMAL, nullptr, nullptr );
-
-        input_item_t* item = vlc_ml_get_input_item_by_mrl( intf->p_sys->p_ml, psz_mrl );
-
-        if (item == nullptr || fhandler->p_player == nullptr)
-        {
-          FileHandler::release(fhandler);
-          return nullptr;
-        }
-
-        const auto video_tracks =
-            utils::get_media_tracks( *file_info.media, VLC_ML_TRACK_TYPE_VIDEO );
-        video_format_t fmt;
-        video_format_Init(&fmt, VLC_CODEC_I420);
-        if (video_tracks.empty())
-        {
-          FileHandler::release(fhandler);
-          return nullptr;
-        }
-        assert(video_tracks.size() ==  1);
-
-        const vlc_ml_media_track_t& vtrack = video_tracks[0];
-        video_format_Setup( &fmt, VLC_CODEC_I420, vtrack.v.i_width, vtrack.v.i_height,
-                            vtrack.v.i_width, vtrack.v.i_height, 1,
-                            1 );
-
-        vlc_fourcc_t codec = 0;
-        std::stringstream transcode_line;
-        transcode_line << "sout=#transcode{";
-        try {
-        transcode_line << vlc_sout_renderer_GetVcodecOption(
-            VLC_OBJECT( intf ), file_info.transcode_profile->codecs_fallbacks, &codec, &fmt,
-            file_info.transcode_profile->i_conversion_quality ) /*<< "height=1080"*/;
-        } catch (const std::domain_error& e) {
-          msg_Err(intf, "No encoder was fitting the transcode chain: %s", e.what());
-          FileHandler::release(fhandler);
-          return nullptr;
-        }
-        transcode_line << "}";
-
-        const char* mux = file_info.extension == "webm" ? DEFAULT_MUXER_WEBM : DEFAULT_MUXER;
-        transcode_line << ":std{access=upnp-out,mux=" << mux << "}";
-
-        const auto transcode_line_str = transcode_line.str();
-        int res =
-            input_item_AddOption( item, transcode_line_str.c_str(), VLC_INPUT_OPTION_TRUSTED );
-
-        if (res != VLC_SUCCESS)
-        {
-          msg_Err(intf, "Can't append transcode chain to the player");
-          FileHandler::release(fhandler);
-          return nullptr;
-        }
-
-        msg_Info( intf, "Transcoding '%s' with profile '%s'",
-                  file_info.media->psz_title, file_info.transcode_profile->psz_name );
-        msg_Dbg( intf, "Transcode chain: %s", transcode_line_str.c_str() );
-
-        var_Create( VLC_OBJECT( fhandler ), Fifo::VAR_NAME, VLC_VAR_ADDRESS );
-        var_SetAddress( VLC_OBJECT( fhandler ), Fifo::VAR_NAME, &fhandler->fifo );
-
-        vlc_player_Lock( fhandler->p_player );
-        vlc_player_SetCurrentMedia( fhandler->p_player, item );
-        vlc_player_Start( fhandler->p_player );
-        vlc_player_Unlock( fhandler->p_player );
-
-        vlc_ml_release( file_info.media );
-        input_item_Release(item);
-
-        return fhandler;
-    }
-
-    stream_t* ret = vlc_stream_NewMRL( VLC_OBJECT( intf ), psz_mrl );
-    if (ret == nullptr)
-    {
-      msg_Err(intf, "Failed to create stream extractor to %s", psz_mrl);
-    }
-    vlc_ml_release( file_info.media );
     return ret;
 }
 
-int read_cb(
-    UpnpWebFileHandle fileHnd, uint8_t buf[], size_t buflen, intf_thread_t* intf, const bool* transcoding )
+static int
+read_cb( UpnpWebFileHandle fileHnd, uint8_t buf[], size_t buflen, intf_thread_t* intf, const void* )
 {
     assert( fileHnd );
-    assert( transcoding );
 
-    size_t bytes_read;
-    if ( *transcoding )
-    {
-        Fifo& fifo = static_cast<FileHandler*>( fileHnd )->fifo;
-        bytes_read = fifo.read(buf, buflen);
-    }
-    else
-    {
-        stream_t* stream = static_cast<stream_t*>( fileHnd );
-        bytes_read = vlc_stream_Read( stream, buf, buflen );
-    }
+    const size_t bytes_read = static_cast<FileHandler*>( fileHnd )->read( buf, buflen );
 
-    msg_Dbg(intf, "http read callback, %zub requested %zub returned", buflen, bytes_read);
+    msg_Dbg( intf, "http read callback, %zub requested %zub returned", buflen, bytes_read );
 
     return bytes_read;
 }
 
-int seek_cb(
-    UpnpWebFileHandle fileHnd, off_t offset, int origin, intf_thread_t* intf, const bool* transcoding )
+static int
+seek_cb( UpnpWebFileHandle fileHnd, off_t offset, int origin, intf_thread_t* intf, const void* )
 {
     assert( fileHnd );
-    assert( transcoding );
-    msg_Info(intf, "http seek callback offset: %ld origin: %d", offset, origin);
+    msg_Info( intf, "http seek callback offset: %ld origin: %d", offset, origin );
 
-    // TODO implement seek when transcoding on the fly (not a priority)
-    if ( *transcoding )
-    {
-        return -1;
-    }
-
-    stream_t* stream = static_cast<stream_t*>( fileHnd );
-
-    uint64_t real_offset;
-    switch ( origin )
-    {
-    case SEEK_CUR:
-        real_offset = vlc_stream_Tell( stream ) + offset;
-        break;
-    case SEEK_END:
-        if ( vlc_stream_GetSize( stream, &real_offset ) != VLC_SUCCESS )
-        {
-            return -1;
-        }
-        real_offset += offset;
-        break;
-    case SEEK_SET:
-        real_offset = offset;
-        break;
-    default:
-        return -1;
-    }
-
-    msg_Info(intf, "moving file offset to %ld", offset);
-    return vlc_stream_Seek( stream, real_offset );
+    return static_cast<FileHandler*>( fileHnd )->seek( static_cast<FileHandler::SeekType>( origin ),
+                                                       offset );
 }
 
-int close_cb( UpnpWebFileHandle fileHnd, intf_thread_t* intf, const bool* transcoding )
+static int close_cb( UpnpWebFileHandle fileHnd, intf_thread_t* intf, const void* )
 {
     assert( fileHnd );
-    assert( transcoding );
-    msg_Dbg(intf, "http close callback");
-
-    bool is_transcoding = *transcoding;
-    delete transcoding;
-
-    if ( is_transcoding )
-    {
-        FileHandler* handler = static_cast<FileHandler*>( fileHnd );
-
-        FileHandler::release(handler);
-
-        return UPNP_E_SUCCESS;
-    }
-
-    stream_t* stream = static_cast<stream_t*>( fileHnd );
-
-    vlc_stream_Delete( stream );
-    return UPNP_E_SUCCESS;
+    msg_Dbg( intf, "http close callback" );
+    delete static_cast<FileHandler*>(fileHnd);
+    return 0;
 }
 
 static xml::Document make_server_identity(const char *uuid) {
@@ -673,6 +414,7 @@ static bool init_upnp( intf_thread_t* p_intf )
     }
 
     UpnpAddVirtualDir( "/media", p_intf, nullptr );
+    UpnpAddVirtualDir( "/thumbnail", p_intf, nullptr );
     UpnpVirtualDir_set_GetInfoCallback( reinterpret_cast<VDCallback_GetInfo>( getinfo_cb ) );
     UpnpVirtualDir_set_OpenCallback( reinterpret_cast<VDCallback_Open>( open_cb ) );
     UpnpVirtualDir_set_ReadCallback( reinterpret_cast<VDCallback_Read>( read_cb ) );

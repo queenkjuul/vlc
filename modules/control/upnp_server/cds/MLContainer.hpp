@@ -2,85 +2,14 @@
 
 #include "Container.hpp"
 
-#include "Item.hpp"
-
 #include <vlc_media_library.h>
+
+#include "../utils.hpp"
+#include "Item.hpp"
 
 namespace cds
 {
 
-namespace
-{
-inline void dump_mlobject_metadata( xml::Element& dest,
-                                         const vlc_ml_media_t& media,
-                                         const TranscodeProfileList& profiles )
-{
-    Item::dump_mlobject_metadata( dest, media, profiles );
-}
-
-inline void dump_mlobject_metadata( xml::Element& dest,
-                                         const vlc_ml_playlist_t& playlist,
-                                         const TranscodeProfileList& )
-{
-    xml::Document& doc = dest.owner;
-
-    //TODO this is not exposed yet in the medialibrary
-    //dest.set_attribute( "childCount", std::to_string( playlist.i_nb_tracks ).c_str() );
-
-    dest.add_children(
-        doc.create_element( "upnp:class",
-                            doc.create_text_node( "object.container.playlistContainer" ) ),
-        doc.create_element( "dc:title", doc.create_text_node( playlist.psz_name ) ) );
-}
-
-inline void dump_mlobject_metadata( xml::Element& dest,
-                                         const vlc_ml_show_t& show,
-                                         const TranscodeProfileList& )
-{
-    xml::Document& doc = dest.owner;
-
-    //TODO this is not exposed yet in the medialibrary
-    //dest.set_attribute( "childCount", std::to_string( playlist.i_nb_tracks ).c_str() );
-
-    const std::string nb_episodes = std::to_string( show.i_nb_episodes );
-    dest.set_attribute( "childCount", nb_episodes.c_str() );
-    dest.add_children(
-        doc.create_element( "upnp:class",
-                            doc.create_text_node( "object.container.playlistContainer" ) ),
-        doc.create_element( "dc:title", doc.create_text_node( show.psz_name ) ),
-        doc.create_element( "upnp:episodeCount", doc.create_text_node( nb_episodes.c_str() ) ) );
-}
-
-inline void dump_mlobject_metadata( xml::Element& dest,
-                                         const vlc_ml_album_t& album,
-                                         const TranscodeProfileList& )
-{
-    xml::Document& doc = dest.owner;
-
-    dest.set_attribute( "childCount", std::to_string( album.i_nb_tracks ).c_str() );
-
-    dest.add_children(
-        doc.create_element( "upnp:artist", doc.create_text_node( album.psz_artist ) ),
-        doc.create_element( "upnp:class",
-                            doc.create_text_node( "object.container.album.musicAlbum" ) ),
-        doc.create_element( "dc:title", doc.create_text_node( album.psz_title ) ),
-        doc.create_element( "dc:description", doc.create_text_node( album.psz_summary ) ) );
-}
-
-inline void dump_mlobject_metadata( xml::Element& dest,
-                                         const vlc_ml_artist_t& artist,
-                                         const TranscodeProfileList& )
-{
-    xml::Document& doc = dest.owner;
-
-    dest.set_attribute( "childCount", std::to_string( artist.i_nb_album ).c_str() );
-
-    dest.add_children(
-        doc.create_element( "upnp:class",
-                            doc.create_text_node( "object.container.person.musicArtist" ) ),
-        doc.create_element( "dc:title", doc.create_text_node( artist.psz_name ) ) );
-}
-} // namespace
 template <typename MLHelper>
 class MLContainer : public Container
 {
@@ -108,7 +37,7 @@ class MLContainer : public Container
         if ( extra.has_value() )
         {
             const auto& ml_object = MLHelper::get( ml, extra.value().ml_id );
-            dump_mlobject_metadata( dest, *ml_object.get(), transcode_profiles );
+            dump_mlobject_metadata( dest, *ml_object.get() );
         }
         else
         {
@@ -134,10 +63,72 @@ class MLContainer : public Container
 
             auto elem = child.create_object_element(
                 doc, ExtraIdData{ item.i_id, get_dynamic_id( extra ) } );
-            dump_mlobject_metadata( elem, item, transcode_profiles );
+            dump_mlobject_metadata( elem, item );
             dest.add_child( std::move( elem ) );
         }
         return { list->i_nb_items, MLHelper::count( ml, ml_id ) };
+    }
+
+    private:
+    void dump_mlobject_metadata( xml::Element& dest, const vlc_ml_media_t& media ) const
+    {
+        Item::dump_mlobject_metadata( dest, media, ml, transcode_profiles );
+    }
+
+    void dump_mlobject_metadata( xml::Element& dest, const vlc_ml_playlist_t& playlist ) const
+    {
+        xml::Document& doc = dest.owner;
+
+        // TODO this is not exposed yet in the medialibrary
+        // dest.set_attribute( "childCount", std::to_string( playlist.i_nb_tracks ).c_str() );
+
+        dest.add_children(
+            doc.create_element( "upnp:class",
+                                doc.create_text_node( "object.container.playlistContainer" ) ),
+            doc.create_element( "dc:title", doc.create_text_node( playlist.psz_name ) ) );
+    }
+
+    void dump_mlobject_metadata( xml::Element& dest, const vlc_ml_album_t& album ) const
+    {
+        xml::Document& doc = dest.owner;
+
+        dest.set_attribute( "childCount", std::to_string( album.i_nb_tracks ).c_str() );
+
+        const auto album_thumbnail_url = utils::album_thumbnail_url( album );
+        dest.add_children(
+            doc.create_element( "upnp:artist", doc.create_text_node( album.psz_artist ) ),
+            doc.create_element( "upnp:class",
+                                doc.create_text_node( "object.container.album.musicAlbum" ) ),
+            doc.create_element( "dc:title", doc.create_text_node( album.psz_title ) ),
+            doc.create_element( "dc:description", doc.create_text_node( album.psz_summary ) ),
+            doc.create_element( "upnp:albumArtURI",
+                                doc.create_text_node( album_thumbnail_url.c_str() ) ) );
+    }
+
+    void dump_mlobject_metadata( xml::Element& dest, const vlc_ml_artist_t& artist ) const
+    {
+        xml::Document& doc = dest.owner;
+
+        dest.set_attribute( "childCount", std::to_string( artist.i_nb_album ).c_str() );
+
+        dest.add_children(
+            doc.create_element( "upnp:class",
+                                doc.create_text_node( "object.container.person.musicArtist" ) ),
+            doc.create_element( "dc:title", doc.create_text_node( artist.psz_name ) ) );
+    }
+
+    void dump_mlobject_metadata( xml::Element& dest, const vlc_ml_show_t& show ) const
+    {
+        xml::Document& doc = dest.owner;
+
+        const std::string nb_episodes = std::to_string( show.i_nb_episodes );
+        dest.set_attribute( "childCount", nb_episodes.c_str() );
+        dest.add_children(
+            doc.create_element( "upnp:class",
+                                doc.create_text_node( "object.container.playlistContainer" ) ),
+            doc.create_element( "dc:title", doc.create_text_node( show.psz_name ) ),
+            doc.create_element( "upnp:episodeCount",
+                                doc.create_text_node( nb_episodes.c_str() ) ) );
     }
 };
 } // namespace cds

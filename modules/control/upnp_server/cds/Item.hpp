@@ -17,6 +17,7 @@ class Item : public Object
 
     static void dump_mlobject_metadata( xml::Element& dest,
                                         const vlc_ml_media_t& media,
+                                        vlc_medialibrary_t& ml,
                                         const TranscodeProfileList& transcode_profiles ) noexcept;
 };
 } // namespace cds
