@@ -12,7 +12,7 @@
 struct TranscodeProfile
 {
     const char* psz_name;
-    int i_conversion_quality;
+    int i_conversion_quality; // see stream_out/renderer_common.hpp
     const std::vector<vlc_fourcc_t> codecs_fallbacks;
 };
 

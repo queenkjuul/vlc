@@ -22,6 +22,10 @@ struct MLFile
     time_t last_modification;
 };
 
+static void
+add_dlna_headers( UpnpListHead* head, const std::string& file_type, bool transcoding ) noexcept;
+
+
 struct MLFileHandler : FileHandler
 {
     MLFile file;
@@ -41,28 +45,11 @@ struct MLFileHandler : FileHandler
         UpnpFileInfo_set_ContentType( &info, mime_type.combine().c_str() );
         UpnpFileInfo_set_FileLength( &info, file.size );
         UpnpFileInfo_set_LastModified( &info, file.last_modification );
-        return true;
 
-//        // DLNA extra headers
-//
-//        // const_cast is expected by the design of the upnp api...
-//        auto* head = const_cast<UpnpListHead*>( UpnpFileInfo_get_ExtraHeadersList( &info ) );
-//        {
-//            UpnpExtraHeaders* h = UpnpExtraHeaders_new();
-//            UpnpExtraHeaders_set_resp( h, "transferMode.dlna.org: Streaming" );
-//            UpnpListInsert( head, UpnpListEnd( head ),
-//                            const_cast<UpnpListHead*>( UpnpExtraHeaders_get_node( h ) ) );
-//        }
-//        {
-//          UpnpExtraHeaders* h = UpnpExtraHeaders_new();
-//            const auto content_feature =
-//                utils::get_dlna_extra_protocol_info( file_info.extension, false );
-//            UpnpExtraHeaders_set_resp(
-//                h, std::string( "contentFeatures.dlna.org: " + content_feature ).c_str() );
-//            UpnpListInsert( head, UpnpListEnd( head ),
-//                            const_cast<UpnpListHead*>( UpnpExtraHeaders_get_node( h ) ) );
-//        }
-//        return true;
+        // const_cast is expected by the design of the upnp api...
+        auto* head = const_cast<UpnpListHead*>( UpnpFileInfo_get_ExtraHeadersList( &info ) );
+        add_dlna_headers(head, mime_type.file_type, false);
+        return true;
     }
 
     bool open( intf_thread_t* parent ) noexcept final
@@ -153,6 +140,10 @@ struct TrandscodedMediaFileHandler : FileHandler {
 
         // We can't predict the media size before transcoding.
         UpnpFileInfo_set_FileLength( &info, -1 );
+        
+        // const_cast is expected by the design of the upnp api...
+        auto* head = const_cast<UpnpListHead*>( UpnpFileInfo_get_ExtraHeadersList( &info ) );
+        add_dlna_headers(head, mime_type.file_type, true);
         return true;
     }
 
@@ -375,4 +366,23 @@ std::unique_ptr<FileHandler> parse_url( const char* url, const intf_sys_t& intf_
     else if ( token == "subtitle" )
         return nullptr; // TODO
     return nullptr;
+}
+
+static void
+add_dlna_headers( UpnpListHead* head, const std::string& file_type, bool transcoding ) noexcept
+{
+    {
+        UpnpExtraHeaders* h = UpnpExtraHeaders_new();
+        UpnpExtraHeaders_set_resp( h, "transferMode.dlna.org: Streaming" );
+        UpnpListInsert( head, UpnpListEnd( head ),
+                        const_cast<UpnpListHead*>( UpnpExtraHeaders_get_node( h ) ) );
+    }
+    {
+        UpnpExtraHeaders* h = UpnpExtraHeaders_new();
+        const auto content_feature = utils::get_dlna_extra_protocol_info( file_type, transcoding );
+        UpnpExtraHeaders_set_resp(
+            h, std::string( "contentFeatures.dlna.org: " + content_feature ).c_str() );
+        UpnpListInsert( head, UpnpListEnd( head ),
+                        const_cast<UpnpListHead*>( UpnpExtraHeaders_get_node( h ) ) );
+    }
 }
