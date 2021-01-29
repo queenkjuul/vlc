@@ -148,8 +148,10 @@ static void handle_action_request( UpnpActionRequest* p_request, intf_thread_t* 
     IXML_Document* action_result = nullptr;
     const char* service_id = UpnpActionRequest_get_ServiceID_cstr( p_request );
     const char* action_name = UpnpActionRequest_get_ActionName_cstr( p_request );
-    msg_Dbg( p_intf, "server: received action request \"%s\" for service \"%s\"", action_name,
-             service_id );
+    const unsigned char* from =
+        (unsigned char*)&( (sockaddr_in*)UpnpActionRequest_get_CtrlPtIPAddr( p_request ) )->sin_addr.s_addr;
+    msg_Dbg( p_intf, "server: received action request \"%s\" for service \"%s\" from %u.%u.%u.%u", action_name,
+             service_id, from[0], from[1], from[2], from[3] );
     if ( strcmp( service_id, CMS_ID ) == 0 )
     {
         static constexpr char cms_type[] = UPNP_SERVICE_TYPE( "ConnectionManager" );
@@ -194,6 +196,19 @@ static void handle_action_request( UpnpActionRequest* p_request, intf_thread_t* 
             UpnpAddToActionResponse( &action_result, action_name, cds_type, "Id", psz_update_id );
             UpnpActionRequest_set_ActionResult( p_request, action_result );
         }
+    }
+    else if ( strcmp( service_id, "urn:microsoft.com:serviceId:X_MS_MediaReceiverRegistrar" ) == 0 ) {
+        if ( strcmp( action_name, "IsAuthorized" ) == 0 )
+        {
+            UpnpAddToActionResponse( &action_result, action_name, CDS_ID, "Result", "1" );
+            UpnpActionRequest_set_ActionResult( p_request, action_result );
+        }
+        else if ( strcmp( action_name, "IsValidated" ) == 0 )
+        {
+            UpnpAddToActionResponse( &action_result, action_name, CDS_ID, "Result", "1" );
+            UpnpActionRequest_set_ActionResult( p_request, action_result );
+        }
+
     }
 }
 
@@ -338,6 +353,9 @@ static xml::Document make_server_identity(const char *uuid) {
 
   const auto uuid_attr = std::string("uuid:") + uuid;
 
+  xml::Element dlna_doc = ret.create_element("dlna:X_DLNADOC", ret.create_text_node("DMS-1.50"));
+  dlna_doc.set_attribute("xmlns:dlna", "urn:schemas-dlna-org:device-1-0");
+
   xml::Element root = ret.create_element("root",
       ret.create_element("specVersion",
         ret.create_element("major", ret.create_text_node( "1")),
@@ -345,7 +363,7 @@ static xml::Document make_server_identity(const char *uuid) {
       ),
       ret.create_element("device",
       //DLNA
-        ret.create_element("dlna:X_DLNADOC", ret.create_text_node("DMS-1.50")),
+        std::move(dlna_doc),
 
         ret.create_element("deviceType", ret.create_text_node("urn:schemas-upnp-org:device:MediaServer:1")),
         ret.create_element("presentationUrl", ret.create_text_node(url.c_str())),
@@ -354,7 +372,7 @@ static xml::Document make_server_identity(const char *uuid) {
         ret.create_element("manufacturerURL", ret.create_text_node("http://videolan.org")),
         ret.create_element("modelDescription", ret.create_text_node("VLC Upnp Media Server")),
         ret.create_element("modelName", ret.create_text_node("VLC")),
-        ret.create_element("modelNumber", ret.create_text_node(VERSION_MESSAGE)),
+        ret.create_element("modelNumber", ret.create_text_node( PACKAGE_VERSION )),
         ret.create_element("modelURL", ret.create_text_node("http://videolan.org/vlc/")),
         ret.create_element("serialNumber", ret.create_text_node("1")),
         ret.create_element("UDN", ret.create_text_node(uuid_attr.c_str())),
@@ -363,11 +381,17 @@ static xml::Document make_server_identity(const char *uuid) {
         ),
         ret.create_element("serviceList",
           service_elem("ConnectionManager"),
-          service_elem("ContentDirectory")/*,
-          service_elem("AVTransport")*/
+          service_elem("ContentDirectory"),
+
+          ret.create_element( "service",
+            ret.create_element( "serviceType", ret.create_text_node( "urn:microsoft.com:service:X_MS_MediaReceiverRegistrar:1" ) ),
+            ret.create_element( "serviceId", ret.create_text_node( "urn:microsoft.com:serviceId:X_MS_MediaReceiverRegistrar" ) ),
+            ret.create_element( "SCPDURL", ret.create_text_node( "/microsoft.xml" ) ),
+            ret.create_element( "controlURL", ret.create_text_node( "/microsoft/Control" ) ),
+            ret.create_element( "eventSubURL", ret.create_text_node( "/microsoft/Event" ) )
+          )
         )
-      ),
-      ret.create_element("URLBase", ret.create_text_node(url.c_str()))
+      )
   );
   root.set_attribute("xmlns", "urn:schemas-upnp-org:device-1-0");
 
@@ -408,6 +432,7 @@ static bool init_upnp( intf_thread_t* p_intf )
 
     const auto presentation_doc = make_server_identity(p_sys->up_uuid.get());
     const auto up_presentation_str = presentation_doc.to_wrapped_cstr();
+    msg_Dbg(p_intf, "%s" , up_presentation_str.get());
     i_res = UpnpRegisterRootDevice2( UPNPREG_BUF_DESC, up_presentation_str.get(),
                                      strlen( up_presentation_str.get() ), 1, Callback, p_intf,
                                      &p_sys->p_device_handle );
