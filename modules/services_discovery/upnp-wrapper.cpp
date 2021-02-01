@@ -34,6 +34,7 @@
 #endif
 
 #include "upnp-wrapper.hpp"
+#include "upnp/upnpdebug.h"
 
 UpnpInstanceWrapper* UpnpInstanceWrapper::s_instance;
 UpnpInstanceWrapper::Listeners UpnpInstanceWrapper::s_listeners;
@@ -61,6 +62,9 @@ UpnpInstanceWrapper *UpnpInstanceWrapper::get(vlc_object_t *p_obj)
         {
             return NULL;
         }
+
+    //UpnpSetLogLevel(UPNP_INFO);
+    //UpnpSetLogFileNames("/tmp/upnp.log", NULL);
 
     #ifdef UPNP_ENABLE_IPV6
         char* psz_miface = var_InheritString( p_obj, "miface" );

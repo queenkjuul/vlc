@@ -23,6 +23,7 @@
 #include "upnp_server.h"
 
 #include <upnp/ExtraHeaders.h>
+#include <upnp/upnpdebug.h>
 
 #include <vlc_common.h>
 
