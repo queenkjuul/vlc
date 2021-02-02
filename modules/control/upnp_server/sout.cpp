@@ -14,7 +14,6 @@ size_t Fifo::read( uint8_t buf[], size_t buflen ) noexcept
    //static constexpr auto MIN_FIFO_SIZE = 1048576u / 4u;
     size_t bytes_read = 0;
 
-    vlc_tick_t start = vlc_tick_now();
     vlc_fifo_Lock( queue.get() );
     
 
@@ -56,7 +55,6 @@ size_t Fifo::read( uint8_t buf[], size_t buflen ) noexcept
     vlc_fifo_Signal( queue.get() );
     vlc_fifo_Unlock( queue.get() );
 
-    std::cerr << start - vlc_tick_now() << "\n";
     return bytes_read;
 }
 

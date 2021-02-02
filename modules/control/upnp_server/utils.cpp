@@ -17,9 +17,10 @@ std::string file_extension( const std::string& file ) noexcept
 
 std::string album_thumbnail_url( const vlc_ml_album_t& album ) noexcept
 {
-
-    const auto thumbnail_extension =
-        file_extension( std::string( album.thumbnails[VLC_ML_THUMBNAIL_SMALL].psz_mrl ) );
+    const auto& thumbnail = album.thumbnails[VLC_ML_THUMBNAIL_SMALL];
+    if ( thumbnail.i_status != VLC_ML_THUMBNAIL_STATUS_AVAILABLE )
+        return "";
+    const auto thumbnail_extension = file_extension( std::string( thumbnail.psz_mrl ) );
     return get_server_url() + "thumbnail/small/album/" + std::to_string( album.i_id ) + "." +
            thumbnail_extension;
 }

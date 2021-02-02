@@ -64,7 +64,7 @@ struct MLFileHandler : FileHandler
         case SeekType::End:
             if ( vlc_stream_GetSize( stream, &real_offset ) != VLC_SUCCESS )
             {
-                return -1;
+                return false;
             }
             real_offset += offset;
             break;
@@ -72,7 +72,7 @@ struct MLFileHandler : FileHandler
             real_offset = offset;
             break;
         default:
-            return -1;
+            return false;
         }
 
         return vlc_stream_Seek( stream, real_offset ) == 0;
@@ -88,9 +88,14 @@ struct TrandscodedMediaFileHandler : FileHandler {
     std::string mime_type;
     const TranscodeProfile& profile;
 
+    ml::Media::Ptr media;
+
     struct VLCObject {
       static void release(VLCObject *obj) {
-        vlc_object_release(reinterpret_cast<vlc_object_t*>(obj));
+        vlc_object_t* vlc_object = reinterpret_cast<vlc_object_t*>(obj);
+        vlc_player_Delete(obj->player);
+        var_SetAddress(vlc_object, Fifo::VAR_NAME, nullptr);
+        vlc_object_release(vlc_object);
       }
       using Ptr = std::unique_ptr<VLCObject, decltype(&release)>;
 
@@ -98,7 +103,6 @@ struct TrandscodedMediaFileHandler : FileHandler {
       vlc_player_t *player;
     };
     VLCObject::Ptr obj;
-    ml::Media::Ptr media;
     Fifo fifo = {};
 
     TrandscodedMediaFileHandler( std::string mime,
@@ -106,8 +110,8 @@ struct TrandscodedMediaFileHandler : FileHandler {
                                  decltype(media)&& media )
         : mime_type( std::move( mime ) )
         , profile( profile )
-        , obj( nullptr, &VLCObject::release )
         , media( std::move(media) )
+        , obj( nullptr, &VLCObject::release )
     {
     }
 
@@ -306,16 +310,16 @@ static std::unique_ptr<FileHandler> parse_thumbnail_url( std::stringstream& ss,
     if ( token == "media" )
     {
         std::getline( ss, token );
-        const auto media = get_ml_object<ml::Media>(token, extension, *intf_sys.p_ml);
-        if (media)
-          mrl = media->thumbnails[size].psz_mrl;
+        const auto media = get_ml_object<ml::Media>( token, extension, *intf_sys.p_ml );
+        if ( media && media->thumbnails[size].i_status == VLC_ML_THUMBNAIL_STATUS_AVAILABLE )
+            mrl = media->thumbnails[size].psz_mrl;
     }
     else if ( token == "album" )
     {
         std::getline( ss, token );
-        const auto album = get_ml_object<ml::Album>(token, extension, *intf_sys.p_ml);
-        if (album)
-          mrl = album->thumbnails[size].psz_mrl;
+        const auto album = get_ml_object<ml::Album>( token, extension, *intf_sys.p_ml );
+        if ( album && album->thumbnails[size].i_status == VLC_ML_THUMBNAIL_STATUS_AVAILABLE )
+            mrl = album->thumbnails[size].psz_mrl;
     }
 
     if (mrl.empty())
@@ -327,7 +331,7 @@ static std::unique_ptr<FileHandler> parse_thumbnail_url( std::stringstream& ss,
     return std::make_unique<MLFileHandler>( MLFile{ mrl, -1, 0 }, "image/" + extension );
 }
 
-std::unique_ptr<FileHandler> parse_url(const char *url, const intf_sys_t& intf_sys) noexcept
+std::unique_ptr<FileHandler> parse_url( const char* url, const intf_sys_t& intf_sys ) noexcept
 {
     std::stringstream ss( url );
 
@@ -338,9 +342,10 @@ std::unique_ptr<FileHandler> parse_url(const char *url, const intf_sys_t& intf_s
 
     std::getline( ss, token, '/' );
     if ( token == "media" )
-        return parse_media_url(ss, intf_sys);
-    else  if (token == "thumbnail")
-      return parse_thumbnail_url(ss, intf_sys);
-    else if (token == "subtitle")
-      return nullptr; //TODO
+        return parse_media_url( ss, intf_sys );
+    else if ( token == "thumbnail" )
+        return parse_thumbnail_url( ss, intf_sys );
+    else if ( token == "subtitle" )
+        return nullptr; // TODO
+    return nullptr;
 }
