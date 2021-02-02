@@ -115,20 +115,19 @@ typedef struct intf_sys_t
                                  [=]( vlc_ml_event_callback_t* p_ch ) {
                                      vlc_ml_event_unregister_callback( p_ml, p_ch );
                                  } )
-        , up_uuid( nullptr)
+        , up_uuid( nullptr, &free )
         , up_upnp( nullptr, []( UpnpInstanceWrapper* p_upnp ) { p_upnp->release(); } )
     {
     }
 
     vlc_medialibrary_t* p_ml;
     vlc_ml_event_callback_t* p_ml_callback_handle;
-    char* psz_uuid;
 
     std::unique_ptr<vlc_ml_event_callback_t, std::function<void( vlc_ml_event_callback_t* )>>
         up_ml_callback_handle;
-    std::unique_ptr<char> up_uuid;
 
-    UpnpInstanceWrapper* p_upnp;
+    std::unique_ptr<char, decltype( &free )> up_uuid;
+
     UpnpDevice_Handle p_device_handle;
 
     std::unique_ptr<UpnpInstanceWrapper, std::function<void( UpnpInstanceWrapper* )>> up_upnp;
@@ -143,6 +142,7 @@ typedef struct intf_sys_t
 struct Fifo
 {
     static const char VAR_NAME[];
+    // Doesn't need to be atomic, thread-safety is already ensured by the block_fifo cond_var
     bool eof = false;
 
     std::unique_ptr<block_fifo_t, decltype( &block_FifoRelease )> queue = { block_FifoNew(),

@@ -26,6 +26,7 @@
 
 #include <vlc_common.h>
 
+#include "../stream_out/renderer_common.hpp"
 #include <vlc_addons.h>
 #include <vlc_cxx_helpers.hpp>
 #include <vlc_interface.h>
@@ -33,7 +34,6 @@
 #include <vlc_rand.h>
 #include <vlc_stream_extractor.h>
 #include <vlc_url.h>
-#include "../stream_out/renderer_common.hpp"
 
 #include <atomic>
 #include <cstring>
@@ -41,9 +41,9 @@
 
 #include "xml/Description.h"
 
+#include "FileHandler.hpp"
 #include "cds/cds.hpp"
 #include "utils.hpp"
-#include "FileHandler.hpp"
 
 static void medialibrary_event_callback( void* p_data, const struct vlc_ml_event_t* p_event )
 {
@@ -247,7 +247,7 @@ getinfo_cb( const char* url, UpnpFileInfo* info, intf_thread_t* intf, FileHandle
 
     // Passing the filehandler ownership to the open callback to avoid reparsing the url
     // FIXME: this leaks if the open callback is never called afterwise. We need to ensure if that's
-    // a possibility
+    // an expected behaviour
     *fhandler = file_handler.release();
 
     return UPNP_E_SUCCESS;
@@ -265,7 +265,8 @@ open_cb( const char* url, enum UpnpOpenFileMode, intf_thread_t* intf, FileHandle
     if ( ret == nullptr )
         return nullptr;
 
-    if ( !ret->open( intf ) ) {
+    if ( !ret->open( intf ) )
+    {
         msg_Err( intf, "Failed to open %s", url );
         delete ret;
         return nullptr;
@@ -291,15 +292,16 @@ seek_cb( UpnpWebFileHandle fileHnd, off_t offset, int origin, intf_thread_t* int
     assert( fileHnd );
     msg_Info( intf, "http seek callback offset: %ld origin: %d", offset, origin );
 
-    return static_cast<FileHandler*>( fileHnd )->seek( static_cast<FileHandler::SeekType>( origin ),
-                                                       offset );
+    const bool success = static_cast<FileHandler*>( fileHnd )->seek(
+        static_cast<FileHandler::SeekType>( origin ), offset );
+    return success == true ? 0 : -1;
 }
 
 static int close_cb( UpnpWebFileHandle fileHnd, intf_thread_t* intf, const void* )
 {
     assert( fileHnd );
     msg_Dbg( intf, "http close callback" );
-    delete static_cast<FileHandler*>(fileHnd);
+    delete static_cast<FileHandler*>( fileHnd );
     return 0;
 }
 
@@ -376,9 +378,7 @@ static bool init_upnp( intf_thread_t* p_intf )
 
     addon_uuid_t uuid;
     vlc_rand_bytes( uuid, sizeof( uuid ) );
-    p_sys->psz_uuid = addons_uuid_to_psz( &uuid );
-
-    p_sys->up_uuid = std::unique_ptr<char>{ p_sys->psz_uuid };
+    p_sys->up_uuid = vlc::wrap_cptr(addons_uuid_to_psz( &uuid ), &free);
 
     msg_Info( p_intf, "upnp server enabled on %s:%d", UpnpGetServerIpAddress(), UpnpGetServerPort() );
 
@@ -462,10 +462,8 @@ int OpenServer( vlc_object_t* p_this )
                 vlc_ml_event_unregister_callback( p_ml, p_ch );
             } };
 
-    p_sys->p_upnp = UpnpInstanceWrapper::get( p_this );
-    p_sys->up_upnp =
-        std::unique_ptr<UpnpInstanceWrapper, std::function<void( UpnpInstanceWrapper* )>>{
-            p_sys->p_upnp, []( UpnpInstanceWrapper* p_upnp ) { p_upnp->release(); } };
+    p_sys->up_upnp = vlc::wrap_cptr( UpnpInstanceWrapper::get( p_this ),
+                                     []( UpnpInstanceWrapper* p_upnp ) { p_upnp->release(); } );
 
     static const TranscodeProfile profile_arr[] = {
 //        { "high", CONVERSION_QUALITY_HIGH, {VLC_CODEC_H264, VLC_CODEC_VP8} },
