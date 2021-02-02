@@ -109,13 +109,27 @@ static void dump_resources( xml::Element& dest,
         return elem;
     };
 
-    //dest.add_child( make_resource( nullptr ) );
+    dest.add_child( make_resource( nullptr ) );
 
     for (unsigned i = 0; i < profiles.u_size; ++i)
     {
         const auto* profile = profiles.p_profiles + i;
         if ( should_propose_transcode( media, *profile, v_tracks ) )
             dest.add_child( make_resource( profile ) );
+    }
+
+    for (int i= 0 ; i < VLC_ML_THUMBNAIL_SIZE_COUNT; ++i) {
+        const auto& thumbnail = media.thumbnails[i];
+        if ( thumbnail.i_status != VLC_ML_THUMBNAIL_STATUS_AVAILABLE )
+            continue;
+        const auto thumbnail_extension = utils::file_extension( std::string( thumbnail.psz_mrl ) );
+        const auto url = utils::thumbnail_url( media, static_cast<vlc_ml_thumbnail_size_t>( i ) );
+        auto elem = doc.create_element( "res", doc.create_text_node( url.c_str() ) );
+
+        const auto protocol_info = std::string( "http-get:*:image/" ) + thumbnail_extension + ":*";
+        elem.set_attribute( "protocolInfo", protocol_info.c_str() );
+        
+        dest.add_child(std::move(elem));
     }
 }
 

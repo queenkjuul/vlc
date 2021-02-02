@@ -10,6 +10,8 @@ namespace utils
 std::string file_extension( const std::string& file ) noexcept;
 std::string get_mimetype( vlc_ml_media_type_t type, const std::string& file_extension ) noexcept;
 
+std::string thumbnail_url( const vlc_ml_media_t& media,
+                           vlc_ml_thumbnail_size_t size ) noexcept;
 std::string album_thumbnail_url(const vlc_ml_album_t &) noexcept;
 
 std::string get_server_url() noexcept;
