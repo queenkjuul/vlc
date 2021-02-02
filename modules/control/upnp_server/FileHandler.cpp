@@ -94,6 +94,9 @@ struct TrandscodedMediaFileHandler : FileHandler {
       static void release(VLCObject *obj) {
         vlc_object_t* vlc_object = reinterpret_cast<vlc_object_t*>(obj);
         vlc_player_Delete(obj->player);
+        auto* fifo =
+            static_cast<std::shared_ptr<Fifo>*>( var_GetAddress( vlc_object, Fifo::VAR_NAME ) );
+        delete fifo;
         var_SetAddress(vlc_object, Fifo::VAR_NAME, nullptr);
         vlc_object_release(vlc_object);
       }
@@ -103,7 +106,7 @@ struct TrandscodedMediaFileHandler : FileHandler {
       vlc_player_t *player;
     };
     VLCObject::Ptr obj;
-    Fifo fifo = {};
+    std::shared_ptr<Fifo> fifo = std::make_shared<Fifo>();
 
     TrandscodedMediaFileHandler( std::string mime,
                                  const TranscodeProfile& profile,
@@ -202,7 +205,7 @@ struct TrandscodedMediaFileHandler : FileHandler {
         msg_Dbg( parent, "Transcode chain: %s", transcode_line_str.c_str() );
 
         var_Create( &obj->obj, Fifo::VAR_NAME, VLC_VAR_ADDRESS );
-        var_SetAddress( &obj->obj, Fifo::VAR_NAME, &fifo );
+        var_SetAddress( &obj->obj, Fifo::VAR_NAME, new decltype(fifo)(fifo) );
 
         vlc_player_Lock( obj->player );
         const bool ret = vlc_player_SetCurrentMedia( obj->player, item.get() ) == VLC_SUCCESS;
@@ -213,7 +216,7 @@ struct TrandscodedMediaFileHandler : FileHandler {
 
     size_t read( uint8_t buffer[], size_t buffer_len ) noexcept final
     {
-        return fifo.read( buffer, buffer_len );
+        return fifo->read( buffer, buffer_len );
     }
 
     // Byte based seeking isn't supported in transcoding.
