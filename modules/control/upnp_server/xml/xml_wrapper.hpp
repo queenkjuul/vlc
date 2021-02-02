@@ -7,6 +7,7 @@
 
 #include <memory>
 
+/// Simple C++ wrapper around libixml xml library.
 namespace xml
 {
 
@@ -20,49 +21,47 @@ struct Node
 
 struct Element
 {
-    // using Ref = std::reference_wrapper<Element>;
-
     using Ptr = std::unique_ptr<IXML_Element, decltype( &ixmlElement_free )>;
 
     Ptr ptr;
-    Document &owner;
+    Document& owner;
 
     void set_attribute( const char* name, const char* value )
     {
-        assert(ptr != nullptr);
+        assert( ptr != nullptr );
         ixmlElement_setAttribute( ptr.get(), name, value );
     }
 
     void add_child( Node child )
     {
-        assert(ptr != nullptr);
-        assert(child.ptr != nullptr);
+        assert( ptr != nullptr );
+        assert( child.ptr != nullptr );
         ixmlNode_appendChild( &ptr->n, child.ptr.release() );
     }
+
     void add_child( Element child )
     {
-        assert(ptr != nullptr);
-        assert(child.ptr != nullptr);
+        assert( ptr != nullptr );
+        assert( child.ptr != nullptr );
         ixmlNode_appendChild( &ptr->n, &child.ptr.release()->n );
     }
 
     template <typename Child>
     void add_children( Child&& child )
     {
-      if(child.ptr != nullptr)
-        add_child( std::move(child) );
+        if ( child.ptr != nullptr )
+            add_child( std::move( child ) );
     }
 
     template <typename First, typename... Child>
     void add_children( First&& first, Child&&... children )
     {
-        add_child( std::move(first) );
+        add_child( std::move( first ) );
         add_children( std::move( children )... );
     }
 
-  private:
+    private:
     void add_child() {}
-
 };
 
 struct Document
@@ -76,15 +75,13 @@ struct Document
 
     Node create_text_node( const char* text )
     {
-        return Node{ Node::Ptr{ ixmlDocument_createTextNode( ptr.get(), text ),
-                                ixmlNode_free } };
+        return Node{ Node::Ptr{ ixmlDocument_createTextNode( ptr.get(), text ), ixmlNode_free } };
     }
 
     Element create_element( const char* name )
     {
         return Element{
-            Element::Ptr{ ixmlDocument_createElement( ptr.get(), name ),
-                          &ixmlElement_free },
+            Element::Ptr{ ixmlDocument_createElement( ptr.get(), name ), &ixmlElement_free },
             *this };
     }
 
@@ -96,17 +93,13 @@ struct Document
         return ret;
     }
 
-    void set_entry(Element &&entry) {
-      ixmlNode_appendChild( &ptr->n, &entry.ptr.release()->n );
-    }
+    void set_entry( Element&& entry ) { ixmlNode_appendChild( &ptr->n, &entry.ptr.release()->n ); }
 
-    using WrappedDOMString =
-        std::unique_ptr<char, decltype( &ixmlFreeDOMString )>;
+    using WrappedDOMString = std::unique_ptr<char, decltype( &ixmlFreeDOMString )>;
 
     WrappedDOMString to_wrapped_cstr() const
     {
-        return WrappedDOMString{ ixmlDocumenttoString( ptr.get() ),
-                                 &ixmlFreeDOMString };
+        return WrappedDOMString{ ixmlDocumenttoString( ptr.get() ), &ixmlFreeDOMString };
     }
 };
 
