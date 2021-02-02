@@ -109,7 +109,7 @@ static void dump_resources( xml::Element& dest,
         return elem;
     };
 
-    dest.add_child( make_resource( nullptr ) );
+    //dest.add_child( make_resource( nullptr ) );
 
     for (unsigned i = 0; i < profiles.u_size; ++i)
     {

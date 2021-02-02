@@ -17,7 +17,7 @@ size_t Fifo::read( uint8_t buf[], size_t buflen ) noexcept
     vlc_fifo_Lock( queue.get() );
     
 
-    size_t bytes;
+    size_t bytes = 0;
     while ( !eof && ( bytes = vlc_fifo_GetBytes( queue.get() ) ) == 0 )
     {
         vlc_fifo_Wait( queue.get() );
@@ -66,7 +66,10 @@ int Server::AccessOpen( vlc_object_t* p_this )
     p_access->p_sys = var_InheritAddress( p_this, Fifo::VAR_NAME );
 
     p_access->pf_write = []( sout_access_out_t* access, block_t* data ) -> ssize_t {
-        Fifo* fifo = static_cast<Fifo*>( access->p_sys );
+        if (access->p_sys == nullptr) {
+          return 0;
+        }
+        auto fifo = *static_cast<std::shared_ptr<Fifo>*>( access->p_sys );
 
         // TODO: set a maximum size for the fifo
 
@@ -80,7 +83,6 @@ int Server::AccessOpen( vlc_object_t* p_this )
         //}
         vlc_fifo_QueueUnlocked( fifo->queue.get(), data );
         vlc_fifo_Unlock( fifo->queue.get() );
-
 
         // No needs to signal the fifo cond_var as vlc_fifo_QueueUnlocked
         // already does it
@@ -122,15 +124,18 @@ void Server::AccessClose( vlc_object_t* p_this )
 {
     msg_Dbg( p_this, "Closing fifo" );
 
-    Fifo* fifo = static_cast<Fifo*>( var_InheritAddress( p_this, Fifo::VAR_NAME ) );
+    auto* fifo =
+        static_cast<std::shared_ptr<Fifo>*>( var_InheritAddress( p_this, Fifo::VAR_NAME ) );
     assert( fifo );
 
-    auto* queue = fifo->queue.get();
+    auto* queue = (*fifo)->queue.get();
     vlc_fifo_Lock( queue );
-    fifo->eof = true;
+    (*fifo)->eof = true;
     vlc_fifo_Unlock( queue );
 
     vlc_fifo_Signal( queue );
+
+    reinterpret_cast<sout_access_out_t*>( p_this )->p_sys = nullptr;
 
     msg_Dbg( p_this, "fifo closed" );
 }
