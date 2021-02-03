@@ -78,7 +78,7 @@ std::string get_server_url() noexcept
     return "http://" + addr + ':' + port + '/';
 }
 
-std::string get_mimetype( vlc_ml_media_type_t type, const std::string& file_extension ) noexcept
+MimeType get_mimetype( vlc_ml_media_type_t type, const std::string& file_extension ) noexcept
 {
     const char* mime_end = file_extension.c_str();
     if ( file_extension == "mkv" )
@@ -86,11 +86,11 @@ std::string get_mimetype( vlc_ml_media_type_t type, const std::string& file_exte
     switch ( type )
     {
     case VLC_ML_MEDIA_TYPE_AUDIO:
-      return std::string("audio/") + mime_end;
+      return {"audio", mime_end};
     case VLC_ML_MEDIA_TYPE_UNKNOWN: // Intended pass through
       assert(!"Unknown media type");
     case VLC_ML_MEDIA_TYPE_VIDEO:
-      return std::string("video/") + mime_end;
+      return {"video", mime_end};
     default:
       assert(!"Invalid media type");
   }
