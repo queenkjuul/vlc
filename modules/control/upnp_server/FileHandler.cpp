@@ -10,6 +10,8 @@
 #include <vlc_stream_extractor.h>
 #include <vlc_url.h>
 
+#include <upnp/ExtraHeaders.h>
+
 #include "stream_out/renderer_common.hpp"
 
 // Convenient cpp replacement of vlc_ml_file_t to not have to deal with allocation
@@ -23,12 +25,12 @@ struct MLFile
 struct MLFileHandler : FileHandler
 {
     MLFile file;
-    std::string mime_type;
+    utils::MimeType mime_type;
 
     //TODO up
     stream_t* stream = nullptr;
 
-    MLFileHandler( MLFile&& file, std::string mime_type )
+    MLFileHandler( MLFile&& file, utils::MimeType&& mime_type )
         : file( std::move( file ) )
         , mime_type( std::move( mime_type ) )
     {
@@ -36,10 +38,31 @@ struct MLFileHandler : FileHandler
 
     bool get_info( UpnpFileInfo& info ) const noexcept final
     {
-        UpnpFileInfo_set_ContentType( &info, mime_type.c_str() );
+        UpnpFileInfo_set_ContentType( &info, mime_type.combine().c_str() );
         UpnpFileInfo_set_FileLength( &info, file.size );
         UpnpFileInfo_set_LastModified( &info, file.last_modification );
         return true;
+
+//        // DLNA extra headers
+//
+//        // const_cast is expected by the design of the upnp api...
+//        auto* head = const_cast<UpnpListHead*>( UpnpFileInfo_get_ExtraHeadersList( &info ) );
+//        {
+//            UpnpExtraHeaders* h = UpnpExtraHeaders_new();
+//            UpnpExtraHeaders_set_resp( h, "transferMode.dlna.org: Streaming" );
+//            UpnpListInsert( head, UpnpListEnd( head ),
+//                            const_cast<UpnpListHead*>( UpnpExtraHeaders_get_node( h ) ) );
+//        }
+//        {
+//          UpnpExtraHeaders* h = UpnpExtraHeaders_new();
+//            const auto content_feature =
+//                utils::get_dlna_extra_protocol_info( file_info.extension, false );
+//            UpnpExtraHeaders_set_resp(
+//                h, std::string( "contentFeatures.dlna.org: " + content_feature ).c_str() );
+//            UpnpListInsert( head, UpnpListEnd( head ),
+//                            const_cast<UpnpListHead*>( UpnpExtraHeaders_get_node( h ) ) );
+//        }
+//        return true;
     }
 
     bool open( intf_thread_t* parent ) noexcept final
@@ -85,7 +108,7 @@ static const char DEFAULT_MUXER[] = "avformat{mux=matroska,options={live=1},rese
 static const char DEFAULT_MUXER_WEBM[] = "avformat{mux=webm,options={live=1},reset-ts}";
 
 struct TrandscodedMediaFileHandler : FileHandler {
-    std::string mime_type;
+    utils::MimeType mime_type;
     const TranscodeProfile& profile;
 
     ml::Media::Ptr media;
@@ -108,7 +131,7 @@ struct TrandscodedMediaFileHandler : FileHandler {
     VLCObject::Ptr obj;
     std::shared_ptr<Fifo> fifo = std::make_shared<Fifo>();
 
-    TrandscodedMediaFileHandler( std::string mime,
+    TrandscodedMediaFileHandler( utils::MimeType&& mime,
                                  const TranscodeProfile& profile,
                                  decltype(media)&& media )
         : mime_type( std::move( mime ) )
@@ -125,7 +148,7 @@ struct TrandscodedMediaFileHandler : FileHandler {
         if (main_files.empty())
           return false;
 
-        UpnpFileInfo_set_ContentType( &info, mime_type.c_str() );
+        UpnpFileInfo_set_ContentType( &info, mime_type.combine().c_str() );
         UpnpFileInfo_set_LastModified( &info, main_files.front().get().i_last_modification_date );
 
         // We can't predict the media size before transcoding.
@@ -187,7 +210,7 @@ struct TrandscodedMediaFileHandler : FileHandler {
         }
         transcode_line << "}";
 
-        const char* mux = mime_type == "video/webm" ? DEFAULT_MUXER_WEBM : DEFAULT_MUXER;
+        const char* mux = mime_type.file_type == "webm" ? DEFAULT_MUXER_WEBM : DEFAULT_MUXER;
         transcode_line << ":std{access=upnp-out,mux=" << mux << "}";
 
         const auto transcode_line_str = transcode_line.str();
@@ -282,13 +305,13 @@ static std::unique_ptr<FileHandler> parse_media_url( std::stringstream& ss,
 
     if (profile)
     {
-        const std::string mime_type =
+        auto mime_type =
             utils::get_mimetype( media->i_type, extension != "webm" ? "mkv" : extension );
         return std::make_unique<TrandscodedMediaFileHandler>( std::move( mime_type ), *profile,
                                                               std::move( media ) );
     }
 
-    const std::string mime_type = utils::get_mimetype( media->i_type, extension );
+    auto mime_type = utils::get_mimetype( media->i_type, extension );
     return std::make_unique<MLFileHandler>(
         MLFile{ main_file.psz_mrl, main_file.i_size, main_file.i_last_modification_date },
         std::move(mime_type) );
@@ -331,7 +354,8 @@ static std::unique_ptr<FileHandler> parse_thumbnail_url( std::stringstream& ss,
     }
 
     // TODO file size at least
-    return std::make_unique<MLFileHandler>( MLFile{ mrl, -1, 0 }, "image/" + extension );
+    return std::make_unique<MLFileHandler>( MLFile{ mrl, -1, 0 },
+                                            utils::MimeType{ "image", extension } );
 }
 
 std::unique_ptr<FileHandler> parse_url( const char* url, const intf_sys_t& intf_sys ) noexcept

@@ -96,7 +96,7 @@ static void dump_resources( xml::Element& dest,
         }
 
         const auto protocol_info =
-            std::string( "http-get:*:" ) + utils::get_mimetype( media.i_type, mux ) + ":*";
+            std::string( "http-get:*:" ) + utils::get_mimetype( media.i_type, mux ).combine() + ":*";
         elem.set_attribute( "protocolInfo", protocol_info.c_str() );
 
         if ( !profile )
