@@ -344,9 +344,33 @@ static std::unique_ptr<FileHandler> parse_thumbnail_url( std::stringstream& ss,
         return nullptr;
     }
 
-    // TODO file size at least
     return std::make_unique<MLFileHandler>( MLFile{ mrl, -1, 0 },
                                             utils::MimeType{ "image", extension } );
+}
+
+static std::unique_ptr<FileHandler> parse_subtitle_url( std::stringstream& ss,
+                                                         const intf_sys_t& intf_sys )
+{
+    std::string token;
+    std::string extension;
+    std::string mrl;
+
+    std::getline( ss, token );
+    const auto media = get_ml_object<ml::Media>( token, extension, *intf_sys.p_ml );
+    if (media == nullptr)
+    {
+      return nullptr;
+    }
+
+    const auto subtitles = utils::get_media_files(*media, VLC_ML_FILE_TYPE_SUBTITLE);
+    if (subtitles.empty())
+    {
+      return nullptr;
+    }
+
+    const vlc_ml_file_t& sub = subtitles.front();
+    return std::make_unique<MLFileHandler>( MLFile{ sub.psz_mrl, sub.i_size, sub.i_last_modification_date },
+                                            utils::MimeType{ "text", extension } );
 }
 
 std::unique_ptr<FileHandler> parse_url( const char* url, const intf_sys_t& intf_sys ) noexcept
@@ -364,7 +388,7 @@ std::unique_ptr<FileHandler> parse_url( const char* url, const intf_sys_t& intf_
     else if ( token == "thumbnail" )
         return parse_thumbnail_url( ss, intf_sys );
     else if ( token == "subtitle" )
-        return nullptr; // TODO
+        return parse_subtitle_url( ss, intf_sys );
     return nullptr;
 }
 

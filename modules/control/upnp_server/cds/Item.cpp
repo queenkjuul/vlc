@@ -125,7 +125,8 @@ static void dump_resources( xml::Element& dest,
     }
 
     // Thumbnails
-    for (int i= 0 ; i < VLC_ML_THUMBNAIL_SIZE_COUNT; ++i) {
+    for ( int i = 0; i < VLC_ML_THUMBNAIL_SIZE_COUNT; ++i )
+    {
         const auto& thumbnail = media.thumbnails[i];
         if ( thumbnail.i_status != VLC_ML_THUMBNAIL_STATUS_AVAILABLE )
             continue;
@@ -137,9 +138,24 @@ static void dump_resources( xml::Element& dest,
         const auto protocol_info =
             std::string( "http-get:*:image/" ) + thumbnail_extension + ":" + dlna_extra;
         elem.set_attribute( "protocolInfo", protocol_info.c_str() );
-        
-        dest.add_child(std::move(elem));
+
+        dest.add_child( std::move( elem ) );
     }
+
+    // Subtitles, for now we only share the first available subtitle file.
+    const auto subtitles = utils::get_media_files(media, VLC_ML_FILE_TYPE_SUBTITLE);
+    if (!subtitles.empty())
+    {
+      const vlc_ml_file_t& sub = subtitles.front();
+      const auto file_extension = utils::file_extension( sub.psz_mrl );
+      const std::string url = utils::get_server_url() + "subtitle/" + std::to_string( media.i_id ) +
+                              "." + file_extension;
+
+      auto res = doc.create_element( "res", doc.create_text_node( url.c_str() ) );
+      res.set_attribute( "protocolInfo", ( "http-get:*:text/" + file_extension + ":*" ).c_str() );
+      dest.add_child( std::move( res ) );
+    }
+
 }
 
 void Item::dump_mlobject_metadata( xml::Element& dest,

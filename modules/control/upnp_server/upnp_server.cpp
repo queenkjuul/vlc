@@ -418,6 +418,7 @@ static bool init_upnp( intf_thread_t* p_intf )
 
     UpnpAddVirtualDir( "/media", p_intf, nullptr );
     UpnpAddVirtualDir( "/thumbnail", p_intf, nullptr );
+    UpnpAddVirtualDir( "/subtitle", p_intf, nullptr );
     UpnpVirtualDir_set_GetInfoCallback( reinterpret_cast<VDCallback_GetInfo>( getinfo_cb ) );
     UpnpVirtualDir_set_OpenCallback( reinterpret_cast<VDCallback_Open>( open_cb ) );
     UpnpVirtualDir_set_ReadCallback( reinterpret_cast<VDCallback_Read>( read_cb ) );
