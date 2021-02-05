@@ -28,10 +28,22 @@
 namespace vlc {
   namespace medialibrary {
 
-SDFile::SDFile(const std::string &mrl)
-    : m_mrl(mrl)
-    , m_name(utils::fileName(mrl))
-    , m_extension(utils::extension(mrl))
+SDFile::SDFile( const std::string mrl )
+      : m_mrl( std::move( mrl ) )
+      , m_name( utils::fileName( m_mrl ) )
+      , m_extension( utils::extension( m_mrl ) )
+      , m_isNetwork( m_mrl.rfind( "file://" ) != 0 )
+{
+}
+SDFile::SDFile( const std::string mrl,
+                const LinkedFileType fType,
+                const std::string linkedFile )
+    : m_mrl( std::move( mrl ) )
+    , m_name( utils::fileName( m_mrl ) )
+    , m_extension( utils::extension( m_mrl ) )
+    , m_linkedFile( std::move( linkedFile ) )
+    , m_linkedType( fType )
+    , m_isNetwork( m_mrl.rfind( "file://" ) != 0 )
 {
 }
 
@@ -59,6 +71,12 @@ SDFile::lastModificationDate() const
     return 0;
 }
 
+bool
+SDFile::isNetwork() const
+{
+  return m_isNetwork;
+}
+
 int64_t
 SDFile::size() const
 {
@@ -67,7 +85,7 @@ SDFile::size() const
 
 IFile::LinkedFileType SDFile::linkedType() const
 {
-    return IFile::LinkedFileType::None;
+    return m_linkedType;
 }
 
 const std::string &SDFile::linkedWith() const
