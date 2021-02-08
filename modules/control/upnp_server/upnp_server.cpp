@@ -152,22 +152,24 @@ static void handle_action_request( UpnpActionRequest* p_request, intf_thread_t* 
              service_id );
     if ( strcmp( service_id, CMS_ID ) == 0 )
     {
+        static constexpr char cms_type[] = UPNP_SERVICE_TYPE( "ConnectionManager" );
         if ( strcmp( action_name, "GetProtocolInfo" ) == 0 )
         {
-            UpnpAddToActionResponse( &action_result, action_name, CMS_ID, "Source",
+            UpnpAddToActionResponse( &action_result, action_name, cms_type, "Source",
                                      "http-get:*:video/mp4:*,http-get:*:video/x-matroska:*" );
-            UpnpAddToActionResponse( &action_result, action_name, CMS_ID, "Sink", "" );
+            UpnpAddToActionResponse( &action_result, action_name, cms_type, "Sink", "" );
             UpnpActionRequest_set_ActionResult( p_request, action_result );
         }
-        else if (strcmp( action_name, "GetCurrentConnectionIDs" ) == 0)
+        else if ( strcmp( action_name, "GetCurrentConnectionIDs" ) == 0 )
         {
-            UpnpAddToActionResponse( &action_result, action_name, CMS_ID, "ConnectionIDs", "" );
+            UpnpAddToActionResponse( &action_result, action_name, cms_type, "ConnectionIDs", "" );
             UpnpActionRequest_set_ActionResult( p_request, action_result );
         }
     }
 
     else if ( strcmp( service_id, CDS_ID ) == 0 )
     {
+        static constexpr char cds_type[] = UPNP_SERVICE_TYPE( "ContentDirectory" );
         if ( strcmp( action_name, "Browse" ) == 0 )
         {
             if ( !cds_browse( p_request, p_intf ) )
@@ -175,12 +177,12 @@ static void handle_action_request( UpnpActionRequest* p_request, intf_thread_t* 
         }
         else if ( strcmp( action_name, "GetSearchCapabilities" ) == 0 )
         {
-            UpnpAddToActionResponse( &action_result, action_name, CDS_ID, "SearchCaps", "" );
+            UpnpAddToActionResponse( &action_result, action_name, cds_type, "SearchCaps", "" );
             UpnpActionRequest_set_ActionResult( p_request, action_result );
         }
         else if ( strcmp( action_name, "GetSortCapabilities" ) == 0 )
         {
-            UpnpAddToActionResponse( &action_result, action_name, CDS_ID, "SortCaps", "" );
+            UpnpAddToActionResponse( &action_result, action_name, cds_type, "SortCaps", "" );
             UpnpActionRequest_set_ActionResult( p_request, action_result );
         }
         else if ( strcmp( action_name, "GetSystemUpdateID" ) == 0 )
@@ -189,7 +191,7 @@ static void handle_action_request( UpnpActionRequest* p_request, intf_thread_t* 
             if ( asprintf( &psz_update_id, "%d", p_sys->i_update_id.load() ) == -1 )
                 return;
             auto up_update_id = vlc::wrap_cptr( psz_update_id );
-            UpnpAddToActionResponse( &action_result, action_name, CDS_ID, "Id", psz_update_id );
+            UpnpAddToActionResponse( &action_result, action_name, cds_type, "Id", psz_update_id );
             UpnpActionRequest_set_ActionResult( p_request, action_result );
         }
     }
