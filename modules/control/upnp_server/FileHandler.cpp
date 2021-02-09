@@ -92,7 +92,8 @@ struct MLFileHandler : FileHandler
     }
 };
 
-static const char DEFAULT_MUXER[] = "avformat{mux=matroska,options={live=1},reset-ts}";
+static const char DEFAULT_MUXER[] = "ts";
+//static const char DEFAULT_MUXER[] = "avformat{mux=matroska,options={live=1},reset-ts}";
 static const char DEFAULT_MUXER_WEBM[] = "avformat{mux=webm,options={live=1},reset-ts}";
 
 struct TrandscodedMediaFileHandler : FileHandler {
@@ -313,7 +314,7 @@ static std::unique_ptr<FileHandler> parse_media_url( std::stringstream& ss,
     if (profile)
     {
         auto mime_type =
-            utils::get_mimetype( media->i_type, extension != "webm" ? "mkv" : extension );
+            utils::get_mimetype( media->i_type, extension != "webm" ? "ts" : extension );
         return std::make_unique<TrandscodedMediaFileHandler>( std::move( mime_type ), *profile,
                                                               std::move( media ) );
     }

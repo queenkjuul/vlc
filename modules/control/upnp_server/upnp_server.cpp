@@ -164,7 +164,7 @@ static void handle_action_request( UpnpActionRequest* p_request, intf_thread_t* 
         if ( strcmp( action_name, "GetProtocolInfo" ) == 0 )
         {
             UpnpAddToActionResponse( &action_result, action_name, cms_type, "Source",
-                                     "http-get:*:video/mp4:*,http-get:*:video/x-matroska:*" );
+                                     "http-get:*:video/mp4:*,http-get:*:video/vnd.dlna.mpeg-tts:DLNA.ORG_PN=MPEG_TS_HD_NA" );
             UpnpAddToActionResponse( &action_result, action_name, cms_type, "Sink", "" );
             UpnpActionRequest_set_ActionResult( p_request, action_result );
         }

@@ -56,7 +56,7 @@ static void dump_resources( xml::Element& dest,
 
     const auto make_resource = [&]( const TranscodeProfile* profile ) -> xml::Element {
         const char* profile_name = profile ? profile->psz_name : "native";
-        const char* mux = ( profile && file_extension != "webm" ) ? "mkv" : file_extension.c_str();
+        const char* mux = (profile && file_extension != "webm") ? "ts" : file_extension.c_str();
 
         const std::string url =
             url_base + "media/" + profile_name + "/" + std::to_string( media.i_id ) + "." + mux;

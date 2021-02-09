@@ -84,6 +84,8 @@ MimeType get_mimetype( vlc_ml_media_type_t type, const std::string& file_extensi
     const char* mime_end = file_extension.c_str();
     if ( file_extension == "mkv" )
         mime_end = "x-matroska";
+    else if ( file_extension == "ts" )
+        mime_end = "vnd.dlna.mpeg-tts";
     switch ( type )
     {
     case VLC_ML_MEDIA_TYPE_AUDIO:
@@ -133,7 +135,7 @@ std::string get_dlna_extra_protocol_info( const std::string& file_type, bool tra
 {
     std::ostringstream ret;
 
-    const auto dlna_profile = transcode ? "MKV" : infer_dlna_profile_name(file_type);
+    const auto dlna_profile = transcode ? "MPEG_TS_HD_NA" : infer_dlna_profile_name(file_type);
 
     if ( !dlna_profile.empty() )
         ret << "DLNA.ORG_PN=" << dlna_profile << ";";
