@@ -6,9 +6,7 @@
 #include "../stream_out/renderer_common.hpp"
 #include "../stream_out/dlna/dlna.hpp"
 
-#include <sstream>
 #include <chrono>
-#include <ctime>
 
 namespace cds
 {
@@ -53,21 +51,18 @@ static void dump_resources( xml::Element& dest,
     const auto main_files = utils::get_media_files(media, VLC_ML_FILE_TYPE_MAIN);
 
     const std::string url_base = utils::get_server_url();
+    const auto media_duration =
+        utils::duration_to_string( "%H:%M:%S", std::chrono::milliseconds( media.i_duration ) );
 
     const auto make_resource = [&]( const TranscodeProfile* profile ) -> xml::Element {
         const char* profile_name = profile ? profile->psz_name : "native";
-        const char* mux = (profile && file_extension != "webm") ? "mkv" : file_extension.c_str();
+        const char* mux = ( profile && file_extension != "webm" ) ? "mkv" : file_extension.c_str();
 
         const std::string url =
             url_base + "media/" + profile_name + "/" + std::to_string( media.i_id ) + "." + mux;
         auto elem = doc.create_element( "res", doc.create_text_node( url.c_str() ) );
 
-        char time_buf[32];
-        time_t seconds_elapsed_timestamp = media.i_duration / 1000 - 3600;
-        const auto* time_info = std::localtime( &seconds_elapsed_timestamp );
-        std::strftime( time_buf, sizeof( time_buf ), "%H:%M:%S", time_info );
-
-        elem.set_attribute( "duration", time_buf );
+        elem.set_attribute( "duration", media_duration.c_str() );
 
         if ( media.i_type == VLC_ML_MEDIA_TYPE_VIDEO )
         {

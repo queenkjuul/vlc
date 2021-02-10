@@ -4,6 +4,9 @@
 
 #include <string>
 #include <vector>
+#include <chrono>
+#include <sstream>
+#include <iomanip>
 
 namespace utils
 {
@@ -38,4 +41,15 @@ std::vector<MediaFileRef> get_media_files(const vlc_ml_media_t& media, vlc_ml_fi
 std::string get_dlna_extra_protocol_info( const std::string& dlna_profile,
                                           bool transcode ) noexcept;
 std::string infer_dlna_profile_name( const std::string& extension ) noexcept;
+
+template <typename Rep, typename Pediod = std::ratio<1>>
+std::string duration_to_string( const char* fmt, std::chrono::duration<Rep, Pediod> duration )
+{
+    char ret[32] = { 0 };
+    using namespace std::chrono;
+    // Substract 1 hour because std::localtime starts at 1 AM
+    const auto sec = duration_cast<seconds>( duration - 1h ).count();
+    const auto size = std::strftime( ret, sizeof( ret ), fmt, std::localtime( &sec ) );
+    return { ret, size };
 }
+} // namespace utils
