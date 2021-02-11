@@ -11,6 +11,8 @@
 #include <vlc_url.h>
 
 #include <upnp/ExtraHeaders.h>
+#include <ctime>
+#include <chrono>
 
 #include "stream_out/renderer_common.hpp"
 
@@ -22,9 +24,9 @@ struct MLFile
     time_t last_modification;
 };
 
-static void
-add_dlna_headers( UpnpListHead* head, const std::string& file_type, bool transcoding ) noexcept;
-
+static void add_dlna_headers( UpnpListHead* head, const std::string& file_type, bool transcoding );
+static time_t parse_time_seek_range( const char* value );
+const char* get_http_extra_hdr_value( UpnpListHead* hdr_list, const char* name );
 
 struct MLFileHandler : FileHandler
 {
@@ -40,7 +42,7 @@ struct MLFileHandler : FileHandler
     {
     }
 
-    bool get_info( UpnpFileInfo& info ) const noexcept final
+    bool get_info( UpnpFileInfo& info ) noexcept final
     {
         UpnpFileInfo_set_ContentType( &info, mime_type.combine().c_str() );
         UpnpFileInfo_set_FileLength( &info, file.size );
@@ -48,7 +50,7 @@ struct MLFileHandler : FileHandler
 
         // const_cast is expected by the design of the upnp api...
         auto* head = const_cast<UpnpListHead*>( UpnpFileInfo_get_ExtraHeadersList( &info ) );
-        add_dlna_headers(head, mime_type.file_type, false);
+        add_dlna_headers( head, mime_type.file_type, false );
         return true;
     }
 
@@ -98,6 +100,7 @@ struct TrandscodedMediaFileHandler : FileHandler {
     const TranscodeProfile& profile;
 
     ml::Media::Ptr media;
+    time_t media_begin = 0;
 
     struct VLCObject {
       static void release(VLCObject *obj) {
@@ -127,7 +130,7 @@ struct TrandscodedMediaFileHandler : FileHandler {
     {
     }
 
-    bool get_info( UpnpFileInfo& info ) const noexcept final
+    bool get_info( UpnpFileInfo& info ) noexcept final
     {
         assert(media != nullptr);
         const auto main_files = utils::get_media_files(*media, VLC_ML_FILE_TYPE_MAIN);
@@ -142,6 +145,14 @@ struct TrandscodedMediaFileHandler : FileHandler {
         
         // const_cast is expected by the design of the upnp api...
         auto* head = const_cast<UpnpListHead*>( UpnpFileInfo_get_ExtraHeadersList( &info ) );
+
+        // This header is passed by some players, let's use it !
+        const char* time_seek_range = get_http_extra_hdr_value(head, "TimeSeekRange.DLNA.ORG");
+        if (time_seek_range != nullptr) {
+          const time_t media_begin = parse_time_seek_range(time_seek_range);
+          this->media_begin = media_begin;
+        }
+
         add_dlna_headers(head, mime_type.file_type, true);
         return true;
     }
@@ -221,8 +232,14 @@ struct TrandscodedMediaFileHandler : FileHandler {
         var_SetAddress( &obj->obj, Fifo::VAR_NAME, new decltype(fifo)(fifo) );
 
         vlc_player_Lock( obj->player );
+
         const bool ret = vlc_player_SetCurrentMedia( obj->player, item.get() ) == VLC_SUCCESS;
+
+        if (media_begin > 0)
+            vlc_player_SetTime( obj->player, VLC_TICK_FROM_MS( media_begin ) );
+
         vlc_player_Start( obj->player );
+
         vlc_player_Unlock( obj->player );
         return ret;
     }
@@ -392,7 +409,7 @@ std::unique_ptr<FileHandler> parse_url( const char* url, const intf_sys_t& intf_
 }
 
 static void
-add_dlna_headers( UpnpListHead* head, const std::string& file_type, bool transcoding ) noexcept
+add_dlna_headers( UpnpListHead* head, const std::string& file_type, bool transcoding )
 {
     {
         UpnpExtraHeaders* h = UpnpExtraHeaders_new();
@@ -408,4 +425,46 @@ add_dlna_headers( UpnpListHead* head, const std::string& file_type, bool transco
         UpnpListInsert( head, UpnpListEnd( head ),
                         const_cast<UpnpListHead*>( UpnpExtraHeaders_get_node( h ) ) );
     }
+}
+
+const char* get_http_extra_hdr_value( UpnpListHead* list, const char* name )
+{
+    for ( auto* it = UpnpListBegin( list ); it != UpnpListEnd( list );
+          it = UpnpListNext( list, it ) )
+    {
+        UpnpExtraHeaders* hd = reinterpret_cast<UpnpExtraHeaders*>( it );
+        const char* hdr_name = UpnpExtraHeaders_get_name_cstr( hd );
+        if ( strcmp( hdr_name, name ) == 0 )
+        {
+            return UpnpExtraHeaders_get_value_cstr( hd );
+        }
+    }
+    return nullptr;
+}
+
+// See RFC 2326 3.6 normal play time
+// We only support the first part of the range as the starting point of the player.
+static time_t parse_time_seek_range( const char* value )
+{
+    if ( strcmp( value, "npt=now" ) == 0 )
+        return 0;
+
+    struct tm tm;
+    memset( &tm, 0, sizeof( tm ) );
+    const char* cursor = strptime( value, "npt=%H:%M:%S", &tm );
+
+    if ( cursor == nullptr )
+    {
+        memset( &tm, 0, sizeof( tm ) );
+        cursor = strptime( value, "npt=%S", &tm );
+    }
+
+    // TODO handle fractions of seconds
+
+    if ( cursor == nullptr )
+        return 0;
+
+    using namespace std::chrono;
+    const auto seek_time = hours( tm.tm_hour ) + minutes( tm.tm_min ) + seconds( tm.tm_sec );
+    return duration_cast<milliseconds>( seek_time ).count();
 }

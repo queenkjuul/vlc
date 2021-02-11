@@ -4,7 +4,7 @@
 
 struct FileHandler
 {
-    virtual bool get_info( UpnpFileInfo& info ) const noexcept = 0;
+    virtual bool get_info( UpnpFileInfo& info ) noexcept = 0;
     virtual bool open(intf_thread_t *) noexcept = 0;
     virtual size_t read( uint8_t[], size_t ) noexcept = 0;
 
