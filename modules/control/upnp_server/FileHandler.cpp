@@ -31,8 +31,8 @@ struct MLFileHandler : FileHandler
     MLFile file;
     utils::MimeType mime_type;
 
-    //TODO up
-    stream_t* stream = nullptr;
+    std::unique_ptr<stream_t, decltype( &vlc_stream_Delete )> stream = { nullptr,
+                                                                         &vlc_stream_Delete };
 
     MLFileHandler( MLFile&& file, utils::MimeType&& mime_type )
         : file( std::move( file ) )
@@ -54,13 +54,14 @@ struct MLFileHandler : FileHandler
 
     bool open( intf_thread_t* parent ) noexcept final
     {
-        stream = vlc_stream_NewMRL( VLC_OBJECT(parent), file.mrl.c_str() );
+        stream = vlc::wrap_cptr( vlc_stream_NewMRL( VLC_OBJECT( parent ), file.mrl.c_str() ),
+                                 &vlc_stream_Delete );
         return stream != nullptr;
     }
 
     size_t read( uint8_t buffer[], size_t buffer_len ) noexcept final
     {
-        return vlc_stream_Read( stream, buffer, buffer_len );
+        return vlc_stream_Read( stream.get(), buffer, buffer_len );
     }
 
     bool seek( SeekType type, off_t offset ) noexcept final
@@ -69,10 +70,10 @@ struct MLFileHandler : FileHandler
         switch ( type )
         {
         case SeekType::Current:
-            real_offset = vlc_stream_Tell( stream ) + offset;
+            real_offset = vlc_stream_Tell( stream.get() ) + offset;
             break;
         case SeekType::End:
-            if ( vlc_stream_GetSize( stream, &real_offset ) != VLC_SUCCESS )
+            if ( vlc_stream_GetSize( stream.get(), &real_offset ) != VLC_SUCCESS )
             {
                 return false;
             }
@@ -85,10 +86,8 @@ struct MLFileHandler : FileHandler
             return false;
         }
 
-        return vlc_stream_Seek( stream, real_offset ) == 0;
+        return vlc_stream_Seek( stream.get(), real_offset ) == 0;
     }
-
-    ~MLFileHandler() { vlc_stream_Delete( stream ); }
 };
 
 static const char DEFAULT_MUXER[] = "avformat{mux=matroska,options={live=1},reset-ts}";
