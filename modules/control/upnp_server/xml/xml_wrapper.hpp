@@ -1,7 +1,6 @@
 #pragma once
 
-#include <upnp.h>
-#include <upnptools.h>
+#include <upnp/ixml.h>
 
 #include <cassert>
 

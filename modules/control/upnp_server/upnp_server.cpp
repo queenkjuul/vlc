@@ -100,7 +100,13 @@ static bool cds_browse( UpnpActionRequest* p_request, intf_thread_t* p_intf )
     const std::string id = psz_object_id;
     unsigned obj_idx;
     cds::Object::ExtraId extra_id;
-    std::tie( obj_idx, extra_id ) = cds::parse_id( id );
+
+    try {
+      std::tie( obj_idx, extra_id ) = cds::parse_id( id );
+    } catch (const std::invalid_argument&e) {
+      UpnpActionRequest_set_ErrCode(p_request, 500);
+      return false;
+    }
 
     std::string str_nb_returned;
     std::string str_total_matches;

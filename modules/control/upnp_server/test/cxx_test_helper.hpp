@@ -33,6 +33,14 @@ struct AssertFailure : std::exception
         err = ss.str();
     }
 
+    AssertFailure( const std::pair<std::string, int>& location, const char* error )
+    {
+        std::stringstream ss;
+        ss << location.first << ":" << location.second << " Assertion failed" << std::endl;
+        ss << error;
+        err = ss.str();
+    }
+
     const char* what() const noexcept override { return err.c_str(); }
 
     private:
@@ -93,9 +101,9 @@ struct TestPool
         }
     };
 
-    static bool run_all_tests( const Logger& logger )
+    static bool run_all( const Logger& logger )
     {
-        bool success = 0;
+        bool success = true;
         for ( const auto& test : static_test_pool() )
         {
             success &= test( logger );
@@ -146,12 +154,12 @@ struct TestPool
 
 #define ASSERT_THROW( statement, exception_type )                                                  \
     {                                                                                              \
-        bool throwed = false                                                                       \
+        bool throwed = false;                                                                      \
         try                                                                                        \
         {                                                                                          \
             ( statement );                                                                         \
         }                                                                                          \
-        catch ( const( exception_type )& )                                                         \
+        catch ( const exception_type& )                                                            \
         {                                                                                          \
             throwed = true;                                                                        \
         }                                                                                          \
@@ -165,7 +173,7 @@ struct TestPool
     }
 #define ASSERT_ANY_THROW( statement )                                                              \
     {                                                                                              \
-        bool throwed = false                                                                       \
+        bool throwed = false;                                                                      \
         try                                                                                        \
         {                                                                                          \
             ( statement );                                                                         \
