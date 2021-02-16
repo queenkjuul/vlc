@@ -82,9 +82,8 @@ std::string get_server_url() noexcept
 MimeType get_mimetype( vlc_ml_media_type_t type, const std::string& file_extension ) noexcept
 {
     const char* mime_end = file_extension.c_str();
-    if ( file_extension == "mkv" )
-        mime_end = "x-matroska";
-    else if ( file_extension == "ts" )
+    // special case for the transcode muxer to be widely accepted by a majority of players.
+    if ( file_extension == "ts" )
         mime_end = "vnd.dlna.mpeg-tts";
     switch ( type )
     {
@@ -118,8 +117,6 @@ std::string infer_dlna_profile_name(const std::string& extension) noexcept
     std::string profile;
     if (extension == "mp4")
         profile = "AVC_MP4_EU";
-    else if (extension == "x-matroska")
-        profile = "MKV";
     else if (extension == "avi")
         profile = "AVI";
     else if (extension == "mp3")
