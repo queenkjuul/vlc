@@ -197,7 +197,16 @@ struct TrandscodedMediaFileHandler : FileHandler {
 
         vlc_fourcc_t codec = 0;
         std::stringstream transcode_line;
-        transcode_line << "sout=#transcode{";
+        // If a specific starting time is set, use the proxy to avoid sending unhandled
+        // discontinuities.
+        if ( media_begin != 0)
+        {
+            transcode_line << "sout=#upnp-sout-proxy:transcode{";
+        }
+        else
+        {
+            transcode_line << "sout=#transcode{";
+        }
         try
         {
             transcode_line << vlc_sout_renderer_GetVcodecOption(

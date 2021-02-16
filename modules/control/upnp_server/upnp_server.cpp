@@ -474,7 +474,7 @@ static bool init_upnp( intf_thread_t* p_intf )
 
 namespace Server
 {
-int OpenServer( vlc_object_t* p_this )
+int open( vlc_object_t* p_this )
 {
     intf_thread_t* p_intf = (intf_thread_t*)p_this;
 
@@ -522,7 +522,7 @@ int OpenServer( vlc_object_t* p_this )
     return VLC_SUCCESS;
 }
 
-void CloseServer( vlc_object_t* p_this )
+void close( vlc_object_t* p_this )
 {
     intf_thread_t* intf = (intf_thread_t*)p_this;
     intf_sys_t* p_sys = intf->p_sys;

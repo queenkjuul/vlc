@@ -188,7 +188,7 @@ vlc_module_begin()
         set_category( CAT_INTERFACE );
         set_subcategory( SUBCAT_INTERFACE_MAIN );
         set_capability( "interface", 0 );
-        set_callbacks( Server::OpenServer, Server::CloseServer );
+        set_callbacks( Server::open, Server::close );
 
     add_submodule()
         set_shortname( "server sout" );
@@ -197,7 +197,11 @@ vlc_module_begin()
         set_subcategory( SUBCAT_SOUT_ACO );
         add_shortcut( "upnp-out" )
         set_capability( "sout access", 0 );
-        set_callbacks( Server::AccessOpen, Server::AccessClose );
+        set_callbacks( Server::AccessOut::open, Server::AccessOut::close );
+    add_submodule()
+        add_shortcut("upnp-sout-proxy")
+        set_capability("sout filter", 0)
+        set_callbacks(Server::StreamOutProxy::open, Server::StreamOutProxy::close)
 
 vlc_module_end()
 

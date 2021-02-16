@@ -153,9 +153,18 @@ struct Fifo
 
 namespace Server
 {
-int OpenServer( vlc_object_t* p_this );
-void CloseServer( vlc_object_t* p_this );
+int open( vlc_object_t* p_this );
+void close( vlc_object_t* p_this );
 
-int AccessOpen( vlc_object_t* );
-void AccessClose( vlc_object_t* );
+namespace AccessOut
+{
+int open( vlc_object_t* );
+void close( vlc_object_t* );
+} // namespace AccessOut
+
+namespace StreamOutProxy
+{
+int open( vlc_object_t* p_this );
+void close( vlc_object_t* p_this );
+} // namespace StreamOutProxy
 } // namespace Server
