@@ -5,6 +5,8 @@
 
 #include <sstream>
 #include <functional>
+#include <algorithm>
+#include <iostream>
 
 namespace utils
 {
@@ -103,6 +105,7 @@ std::string get_root_dir() noexcept
     std::stringstream ret;
 
     char* path = config_GetSysPath( VLC_PKG_DATA_DIR, NULL );
+    assert( path );
 
     ret << path << "/upnp_server/";
 
@@ -110,21 +113,16 @@ std::string get_root_dir() noexcept
     return ret.str();
 }
 
-//TODO We should change that to a better profile selection using profiles in dlna.hpp
+// TODO We should change that to a better profile selection using profiles in dlna.hpp
 // as soon as more info on media tracks are available in the medialibrary
-std::string infer_dlna_profile_name(const std::string& extension) noexcept
+std::string infer_dlna_profile_name( const std::string& extension ) noexcept
 {
+    if ( extension == "mp4" )
+        return "AVC_MP4_EU";
+
     std::string profile;
-    if (extension == "mp4")
-        profile = "AVC_MP4_EU";
-    else if (extension == "avi")
-        profile = "AVI";
-    else if (extension == "mp3")
-        profile = "MP3";
-    else if (extension == "jpg")
-        profile = "JPG";
-    else if (extension == "png")
-        profile = "PNG";
+    std::transform( std::begin( extension ), std::end( extension ), std::begin( profile ),
+                    ::toupper );
     return profile;
 }
 
@@ -150,7 +148,7 @@ std::string get_dlna_extra_protocol_info( const std::string& file_type, bool tra
     }
     else
     {
-        op = DLNA_ORG_OPERATION_RANGE;
+        op = DLNA_ORG_OPERATION_TIMESEEK;
         conv = DLNA_ORG_CONVERSION_NONE;
     }
 
@@ -159,5 +157,61 @@ std::string get_dlna_extra_protocol_info( const std::string& file_type, bool tra
              "DLNA.ORG_FLAGS", flags, 0 );
     ret << dlna_info;
     return ret.str();
+}
+
+// See RFC 2326 3.6 normal play time
+// We only support the first part of the range as the starting point of the player.
+time_t parse_dlna_npt_range( const char* value )
+{
+    using namespace std::chrono;
+    if ( strncmp( value, "npt", 3 ) != 0 )
+        return 0;
+
+    const auto next_token = [](const char *line, const char token) {
+      const char* ret = strchr(line, token);
+      if (!ret) throw std::invalid_argument("");
+      ret += 1;
+      if (!*ret || *ret == '-') throw std::invalid_argument("");
+      return ret;
+    };
+
+    const char *equal_idx;
+    try
+    {
+        equal_idx = next_token( value, '=' );
+    }
+    catch ( std::invalid_argument& )
+    {
+        return 0;
+    }
+
+    const char* token = equal_idx;
+    auto ret = 0ms;
+    try
+    {
+        ret += hours( std::stoll( token ) );
+        token = next_token( token, ':' );
+        ret += minutes( std::stoll( token ) );
+        token = next_token( token, ':' );
+    }
+    catch ( const std::invalid_argument& )
+    {
+        // If date pattern is not valid, fall back to seconds only parsing
+        ret = 0ms;
+        token = equal_idx;
+    }
+
+    try
+    {
+        size_t pos;
+        ret += milliseconds( static_cast<unsigned>( std::stod( token, &pos ) * 1000. ) );
+        if (token[pos] != '-')
+          return 0;
+        return ret.count();
+    }
+    catch ( const std::invalid_argument& )
+    {
+        return 0;
+    }
 }
 } // namespace utils

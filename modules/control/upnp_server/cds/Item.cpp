@@ -52,7 +52,7 @@ static void dump_resources( xml::Element& dest,
 
     const std::string url_base = utils::get_server_url();
     const auto media_duration =
-        utils::duration_to_string( "%H:%M:%S", std::chrono::milliseconds( media.i_duration ) );
+        utils::duration_to_string( "%H:%M:%S", std::chrono::milliseconds( media.i_duration) );
 
     const auto make_resource = [&]( const TranscodeProfile* profile ) -> xml::Element {
         const char* profile_name = profile ? profile->psz_name : "native";

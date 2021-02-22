@@ -10,11 +10,18 @@
 #include <vlc_stream_extractor.h>
 #include <vlc_url.h>
 
-#include <upnp/ExtraHeaders.h>
 #include <ctime>
-#include <chrono>
+#include <upnp/ExtraHeaders.h>
 
 #include "stream_out/renderer_common.hpp"
+
+#define DLNA_TRANSFER_MODE "transfermode.dlna.org"
+#define DLNA_CONTENT_FEATURE "contentfeatures.dlna.org"
+#define DLNA_TIME_SEEK_RANGE "timeseekrange.dlna.org"
+
+static void add_response_hdr( UpnpListHead* head,
+                               const std::pair<std::string, std::string> value );
+const char* get_extra_header( UpnpListHead* hdr_list, const char* name );
 
 // Convenient cpp replacement of vlc_ml_file_t to not have to deal with allocation
 struct MLFile
@@ -23,10 +30,6 @@ struct MLFile
     int64_t size;
     time_t last_modification;
 };
-
-static void add_dlna_headers( UpnpListHead* head, const std::string& file_type, bool transcoding );
-static time_t parse_time_seek_range( const char* value );
-const char* get_http_extra_hdr_value( UpnpListHead* hdr_list, const char* name );
 
 struct MLFileHandler : FileHandler
 {
@@ -50,7 +53,8 @@ struct MLFileHandler : FileHandler
 
         // const_cast is expected by the design of the upnp api...
         auto* head = const_cast<UpnpListHead*>( UpnpFileInfo_get_ExtraHeadersList( &info ) );
-        add_dlna_headers( head, mime_type.file_type, false );
+        add_response_hdr( head, { DLNA_TRANSFER_MODE, "Streaming" } );
+        add_response_hdr( head, { DLNA_CONTENT_FEATURE, "DLNA.ORG_OP=01" } );
         return true;
     }
 
@@ -94,65 +98,74 @@ struct MLFileHandler : FileHandler
 
 static const char DEFAULT_MUXER[] = "ts";
 
-struct TrandscodedMediaFileHandler : FileHandler {
+struct TrandscodedMediaFileHandler : FileHandler
+{
     utils::MimeType mime_type;
     const TranscodeProfile& profile;
 
     ml::Media::Ptr media;
     time_t media_begin = 0;
 
-    struct VLCObject {
-      static void release(VLCObject *obj) {
-        vlc_object_t* vlc_object = reinterpret_cast<vlc_object_t*>(obj);
-        vlc_player_Delete(obj->player);
-        auto* fifo =
-            static_cast<std::shared_ptr<Fifo>*>( var_GetAddress( vlc_object, Fifo::VAR_NAME ) );
-        delete fifo;
-        var_SetAddress(vlc_object, Fifo::VAR_NAME, nullptr);
-        vlc_object_release(vlc_object);
-      }
-      using Ptr = std::unique_ptr<VLCObject, decltype(&release)>;
+    struct VLCObject
+    {
+        static void release( VLCObject* obj )
+        {
+            vlc_object_t* vlc_object = reinterpret_cast<vlc_object_t*>( obj );
+            vlc_player_Delete( obj->player );
+            auto* fifo =
+                static_cast<std::shared_ptr<Fifo>*>( var_GetAddress( vlc_object, Fifo::VAR_NAME ) );
+            delete fifo;
+            var_SetAddress( vlc_object, Fifo::VAR_NAME, nullptr );
+            vlc_object_release( vlc_object );
+        }
+        using Ptr = std::unique_ptr<VLCObject, decltype( &release )>;
 
-      vlc_object_t obj;
-      vlc_player_t *player;
+        vlc_object_t obj;
+        vlc_player_t* player;
     };
     VLCObject::Ptr obj;
     std::shared_ptr<Fifo> fifo = std::make_shared<Fifo>();
 
     TrandscodedMediaFileHandler( utils::MimeType&& mime,
                                  const TranscodeProfile& profile,
-                                 decltype(media)&& media )
+                                 decltype( media )&& media )
         : mime_type( std::move( mime ) )
         , profile( profile )
-        , media( std::move(media) )
+        , media( std::move( media ) )
         , obj( nullptr, &VLCObject::release )
     {
     }
 
     bool get_info( UpnpFileInfo& info ) noexcept final
     {
-        assert(media != nullptr);
-        const auto main_files = utils::get_media_files(*media, VLC_ML_FILE_TYPE_MAIN);
-        if (main_files.empty())
-          return false;
+        assert( media != nullptr );
+        const auto main_files = utils::get_media_files( *media, VLC_ML_FILE_TYPE_MAIN );
+        if ( main_files.empty() )
+            return false;
 
         UpnpFileInfo_set_ContentType( &info, mime_type.combine().c_str() );
         UpnpFileInfo_set_LastModified( &info, main_files.front().get().i_last_modification_date );
 
         // We can't predict the media size before transcoding.
         UpnpFileInfo_set_FileLength( &info, -1 );
-        
+
         // const_cast is expected by the design of the upnp api...
         auto* head = const_cast<UpnpListHead*>( UpnpFileInfo_get_ExtraHeadersList( &info ) );
 
         // This header is passed by some players, let's use it !
-        const char* time_seek_range = get_http_extra_hdr_value(head, "TimeSeekRange.DLNA.ORG");
-        if (time_seek_range != nullptr) {
-          const time_t media_begin = parse_time_seek_range(time_seek_range);
-          this->media_begin = media_begin;
+        const char* time_seek_range = get_extra_header( head, DLNA_TIME_SEEK_RANGE );
+        if ( time_seek_range != nullptr )
+        {
+            const time_t media_begin = utils::parse_dlna_npt_range( time_seek_range );
+            this->media_begin = media_begin;
+            add_response_hdr( head,
+                               { DLNA_TIME_SEEK_RANGE, std::to_string( media_begin / 1000. ) + '-' } );
         }
 
-        add_dlna_headers(head, mime_type.file_type, true);
+        add_response_hdr( head, { DLNA_TRANSFER_MODE, "Streaming" } );
+        add_response_hdr( head, { DLNA_CONTENT_FEATURE, "DLNA.ORG_OP=10" } );
+        add_response_hdr( head, { "Pragma", "no-cache" } );
+        add_response_hdr( head, { "Cache-Control", "no-cache" } );
         return true;
     }
 
@@ -161,22 +174,24 @@ struct TrandscodedMediaFileHandler : FileHandler {
         obj = VLCObject::Ptr{
             static_cast<VLCObject*>( vlc_object_create( parent, sizeof( VLCObject ) ) ),
             &VLCObject::release };
-        
-        obj->player = vlc_player_New(&obj->obj, VLC_PLAYER_LOCK_NORMAL, nullptr, nullptr );
-        if (obj->player == nullptr) {
-          return false;
+
+        obj->player = vlc_player_New( &obj->obj, VLC_PLAYER_LOCK_NORMAL, nullptr, nullptr );
+        if ( obj->player == nullptr )
+        {
+            return false;
         }
 
-        const auto main_files = utils::get_media_files(*media, VLC_ML_FILE_TYPE_MAIN);
-        if (main_files.empty())
-          return false;
-        const vlc_ml_file_t &main_file = main_files.front();
+        const auto main_files = utils::get_media_files( *media, VLC_ML_FILE_TYPE_MAIN );
+        if ( main_files.empty() )
+            return false;
+        const vlc_ml_file_t& main_file = main_files.front();
 
         auto item =
             vlc::wrap_cptr( vlc_ml_get_input_item_by_mrl( parent->p_sys->p_ml, main_file.psz_mrl ),
                             &input_item_Release );
-        if (item == nullptr) {
-          return false;
+        if ( item == nullptr )
+        {
+            return false;
         }
 
         const auto video_tracks = utils::get_media_tracks( *media, VLC_ML_TRACK_TYPE_VIDEO );
@@ -184,9 +199,9 @@ struct TrandscodedMediaFileHandler : FileHandler {
         video_format_Init( &fmt, VLC_CODEC_I420 );
         if ( video_tracks.empty() )
         {
-          return false;
+            return false;
         }
-        //TODO should be a runtime check, not sure about the correct behaviour tho.
+        // TODO should be a runtime check, not sure about the correct behaviour tho.
         assert( video_tracks.size() == 1 );
 
         const vlc_ml_media_track_t& vtrack = video_tracks[0];
@@ -197,7 +212,7 @@ struct TrandscodedMediaFileHandler : FileHandler {
         std::stringstream transcode_line;
         // If a specific starting time is set, use the proxy to avoid sending unhandled
         // discontinuities.
-        if ( media_begin != 0)
+        if ( media_begin != 0 )
         {
             transcode_line << "sout=#upnp-sout-proxy:transcode{";
         }
@@ -208,8 +223,7 @@ struct TrandscodedMediaFileHandler : FileHandler {
         try
         {
             transcode_line << vlc_sout_renderer_GetVcodecOption(
-                VLC_OBJECT( parent ), profile.codecs_fallbacks, &codec,
-                &fmt,
+                VLC_OBJECT( parent ), profile.codecs_fallbacks, &codec, &fmt,
                 profile.i_conversion_quality ) /*<< "height=1080"*/;
         }
         catch ( const std::domain_error& e )
@@ -222,8 +236,8 @@ struct TrandscodedMediaFileHandler : FileHandler {
         transcode_line << ":std{access=upnp-out,mux=" << DEFAULT_MUXER << "}";
 
         const auto transcode_line_str = transcode_line.str();
-        int res =
-            input_item_AddOption( item.get(), transcode_line_str.c_str(), VLC_INPUT_OPTION_TRUSTED );
+        int res = input_item_AddOption( item.get(), transcode_line_str.c_str(),
+                                        VLC_INPUT_OPTION_TRUSTED );
 
         if ( res != VLC_SUCCESS )
         {
@@ -242,7 +256,7 @@ struct TrandscodedMediaFileHandler : FileHandler {
 
         const bool ret = vlc_player_SetCurrentMedia( obj->player, item.get() ) == VLC_SUCCESS;
 
-        if (media_begin > 0)
+        if ( media_begin > 0 )
             vlc_player_SetTime( obj->player, VLC_TICK_FROM_MS( media_begin ) );
 
         vlc_player_Start( obj->player );
@@ -261,7 +275,7 @@ struct TrandscodedMediaFileHandler : FileHandler {
 };
 
 template <typename MLHelper>
-auto get_ml_object(const std::string &token, std::string & extension, vlc_medialibrary_t& ml)
+auto get_ml_object( const std::string& token, std::string& extension, vlc_medialibrary_t& ml )
 {
     const auto extension_idx = token.find( '.' );
     extension = token.substr( extension_idx + 1 );
@@ -273,18 +287,18 @@ auto get_ml_object(const std::string &token, std::string & extension, vlc_medial
     }
     catch ( const std::invalid_argument& )
     {
-        return typename MLHelper::Ptr{nullptr};
+        return typename MLHelper::Ptr{ nullptr };
     }
-    return MLHelper::get(ml, ml_id);
+    return MLHelper::get( ml, ml_id );
 }
 
 static std::unique_ptr<FileHandler> parse_media_url( std::stringstream& ss,
-                                                         const intf_sys_t& intf_sys )
+                                                     const intf_sys_t& intf_sys )
 {
     std::string token;
     std::getline( ss, token, '/' );
 
-    const TranscodeProfile *profile = nullptr;
+    const TranscodeProfile* profile = nullptr;
     if ( token != "native" )
     {
         for ( unsigned i = 0; i < intf_sys.transcode_profiles.u_size; ++i )
@@ -303,21 +317,20 @@ static std::unique_ptr<FileHandler> parse_media_url( std::stringstream& ss,
     std::getline( ss, token );
 
     std::string extension;
-    auto media = get_ml_object<ml::Media>(token, extension, *intf_sys.p_ml);
+    auto media = get_ml_object<ml::Media>( token, extension, *intf_sys.p_ml );
     if ( media == nullptr )
     {
         return nullptr;
     }
 
-    const auto main_files = utils::get_media_files(*media, VLC_ML_FILE_TYPE_MAIN);
+    const auto main_files = utils::get_media_files( *media, VLC_ML_FILE_TYPE_MAIN );
     if ( main_files.empty() )
     {
         return nullptr;
     }
-    const vlc_ml_file_t & main_file = main_files.front();
+    const vlc_ml_file_t& main_file = main_files.front();
 
-
-    if (profile)
+    if ( profile )
     {
         auto mime_type = utils::get_mimetype( media->i_type, DEFAULT_MUXER );
         return std::make_unique<TrandscodedMediaFileHandler>( std::move( mime_type ), *profile,
@@ -325,9 +338,10 @@ static std::unique_ptr<FileHandler> parse_media_url( std::stringstream& ss,
     }
 
     auto mime_type = utils::get_mimetype( media->i_type, extension );
-    return std::make_unique<MLFileHandler>(
+    auto ret = std::make_unique<MLFileHandler>(
         MLFile{ main_file.psz_mrl, main_file.i_size, main_file.i_last_modification_date },
-        std::move(mime_type) );
+        std::move( mime_type ) );
+    return ret;
 }
 
 static std::unique_ptr<FileHandler> parse_thumbnail_url( std::stringstream& ss,
@@ -361,7 +375,7 @@ static std::unique_ptr<FileHandler> parse_thumbnail_url( std::stringstream& ss,
             mrl = album->thumbnails[size].psz_mrl;
     }
 
-    if (mrl.empty())
+    if ( mrl.empty() )
     {
         return nullptr;
     }
@@ -371,7 +385,7 @@ static std::unique_ptr<FileHandler> parse_thumbnail_url( std::stringstream& ss,
 }
 
 static std::unique_ptr<FileHandler> parse_subtitle_url( std::stringstream& ss,
-                                                         const intf_sys_t& intf_sys )
+                                                        const intf_sys_t& intf_sys )
 {
     std::string token;
     std::string extension;
@@ -379,20 +393,21 @@ static std::unique_ptr<FileHandler> parse_subtitle_url( std::stringstream& ss,
 
     std::getline( ss, token );
     const auto media = get_ml_object<ml::Media>( token, extension, *intf_sys.p_ml );
-    if (media == nullptr)
+    if ( media == nullptr )
     {
-      return nullptr;
+        return nullptr;
     }
 
-    const auto subtitles = utils::get_media_files(*media, VLC_ML_FILE_TYPE_SUBTITLE);
-    if (subtitles.empty())
+    const auto subtitles = utils::get_media_files( *media, VLC_ML_FILE_TYPE_SUBTITLE );
+    if ( subtitles.empty() )
     {
-      return nullptr;
+        return nullptr;
     }
 
     const vlc_ml_file_t& sub = subtitles.front();
-    return std::make_unique<MLFileHandler>( MLFile{ sub.psz_mrl, sub.i_size, sub.i_last_modification_date },
-                                            utils::MimeType{ "text", extension } );
+    return std::make_unique<MLFileHandler>(
+        MLFile{ sub.psz_mrl, sub.i_size, sub.i_last_modification_date },
+        utils::MimeType{ "text", extension } );
 }
 
 std::unique_ptr<FileHandler> parse_url( const char* url, const intf_sys_t& intf_sys ) noexcept
@@ -414,63 +429,39 @@ std::unique_ptr<FileHandler> parse_url( const char* url, const intf_sys_t& intf_
     return nullptr;
 }
 
-static void
-add_dlna_headers( UpnpListHead* head, const std::string& file_type, bool transcoding )
-{
-    {
-        UpnpExtraHeaders* h = UpnpExtraHeaders_new();
-        UpnpExtraHeaders_set_resp( h, "transferMode.dlna.org: Streaming" );
-        UpnpListInsert( head, UpnpListEnd( head ),
-                        const_cast<UpnpListHead*>( UpnpExtraHeaders_get_node( h ) ) );
-    }
-    {
-        UpnpExtraHeaders* h = UpnpExtraHeaders_new();
-        const auto content_feature = utils::get_dlna_extra_protocol_info( file_type, transcoding );
-        UpnpExtraHeaders_set_resp(
-            h, std::string( "contentFeatures.dlna.org: " + content_feature ).c_str() );
-        UpnpListInsert( head, UpnpListEnd( head ),
-                        const_cast<UpnpListHead*>( UpnpExtraHeaders_get_node( h ) ) );
-    }
-}
-
-const char* get_http_extra_hdr_value( UpnpListHead* list, const char* name )
+static UpnpExtraHeaders* dlna_get_hdr( UpnpListHead* list, const std::string name )
 {
     for ( auto* it = UpnpListBegin( list ); it != UpnpListEnd( list );
           it = UpnpListNext( list, it ) )
     {
         UpnpExtraHeaders* hd = reinterpret_cast<UpnpExtraHeaders*>( it );
-        const char* hdr_name = UpnpExtraHeaders_get_name_cstr( hd );
-        if ( strcmp( hdr_name, name ) == 0 )
+        std::string hdr_name = UpnpExtraHeaders_get_name_cstr( hd );
+        std::transform( std::begin( hdr_name ), std::end( hdr_name ), std::begin( hdr_name ),
+                        ::tolower );
+        if ( hdr_name == name )
         {
-            return UpnpExtraHeaders_get_value_cstr( hd );
+            return hd;
         }
     }
     return nullptr;
 }
 
-// See RFC 2326 3.6 normal play time
-// We only support the first part of the range as the starting point of the player.
-static time_t parse_time_seek_range( const char* value )
+static void add_response_hdr( UpnpListHead* list, const std::pair<std::string, std::string> resp )
 {
-    if ( strcmp( value, "npt=now" ) == 0 )
-        return 0;
 
-    struct tm tm;
-    memset( &tm, 0, sizeof( tm ) );
-    const char* cursor = strptime( value, "npt=%H:%M:%S", &tm );
-
-    if ( cursor == nullptr )
+    auto hdr = dlna_get_hdr( list, resp.first );
+    const auto resp_str = resp.first + ": " + resp.second;
+    if ( !hdr )
     {
-        memset( &tm, 0, sizeof( tm ) );
-        cursor = strptime( value, "npt=%S", &tm );
+        hdr = UpnpExtraHeaders_new();
     }
+    UpnpExtraHeaders_set_resp( hdr, resp_str.c_str() );
+    UpnpListInsert( list, UpnpListEnd( list ),
+                    const_cast<UpnpListHead*>( UpnpExtraHeaders_get_node( hdr ) ) );
+}
 
-    // TODO handle fractions of seconds
-
-    if ( cursor == nullptr )
-        return 0;
-
-    using namespace std::chrono;
-    const auto seek_time = hours( tm.tm_hour ) + minutes( tm.tm_min ) + seconds( tm.tm_sec );
-    return duration_cast<milliseconds>( seek_time ).count();
+const char* get_extra_header( UpnpListHead* list, const char* name )
+{
+    auto hdr = dlna_get_hdr( list, name );
+    return hdr != nullptr ? UpnpExtraHeaders_get_value_cstr( hdr ) : nullptr;
 }

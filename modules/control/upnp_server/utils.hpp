@@ -52,4 +52,6 @@ std::string duration_to_string( const char* fmt, std::chrono::duration<Rep, Pedi
     const auto size = std::strftime( ret, sizeof( ret ), fmt, std::localtime( &sec ) );
     return { ret, size };
 }
+
+time_t parse_dlna_npt_range( const char* value );
 } // namespace utils
