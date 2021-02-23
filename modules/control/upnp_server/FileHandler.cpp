@@ -157,9 +157,9 @@ struct TrandscodedMediaFileHandler : FileHandler
         if ( time_seek_range != nullptr )
         {
             const time_t media_begin = utils::parse_dlna_npt_range( time_seek_range );
-            this->media_begin = media_begin;
-            add_response_hdr( head,
-                               { DLNA_TIME_SEEK_RANGE, std::to_string( media_begin / 1000. ) + '-' } );
+            this->media_begin = std::min(media_begin, media->i_duration);
+            add_response_hdr(
+                head, { DLNA_TIME_SEEK_RANGE, std::to_string( media_begin / 1000. ) + '-' } );
         }
 
         add_response_hdr( head, { DLNA_TRANSFER_MODE, "Streaming" } );
