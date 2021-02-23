@@ -34,6 +34,7 @@ using Album = Object<vlc_ml_album_t, VLC_ML_GET_ALBUM>;
 using Playlist = Object<vlc_ml_playlist_t, VLC_ML_GET_PLAYLIST>;
 using Show = Object<vlc_ml_show_t, VLC_ML_GET_SHOW>;
 using Artist = Object<vlc_ml_artist_t, VLC_ML_GET_ARTIST>;
+using Genre = Object<vlc_ml_artist_t, VLC_ML_GET_GENRE>;
 
 template <typename ListType,
           vlc_ml_list_queries ListQuery,
@@ -77,19 +78,27 @@ struct List : Object
 using AllAudioList = List<vlc_ml_media_list_t, VLC_ML_LIST_AUDIOS, VLC_ML_COUNT_AUDIOS, Media>;
 using AllVideoList = List<vlc_ml_media_list_t, VLC_ML_LIST_VIDEOS, VLC_ML_COUNT_VIDEOS, Media>;
 using AllAlbumList = List<vlc_ml_album_list_t, VLC_ML_LIST_ALBUMS, VLC_ML_COUNT_ALBUMS, Media>;
+
+using AllArtistsList = List<vlc_ml_artist_list_t, VLC_ML_LIST_ARTISTS, VLC_ML_COUNT_ARTISTS, Media>;
 using ArtistAlbumList =
     List<vlc_ml_album_list_t, VLC_ML_LIST_ARTIST_ALBUMS, VLC_ML_COUNT_ARTIST_ALBUMS, Album>;
 using ArtistTracksList =
     List<vlc_ml_media_list_t, VLC_ML_LIST_ARTIST_TRACKS, VLC_ML_COUNT_ARTIST_TRACKS, Media>;
-using AllArtistsList = List<vlc_ml_artist_list_t, VLC_ML_LIST_ARTISTS, VLC_ML_COUNT_ARTISTS, Media>;
 using AlbumTracksList =
     List<vlc_ml_media_list_t, VLC_ML_LIST_ALBUM_TRACKS, VLC_ML_COUNT_ALBUM_TRACKS, Album>;
+
+using AllGenresList = List<vlc_ml_genre_list_t, VLC_ML_LIST_GENRES, VLC_ML_COUNT_GENRES, Media>;
+using GenreAlbumList =
+    List<vlc_ml_album_list_t, VLC_ML_LIST_GENRE_ALBUMS, VLC_ML_COUNT_GENRE_ALBUMS, Album>;
+using GenreTracksList =
+    List<vlc_ml_media_list_t, VLC_ML_LIST_GENRE_TRACKS, VLC_ML_COUNT_GENRE_TRACKS, Media>;
+
 using PlaylistsList =
     List<vlc_ml_playlist_list_t, VLC_ML_LIST_PLAYLISTS, VLC_ML_COUNT_PLAYLISTS, Playlist>;
 using PlaylistMediaList =
     List<vlc_ml_media_list_t, VLC_ML_LIST_PLAYLIST_MEDIA, VLC_ML_COUNT_PLAYLIST_MEDIA, Media>;
-using ShowsList =
-    List<vlc_ml_show_list_t, VLC_ML_LIST_SHOWS, VLC_ML_COUNT_SHOW_EPISODES, Show>;
+
+using ShowsList = List<vlc_ml_show_list_t, VLC_ML_LIST_SHOWS, VLC_ML_COUNT_SHOW_EPISODES, Show>;
 using ShowsMediaList =
     List<vlc_ml_media_list_t, VLC_ML_LIST_SHOW_EPISODES, VLC_ML_COUNT_SHOW_EPISODES, Media>;
 

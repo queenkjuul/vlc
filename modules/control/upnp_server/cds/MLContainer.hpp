@@ -117,6 +117,18 @@ class MLContainer : public Container
             doc.create_element( "dc:title", doc.create_text_node( artist.psz_name ) ) );
     }
 
+    void dump_mlobject_metadata( xml::Element& dest, const vlc_ml_genre_t& genre ) const
+    {
+        xml::Document& doc = dest.owner;
+
+        dest.set_attribute( "childCount", std::to_string( genre.i_nb_tracks ).c_str() );
+
+        dest.add_children(
+            doc.create_element( "upnp:class",
+                                doc.create_text_node( "object.container.genre.musicGenre" ) ),
+            doc.create_element( "dc:title", doc.create_text_node( genre.psz_name ) ) );
+    }
+
     void dump_mlobject_metadata( xml::Element& dest, const vlc_ml_show_t& show ) const
     {
         xml::Document& doc = dest.owner;
