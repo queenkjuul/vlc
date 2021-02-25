@@ -405,39 +405,41 @@ enum vlc_ml_list_queries
     VLC_ML_COUNT_HISTORY_BY_TYPE, /**< arg1 vlc_ml_media_type_t: the media type. arg2 (out): vlc_ml_media_list_t***/
     VLC_ML_LIST_STREAM_HISTORY,   /**< arg1 (out): vlc_ml_media_list_t**                            */
     VLC_ML_COUNT_STREAM_HISTORY,  /**< arg1 (out): size_t*                                          */
+    VLC_ML_LIST_ENTRY_POINTS,     /**< arg1 bool: list_banned; arg2 (out): vlc_ml_folder_list_t**   */
+    VLC_ML_COUNT_ENTRY_POINTS,    /**< arg1 bool: list_banned; arg2 (out): size_t*                  */
 
     /* Album specific listings */
-    VLC_ML_LIST_ALBUM_TRACKS,     /**< arg1: The album id. arg2 (out): vlc_ml_media_list_t**  */
-    VLC_ML_COUNT_ALBUM_TRACKS,    /**< arg1: The album id. arg2 (out): size_t*  */
-    VLC_ML_LIST_ALBUM_ARTISTS,    /**< arg1: The album id. arg2 (out): vlc_ml_album_list_t**  */
-    VLC_ML_COUNT_ALBUM_ARTISTS,    /**< arg1: The album id. arg2 (out): size_t*  */
+    VLC_ML_LIST_ALBUM_TRACKS,     /**< arg1: The album id. arg2 (out): vlc_ml_media_list_t**        */
+    VLC_ML_COUNT_ALBUM_TRACKS,    /**< arg1: The album id. arg2 (out): size_t*                      */
+    VLC_ML_LIST_ALBUM_ARTISTS,    /**< arg1: The album id. arg2 (out): vlc_ml_album_list_t**        */
+    VLC_ML_COUNT_ALBUM_ARTISTS,   /**< arg1: The album id. arg2 (out): size_t*                      */
 
     /* Artist specific listings */
-    VLC_ML_LIST_ARTIST_ALBUMS,  /**< arg1: The artist id. arg2(out): vlc_ml_album_list_t**    */
-    VLC_ML_COUNT_ARTIST_ALBUMS, /**< arg1: The artist id. arg2(out): size_t*              */
-    VLC_ML_LIST_ARTIST_TRACKS,  /**< arg1: The artist id. arg2(out): vlc_ml_media_list_t**    */
-    VLC_ML_COUNT_ARTIST_TRACKS, /**< arg1: The artist id. arg2(out): size_t*              */
+    VLC_ML_LIST_ARTIST_ALBUMS,    /**< arg1: The artist id. arg2(out): vlc_ml_album_list_t**        */
+    VLC_ML_COUNT_ARTIST_ALBUMS,   /**< arg1: The artist id. arg2(out): size_t*                      */
+    VLC_ML_LIST_ARTIST_TRACKS,    /**< arg1: The artist id. arg2(out): vlc_ml_media_list_t**        */
+    VLC_ML_COUNT_ARTIST_TRACKS,   /**< arg1: The artist id. arg2(out): size_t*                      */
 
     /* Genre specific listings */
-    VLC_ML_LIST_GENRE_ARTISTS,    /**< arg1: genre id;  arg2 (out): vlc_ml_artist_list_t**  */
-    VLC_ML_COUNT_GENRE_ARTISTS,   /**< arg1: genre id;  arg2 (out): size_t*             */
-    VLC_ML_LIST_GENRE_TRACKS,     /**< arg1: genre id;  arg2 (out): vlc_ml_media_list_t**   */
-    VLC_ML_COUNT_GENRE_TRACKS,    /**< arg1: genre id;  arg2 (out): size_t*             */
-    VLC_ML_LIST_GENRE_ALBUMS,     /**< arg1: genre id;  arg2 (out): vlc_ml_album_list_t**   */
-    VLC_ML_COUNT_GENRE_ALBUMS,    /**< arg1: genre id;  arg2 (out): size_t*             */
+    VLC_ML_LIST_GENRE_ARTISTS,    /**< arg1: genre id;  arg2 (out): vlc_ml_artist_list_t**          */
+    VLC_ML_COUNT_GENRE_ARTISTS,   /**< arg1: genre id;  arg2 (out): size_t*                         */
+    VLC_ML_LIST_GENRE_TRACKS,     /**< arg1: genre id;  arg2 (out): vlc_ml_media_list_t**           */
+    VLC_ML_COUNT_GENRE_TRACKS,    /**< arg1: genre id;  arg2 (out): size_t*                         */
+    VLC_ML_LIST_GENRE_ALBUMS,     /**< arg1: genre id;  arg2 (out): vlc_ml_album_list_t**           */
+    VLC_ML_COUNT_GENRE_ALBUMS,    /**< arg1: genre id;  arg2 (out): size_t*                         */
 
     /* Show specific listings */
-    VLC_ML_LIST_SHOW_EPISODES,    /**< arg1: show id; arg2(out): vlc_ml_media_list_t**  */
-    VLC_ML_COUNT_SHOW_EPISODES,   /**< arg1: show id; arg2(out): size_t*                */
+    VLC_ML_LIST_SHOW_EPISODES,    /**< arg1: show id; arg2(out): vlc_ml_media_list_t**              */
+    VLC_ML_COUNT_SHOW_EPISODES,   /**< arg1: show id; arg2(out): size_t*                            */
 
     /* Media specific listings */
-    VLC_ML_LIST_MEDIA_LABELS,     /**< arg1: media id;  arg2 (out): vlc_ml_label_list_t**    */
-    VLC_ML_COUNT_MEDIA_LABELS,    /**< arg1: media id;  arg2 (out): size_t*              */
-    VLC_ML_LIST_MEDIA_BOOKMARKS,  /**< arg1: media id;  arg2 (out): vlc_ml_bookmark_list_t** */
+    VLC_ML_LIST_MEDIA_LABELS,     /**< arg1: media id;  arg2 (out): vlc_ml_label_list_t**           */
+    VLC_ML_COUNT_MEDIA_LABELS,    /**< arg1: media id;  arg2 (out): size_t*                         */
+    VLC_ML_LIST_MEDIA_BOOKMARKS,  /**< arg1: media id;  arg2 (out): vlc_ml_bookmark_list_t**        */
 
     /* Playlist specific listings */
-    VLC_ML_LIST_PLAYLIST_MEDIA,   /**< arg1: playlist id; arg2 (out): vlc_ml_media_list_t** */
-    VLC_ML_COUNT_PLAYLIST_MEDIA,  /**< arg1: playlist id; arg2 (out): size_t* */
+    VLC_ML_LIST_PLAYLIST_MEDIA,   /**< arg1: playlist id; arg2 (out): vlc_ml_media_list_t**         */
+    VLC_ML_COUNT_PLAYLIST_MEDIA,  /**< arg1: playlist id; arg2 (out): size_t*                       */
 
     /* Children entities listing */
     VLC_ML_LIST_MEDIA_OF,         /**< arg1: parent entity type; arg2: parent entity id; arg3(out): ml_media_list_t** */
@@ -465,8 +467,6 @@ enum vlc_ml_control
     VLC_ML_REMOVE_FOLDER,           /**< arg1: mrl (const char*)  res: can't fail */
     VLC_ML_BAN_FOLDER,              /**< arg1: mrl (const char*)  res: can't fail */
     VLC_ML_UNBAN_FOLDER,            /**< arg1: mrl (const char*)  res: can't fail */
-    VLC_ML_LIST_FOLDERS,            /**< arg1: entrypoints (vlc_ml_folder_list_t**); res: can fail */
-    VLC_ML_LIST_BANNED_FOLDERS,     /**< arg1: entrypoints (vlc_ml_folder_list_t**); res: can fail */
     VLC_ML_IS_INDEXED,              /**< arg1: mrl (const char*) arg2 (out): bool*;       res: can fail */
     /**
      * Reload a specific folder, or all.
@@ -902,18 +902,6 @@ static inline int vlc_ml_ban_folder( vlc_medialibrary_t* p_ml, const char* psz_f
 static inline int vlc_ml_unban_folder( vlc_medialibrary_t* p_ml, const char* psz_folder )
 {
     return vlc_ml_control( p_ml, VLC_ML_UNBAN_FOLDER, psz_folder );
-}
-
-static inline int vlc_ml_list_folder( vlc_medialibrary_t* p_ml,
-                                      vlc_ml_folder_list_t** pp_entrypoints )
-{
-    return vlc_ml_control( p_ml, VLC_ML_LIST_FOLDERS, pp_entrypoints );
-}
-
-static inline int vlc_ml_list_banned_folder( vlc_medialibrary_t* p_ml,
-                                             vlc_ml_folder_list_t** pp_entrypoints )
-{
-    return vlc_ml_control( p_ml, VLC_ML_LIST_BANNED_FOLDERS, pp_entrypoints );
 }
 
 static inline int vlc_ml_is_indexed( vlc_medialibrary_t* p_ml,
@@ -1556,6 +1544,44 @@ static inline size_t vlc_ml_count_playlist_media( vlc_medialibrary_t* p_ml, cons
     if ( vlc_ml_list( p_ml, VLC_ML_COUNT_PLAYLIST_MEDIA, params, i_playlist_id, &count ) != VLC_SUCCESS )
         return 0;
     return count;
+}
+
+static inline vlc_ml_folder_list_t* vlc_ml_list_entry_points( vlc_medialibrary_t* p_ml, const vlc_ml_query_params_t* params )
+{
+    vlc_assert( p_ml != NULL );
+    vlc_ml_folder_list_t* res;
+    if ( vlc_ml_list( p_ml, VLC_ML_LIST_ENTRY_POINTS, params, (int)false, &res ) != VLC_SUCCESS )
+        return NULL;
+    return res;
+}
+
+static inline size_t vlc_ml_count_entry_points( vlc_medialibrary_t* p_ml, const vlc_ml_query_params_t* params )
+{
+    vlc_assert( p_ml != NULL );
+    size_t res;
+    if ( vlc_ml_list( p_ml, VLC_ML_COUNT_ENTRY_POINTS, params, (int)false, &res ) != VLC_SUCCESS )
+        return 0;
+    return res;
+}
+
+static inline vlc_ml_folder_list_t*
+vlc_ml_list_banned_entry_points( vlc_medialibrary_t* p_ml, const vlc_ml_query_params_t* params )
+{
+    vlc_assert( p_ml != NULL );
+    vlc_ml_folder_list_t* res;
+    if ( vlc_ml_list( p_ml, VLC_ML_LIST_ENTRY_POINTS, params, true, &res ) != VLC_SUCCESS )
+        return NULL;
+    return res;
+}
+
+static inline size_t vlc_ml_count_banned_entry_points( vlc_medialibrary_t* p_ml,
+                                                       const vlc_ml_query_params_t* params )
+{
+    vlc_assert( p_ml != NULL );
+    size_t res;
+    if ( vlc_ml_list( p_ml, VLC_ML_COUNT_ENTRY_POINTS, params, true, &res ) != VLC_SUCCESS )
+        return 0;
+    return res;
 }
 
 #ifdef __cplusplus

@@ -548,17 +548,6 @@ int MediaLibrary::Control( int query, va_list args )
             }
             break;
         }
-        case VLC_ML_LIST_FOLDERS:
-        case VLC_ML_LIST_BANNED_FOLDERS:
-        {
-            auto entryPoints = ( query == VLC_ML_LIST_FOLDERS )
-                    ? m_ml->entryPoints()->all()
-                    : m_ml->bannedEntryPoints()->all();
-            auto res = ml_convert_list<vlc_ml_folder_list_t,
-                                         vlc_ml_folder_t>( entryPoints );
-            *(va_arg( args, vlc_ml_folder_list_t**) ) = res;
-            break;
-        }
         case VLC_ML_IS_INDEXED:
         {
             auto mrl = va_arg( args, const char* );
@@ -960,7 +949,24 @@ int MediaLibrary::List( int listQuery, const vlc_ml_query_params_t* params, va_l
                 vlc_assert_unreachable();
             }
         }
-
+        case VLC_ML_LIST_ENTRY_POINTS:
+        {
+            const bool banned = va_arg( args, int ) != 0;
+            const auto query = banned ? m_ml->bannedEntryPoints() : m_ml->entryPoints();
+            if ( query == nullptr )
+                return VLC_EGENERIC;
+            auto* res =
+                ml_convert_list<vlc_ml_folder_list_t, vlc_ml_folder_t>( query->all() );
+            *( va_arg( args, vlc_ml_folder_list_t** ) ) = res;
+            break;
+        }
+        case VLC_ML_COUNT_ENTRY_POINTS:
+        {
+            const bool banned = va_arg( args, int ) != 0;
+            const auto query = banned ? m_ml->bannedEntryPoints() : m_ml->entryPoints();
+            *( va_arg( args, size_t* ) ) = query ? query->count() : 0;
+            break;
+        }
     }
     return VLC_SUCCESS;
 }
