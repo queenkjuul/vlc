@@ -33,7 +33,7 @@ Container::BrowseStats FixedContainer::browse_direct_children( xml::Element& des
     for ( ; i + params.offset < params.requested; ++i )
     {
         const Object& child = children.at( i + params.offset );
-        dest.add_child(child.browse_metadata( dest.owner, extra ));
+        dest.add_child( child.browse_metadata( dest.owner, extra ) );
     }
     return { i, child_count };
 }

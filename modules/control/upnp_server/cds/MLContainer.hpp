@@ -3,6 +3,8 @@
 #include "Container.hpp"
 
 #include <vlc_media_library.h>
+#include <vlc_cxx_helpers.hpp>
+#include <vlc_url.h>
 
 #include "../utils.hpp"
 #include "Item.hpp"
@@ -141,6 +143,17 @@ class MLContainer : public Container
             doc.create_element( "dc:title", doc.create_text_node( show.psz_name ) ),
             doc.create_element( "upnp:episodeCount",
                                 doc.create_text_node( nb_episodes.c_str() ) ) );
+    }
+    void dump_mlobject_metadata( xml::Element& dest, const vlc_ml_folder_t& folder ) const
+    {
+        xml::Document& doc = dest.owner;
+
+        assert(!folder.b_banned);
+
+        const auto path = vlc::wrap_cptr( vlc_uri2path( folder.psz_mrl ), &free );
+        dest.add_children(
+            doc.create_element( "upnp:class", doc.create_text_node( "object.container" ) ),
+            doc.create_element( "dc:title", doc.create_text_node( path.get() ) ) );
     }
 };
 } // namespace cds

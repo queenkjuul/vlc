@@ -1,3 +1,4 @@
+#pragma once
 #include "Common.hpp"
 
 #include "Option.hpp"
@@ -35,6 +36,7 @@ using Playlist = Object<vlc_ml_playlist_t, VLC_ML_GET_PLAYLIST>;
 using Show = Object<vlc_ml_show_t, VLC_ML_GET_SHOW>;
 using Artist = Object<vlc_ml_artist_t, VLC_ML_GET_ARTIST>;
 using Genre = Object<vlc_ml_artist_t, VLC_ML_GET_GENRE>;
+using Folder = Object<vlc_ml_folder_t, VLC_ML_GET_FOLDER>;
 
 template <typename ListType,
           vlc_ml_list_queries ListQuery,
@@ -51,6 +53,8 @@ struct List : Object
         if ( id.has_value() )
             status = vlc_ml_list( &ml, CountQuery, nullptr, id.value(), &res );
         else if ( CountQuery == VLC_ML_COUNT_ARTISTS )
+            status = vlc_ml_list( &ml, CountQuery, nullptr, (int)false, &res );
+        else if ( CountQuery == VLC_ML_COUNT_ENTRY_POINTS )
             status = vlc_ml_list( &ml, CountQuery, nullptr, (int)false, &res );
         else
             status = vlc_ml_list( &ml, CountQuery, nullptr, &res );
@@ -69,15 +73,18 @@ struct List : Object
             status = vlc_ml_list( &ml, ListQuery, params, id.value(), &res );
         else if ( ListQuery == VLC_ML_LIST_ARTISTS )
             status = vlc_ml_list( &ml, ListQuery, params, (int)false, &res );
+        else if ( ListQuery == VLC_ML_LIST_ENTRY_POINTS )
+            status = vlc_ml_list( &ml, ListQuery, params, (int)false, &res );
         else
             status = vlc_ml_list( &ml, ListQuery, params, &res );
         return { status == VLC_SUCCESS ? res : nullptr, &ml_object_release<ListType> };
     }
 };
 
-using AllAudioList = List<vlc_ml_media_list_t, VLC_ML_LIST_AUDIOS, VLC_ML_COUNT_AUDIOS, Media>;
-using AllVideoList = List<vlc_ml_media_list_t, VLC_ML_LIST_VIDEOS, VLC_ML_COUNT_VIDEOS, Media>;
-using AllAlbumList = List<vlc_ml_album_list_t, VLC_ML_LIST_ALBUMS, VLC_ML_COUNT_ALBUMS, Media>;
+using AllAudio = List<vlc_ml_media_list_t, VLC_ML_LIST_AUDIOS, VLC_ML_COUNT_AUDIOS, Media>;
+using AllVideos = List<vlc_ml_media_list_t, VLC_ML_LIST_VIDEOS, VLC_ML_COUNT_VIDEOS, Media>;
+using AllAlbums = List<vlc_ml_album_list_t, VLC_ML_LIST_ALBUMS, VLC_ML_COUNT_ALBUMS, Media>;
+using AllEntryPoints = List<vlc_ml_folder_list_t, VLC_ML_LIST_ENTRY_POINTS, VLC_ML_COUNT_ENTRY_POINTS, Folder>;
 
 using AllArtistsList = List<vlc_ml_artist_list_t, VLC_ML_LIST_ARTISTS, VLC_ML_COUNT_ARTISTS, Media>;
 using ArtistAlbumList =
@@ -101,5 +108,7 @@ using PlaylistMediaList =
 using ShowsList = List<vlc_ml_show_list_t, VLC_ML_LIST_SHOWS, VLC_ML_COUNT_SHOW_EPISODES, Show>;
 using ShowsMediaList =
     List<vlc_ml_media_list_t, VLC_ML_LIST_SHOW_EPISODES, VLC_ML_COUNT_SHOW_EPISODES, Media>;
+
+using MediaFolderList = List<vlc_ml_media_list_t, VLC_ML_LIST_FOLDER_MEDIAS, VLC_ML_COUNT_FOLDER_MEDIAS, Media>;
 
 } // namespace ml
