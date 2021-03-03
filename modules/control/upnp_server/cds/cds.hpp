@@ -15,7 +15,6 @@ namespace cds
 
 std::tuple<unsigned, Object::ExtraId> parse_id( const std::string& id );
 
-std::vector<std::unique_ptr<Object>>
-init_hierarchy( vlc_medialibrary_t& ml, const TranscodeProfileList& transcode_profiles );
+std::vector<std::unique_ptr<Object>> init_hierarchy( vlc_medialibrary_t& ml );
 
 } // namespace cds

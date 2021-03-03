@@ -22,11 +22,9 @@
 
 #include "upnp_server.h"
 
-#include <upnp/ExtraHeaders.h>
 
 #include <vlc_common.h>
 
-#include "../stream_out/renderer_common.hpp"
 #include <vlc_addons.h>
 #include <vlc_cxx_helpers.hpp>
 #include <vlc_interface.h>
@@ -108,19 +106,24 @@ static bool cds_browse( UpnpActionRequest* p_request, intf_thread_t* p_intf )
       return false;
     }
 
+    auto* extra_hdrs = (UpnpListHead*)UpnpActionRequest_get_ExtraHeadersList( p_request );
+    const auto& client_profile =
+        p_sys->profile_from_headers( extra_hdrs, UpnpActionRequest_get_Os_cstr( p_request ) );
+
     std::string str_nb_returned;
     std::string str_total_matches;
     const cds::Object& obj = *p_sys->hierarchy[obj_idx];
-    if ( strcmp( psz_browse_flag, "BrowseDirectChildren" ) == 0 && obj.type == cds::Object::Type::Container)
+    if ( strcmp( psz_browse_flag, "BrowseDirectChildren" ) == 0 &&
+         obj.type == cds::Object::Type::Container )
     {
         const auto browse_stats = static_cast<const cds::Container&>( obj ).browse_direct_children(
-            didl_lite, { u_starting_index, u_requested_count }, extra_id );
+            didl_lite, { u_starting_index, u_requested_count }, extra_id, client_profile );
         str_nb_returned = std::to_string( browse_stats.result_count );
         str_total_matches = std::to_string( browse_stats.total_matches );
     }
     else if ( strcmp( psz_browse_flag, "BrowseMetadata" ) == 0 )
     {
-        didl_lite.add_child( obj.browse_metadata( result, extra_id ) );
+        didl_lite.add_child( obj.browse_metadata( result, extra_id, client_profile ) );
         str_nb_returned = "1";
         str_total_matches = "1";
     }
@@ -164,7 +167,7 @@ static void handle_action_request( UpnpActionRequest* p_request, intf_thread_t* 
         if ( strcmp( action_name, "GetProtocolInfo" ) == 0 )
         {
             UpnpAddToActionResponse( &action_result, action_name, cms_type, "Source",
-                                     "http-get:*:video/mp4:*,http-get:*:video/vnd.dlna.mpeg-tts:DLNA.ORG_PN=MPEG_TS_HD_NA" );
+                                     "http-get:*:*:*" );
             UpnpAddToActionResponse( &action_result, action_name, cms_type, "Sink", "" );
             UpnpActionRequest_set_ActionResult( p_request, action_result );
         }
@@ -256,12 +259,18 @@ static int Callback( Upnp_EventType event_type, const void* p_event, void* p_coo
 static int
 getinfo_cb( const char* url, UpnpFileInfo* info, intf_thread_t* intf, FileHandler** fhandler )
 {
-    msg_Dbg( intf, "GetInfo callback on: %s", url );
+    const char* user_agent = UpnpFileInfo_get_Os_cstr(info);
+    if (user_agent == nullptr)
+      return UPNP_E_BAD_REQUEST;
+
+    msg_Dbg( intf, "GetInfo callback on: \"%s\" from: \"%s\"", url, user_agent );
 
     UpnpFileInfo_set_IsReadable( info, true );
     UpnpFileInfo_set_IsDirectory( info, false );
 
-    auto file_handler = parse_url( url, *intf->p_sys );
+    auto* header_list = (UpnpListHead*)UpnpFileInfo_get_ExtraHeadersList(info);
+    const auto & client_profile = intf->p_sys->profile_from_headers(header_list, user_agent);
+    auto file_handler = parse_url( url, client_profile, *intf->p_sys );
 
     if ( file_handler == nullptr )
         return UPNP_E_FILE_NOT_FOUND;
@@ -283,7 +292,7 @@ open_cb( const char* url, enum UpnpOpenFileMode, intf_thread_t* intf, FileHandle
 
     FileHandler* ret = file_handler;
     if ( !ret )
-        ret = parse_url( url, *intf->p_sys ).release();
+        ret = parse_url( url, intf->p_sys->DEFAULT_PROFILES, *intf->p_sys ).release();
 
     if ( ret == nullptr )
         return nullptr;
@@ -502,16 +511,7 @@ int open( vlc_object_t* p_this )
     p_sys->up_upnp = vlc::wrap_cptr( UpnpInstanceWrapper::get( p_this ),
                                      []( UpnpInstanceWrapper* p_upnp ) { p_upnp->release(); } );
 
-    static const TranscodeProfile profile_arr[] = {
-//        { "high", CONVERSION_QUALITY_HIGH, {VLC_CODEC_H264, VLC_CODEC_VP8} },
-        { "low", CONVERSION_QUALITY_LOW, {VLC_CODEC_H264, VLC_CODEC_VP8}},
-    };
-    p_sys->transcode_profiles = {
-        sizeof( profile_arr ) / sizeof(TranscodeProfile),
-        profile_arr,
-    };
-
-    p_sys->hierarchy = cds::init_hierarchy(*p_ml, p_sys->transcode_profiles);
+    p_sys->hierarchy = cds::init_hierarchy(*p_ml);
 
     if ( !init_upnp( p_intf ) )
     {

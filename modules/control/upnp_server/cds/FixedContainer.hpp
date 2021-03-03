@@ -15,8 +15,10 @@ namespace cds {
                     const int64_t parent_id,
                     const char* name) noexcept;
 
-    BrowseStats
-    browse_direct_children( xml::Element&, BrowseParams, const Object::ExtraId& ) const final;
+    BrowseStats browse_direct_children( xml::Element&,
+                                        BrowseParams,
+                                        const Object::ExtraId&,
+                                        const ClientProfile& ) const final;
 
     void add_children(std::initializer_list<ObjRef> l) {
       for (Object& child : l) {

@@ -86,7 +86,7 @@ MimeType get_mimetype( vlc_ml_media_type_t type, const std::string& file_extensi
     const char* mime_end = file_extension.c_str();
     // special case for the transcode muxer to be widely accepted by a majority of players.
     if ( file_extension == "ts" )
-        mime_end = "vnd.dlna.mpeg-tts";
+        mime_end = "mpeg";
     switch ( type )
     {
     case VLC_ML_MEDIA_TYPE_AUDIO:
@@ -126,11 +126,11 @@ std::string infer_dlna_profile_name( const std::string& extension ) noexcept
     return profile;
 }
 
-std::string get_dlna_extra_protocol_info( const std::string& file_type, bool transcode ) noexcept
+std::string get_dlna_extra_protocol_info( const std::string& file_type, const TranscodeProfile* profile ) noexcept
 {
     std::ostringstream ret;
 
-    const auto dlna_profile = transcode ? "MPEG_TS_HD_NA" : infer_dlna_profile_name(file_type);
+    const auto dlna_profile = profile ? profile->mux.dlna_profile_name : infer_dlna_profile_name(file_type);
 
     if ( !dlna_profile.empty() )
         ret << "DLNA.ORG_PN=" << dlna_profile << ";";
@@ -140,7 +140,7 @@ std::string get_dlna_extra_protocol_info( const std::string& file_type, bool tra
                              DLNA_ORG_FLAG_CONNECTION_STALL | DLNA_ORG_FLAG_DLNA_V15;
     dlna_org_operation_t op;
     dlna_org_conversion_t conv;
-    if ( transcode )
+    if ( profile )
     {
         flags = flags | DLNA_ORG_FLAG_TIME_BASED_SEEK;
         op = DLNA_ORG_OPERATION_TIMESEEK;
@@ -214,4 +214,46 @@ time_t parse_dlna_npt_range( const char* value )
         return 0;
     }
 }
+
+namespace http {
+UpnpExtraHeaders* get_hdr( UpnpListHead* list, const std::string name )
+{
+    for ( auto* it = UpnpListBegin( list ); it != UpnpListEnd( list );
+          it = UpnpListNext( list, it ) )
+    {
+        UpnpExtraHeaders* hd = reinterpret_cast<UpnpExtraHeaders*>( it );
+        std::string hdr_name = UpnpExtraHeaders_get_name_cstr( hd );
+//        std::cerr << hdr_name << ": " << UpnpExtraHeaders_get_value_cstr( hd ) << "\n";
+        std::transform( std::begin( hdr_name ), std::end( hdr_name ), std::begin( hdr_name ),
+                        ::tolower );
+        if ( hdr_name == name )
+        {
+            return hd;
+        }
+    }
+    return nullptr;
+}
+
+void add_response_hdr( UpnpListHead* list, const std::pair<std::string, std::string> resp )
+{
+
+    auto hdr = get_hdr( list, resp.first );
+    const auto resp_str = resp.first + ": " + resp.second;
+ //   std::cerr << "RESP: " << resp_str << '\n';
+    if ( !hdr )
+    {
+        hdr = UpnpExtraHeaders_new();
+    }
+    UpnpExtraHeaders_set_resp( hdr, resp_str.c_str() );
+    UpnpListInsert( list, UpnpListEnd( list ),
+                    const_cast<UpnpListHead*>( UpnpExtraHeaders_get_node( hdr ) ) );
+}
+
+const char* get_extra_header( UpnpListHead* list, const char* name )
+{
+    auto hdr = get_hdr( list, name );
+    return hdr != nullptr ? UpnpExtraHeaders_get_value_cstr( hdr ) : nullptr;
+}
+}
+
 } // namespace utils

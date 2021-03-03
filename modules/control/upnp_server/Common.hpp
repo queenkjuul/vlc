@@ -8,15 +8,26 @@
 #include <vlc_media_library.h>
 
 #include <vector>
+#include <string>
 
 struct TranscodeProfile
 {
-    const char* psz_name;
-    int i_conversion_quality; // see stream_out/renderer_common.hpp
-    const std::vector<vlc_fourcc_t> codecs_fallbacks;
+    std::string name;
+    int conversion_quality; // see stream_out/renderer_common.hpp
+    int media_type;
+    const std::vector<vlc_fourcc_t> vcodecs_fallbacks;
+    vlc_fourcc_t acodec;
+    struct
+    {
+        const char* name;
+        const char* file_extension;
+        const char* dlna_profile_name;
+    } mux;
 };
 
-struct TranscodeProfileList {
-  unsigned u_size;
-  const TranscodeProfile *p_profiles;
+struct ClientProfile {
+  std::vector<TranscodeProfile> transcode_profiles;
+
+  // Set to false when the client only play the first media resource and ignore the others.
+  bool native_resource_first = true;
 };

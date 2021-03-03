@@ -19,4 +19,5 @@ struct FileHandler
     virtual ~FileHandler() = default;
 };
 
-std::unique_ptr<FileHandler> parse_url(const char *url, const intf_sys_t&) noexcept;
+std::unique_ptr<FileHandler>
+parse_url( const char* url, const ClientProfile&, const intf_sys_t& ) noexcept;

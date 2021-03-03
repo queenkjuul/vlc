@@ -51,7 +51,8 @@ libupnp_plugin_la_SOURCES = services_discovery/upnp.cpp services_discovery/upnp.
 					control/upnp_server/cds/MLContainer.hpp \
 					control/upnp_server/cds/MLContainerList.hpp \
 					control/upnp_server/cds/cds.hpp \
-					control/upnp_server/cds/cds.cpp
+					control/upnp_server/cds/cds.cpp \
+					control/upnp_server/Clients.cpp
 libupnp_plugin_la_CXXFLAGS = $(AM_CXXFLAGS) $(UPNP_CFLAGS)
 libupnp_plugin_la_LDFLAGS = $(AM_LDFLAGS) -rpath '$(sddir)'
 libupnp_plugin_la_LIBADD = $(UPNP_LIBS)

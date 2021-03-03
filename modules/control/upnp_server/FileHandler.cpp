@@ -9,19 +9,15 @@
 #include <vlc_rand.h>
 #include <vlc_stream_extractor.h>
 #include <vlc_url.h>
+#include <vlc_fourcc.h>
 
 #include <ctime>
-#include <upnp/ExtraHeaders.h>
 
 #include "stream_out/renderer_common.hpp"
 
 #define DLNA_TRANSFER_MODE "transfermode.dlna.org"
 #define DLNA_CONTENT_FEATURE "contentfeatures.dlna.org"
 #define DLNA_TIME_SEEK_RANGE "timeseekrange.dlna.org"
-
-static void add_response_hdr( UpnpListHead* head,
-                               const std::pair<std::string, std::string> value );
-const char* get_extra_header( UpnpListHead* hdr_list, const char* name );
 
 // Convenient cpp replacement of vlc_ml_file_t to not have to deal with allocation
 struct MLFile
@@ -53,8 +49,8 @@ struct MLFileHandler : FileHandler
 
         // const_cast is expected by the design of the upnp api...
         auto* head = const_cast<UpnpListHead*>( UpnpFileInfo_get_ExtraHeadersList( &info ) );
-        add_response_hdr( head, { DLNA_TRANSFER_MODE, "Streaming" } );
-        add_response_hdr( head, { DLNA_CONTENT_FEATURE, "DLNA.ORG_OP=01" } );
+        utils::http::add_response_hdr( head, { DLNA_TRANSFER_MODE, "Streaming" } );
+        utils::http::add_response_hdr( head, { DLNA_CONTENT_FEATURE, "DLNA.ORG_OP=01" } );
         return true;
     }
 
@@ -95,8 +91,6 @@ struct MLFileHandler : FileHandler
         return vlc_stream_Seek( stream.get(), real_offset ) == 0;
     }
 };
-
-static const char DEFAULT_MUXER[] = "ts";
 
 struct TrandscodedMediaFileHandler : FileHandler
 {
@@ -153,19 +147,19 @@ struct TrandscodedMediaFileHandler : FileHandler
         auto* head = const_cast<UpnpListHead*>( UpnpFileInfo_get_ExtraHeadersList( &info ) );
 
         // This header is passed by some players, let's use it !
-        const char* time_seek_range = get_extra_header( head, DLNA_TIME_SEEK_RANGE );
+        const char* time_seek_range = utils::http::get_extra_header( head, DLNA_TIME_SEEK_RANGE );
         if ( time_seek_range != nullptr )
         {
             const time_t media_begin = utils::parse_dlna_npt_range( time_seek_range );
             this->media_begin = std::min(media_begin, media->i_duration);
-            add_response_hdr(
+            utils::http::add_response_hdr(
                 head, { DLNA_TIME_SEEK_RANGE, std::to_string( media_begin / 1000. ) + '-' } );
         }
 
-        add_response_hdr( head, { DLNA_TRANSFER_MODE, "Streaming" } );
-        add_response_hdr( head, { DLNA_CONTENT_FEATURE, "DLNA.ORG_OP=10" } );
-        add_response_hdr( head, { "Pragma", "no-cache" } );
-        add_response_hdr( head, { "Cache-Control", "no-cache" } );
+        utils::http::add_response_hdr( head, { DLNA_TRANSFER_MODE, "Streaming" } );
+        utils::http::add_response_hdr( head, { DLNA_CONTENT_FEATURE, "DLNA.ORG_OP=10" } );
+        utils::http::add_response_hdr( head, { "Pragma", "no-cache" } );
+        utils::http::add_response_hdr( head, { "Cache-Control", "no-cache" } );
         return true;
     }
 
@@ -194,21 +188,6 @@ struct TrandscodedMediaFileHandler : FileHandler
             return false;
         }
 
-        const auto video_tracks = utils::get_media_tracks( *media, VLC_ML_TRACK_TYPE_VIDEO );
-        video_format_t fmt;
-        video_format_Init( &fmt, VLC_CODEC_I420 );
-        if ( video_tracks.empty() )
-        {
-            return false;
-        }
-        // TODO should be a runtime check, not sure about the correct behaviour tho.
-        assert( video_tracks.size() == 1 );
-
-        const vlc_ml_media_track_t& vtrack = video_tracks[0];
-        video_format_Setup( &fmt, VLC_CODEC_I420, vtrack.v.i_width, vtrack.v.i_height,
-                            vtrack.v.i_width, vtrack.v.i_height, 1, 1 );
-
-        vlc_fourcc_t codec = 0;
         std::stringstream transcode_line;
         // If a specific starting time is set, use the proxy to avoid sending unhandled
         // discontinuities.
@@ -220,20 +199,17 @@ struct TrandscodedMediaFileHandler : FileHandler
         {
             transcode_line << "sout=#transcode{";
         }
-        try
-        {
-            transcode_line << vlc_sout_renderer_GetVcodecOption(
-                VLC_OBJECT( parent ), profile.codecs_fallbacks, &codec, &fmt,
-                profile.i_conversion_quality ) /*<< "height=1080"*/;
-        }
-        catch ( const std::domain_error& e )
-        {
-            msg_Err( parent, "No encoder was fitting the transcode chain: %s", e.what() );
-            return false;
-        }
-        transcode_line << "}";
 
-        transcode_line << ":std{access=upnp-out,mux=" << DEFAULT_MUXER << "}";
+        switch(profile.media_type)
+        {
+          case VLC_ML_MEDIA_TYPE_VIDEO:
+              transcode_line << get_video_transcoding_params( VLC_OBJECT( parent ), profile );
+          /* Fallthrough to handle media audio tracks */
+          case VLC_ML_MEDIA_TYPE_AUDIO:
+              transcode_line << get_audio_transcoding_params( VLC_OBJECT( parent ), profile );
+            break;
+        }
+        transcode_line << "}:std{access=upnp-out,mux=" << profile.mux.name << "}";
 
         const auto transcode_line_str = transcode_line.str();
         int res = input_item_AddOption( item.get(), transcode_line_str.c_str(),
@@ -246,8 +222,7 @@ struct TrandscodedMediaFileHandler : FileHandler
         }
 
         msg_Info( parent, "Transcoding '%s' with profile '%s'", media->psz_title,
-                  profile.psz_name );
-        msg_Dbg( parent, "Transcode chain: %s", transcode_line_str.c_str() );
+                  profile.name.c_str() );
 
         var_Create( &obj->obj, Fifo::VAR_NAME, VLC_VAR_ADDRESS );
         var_SetAddress( &obj->obj, Fifo::VAR_NAME, new decltype(fifo)(fifo) );
@@ -272,6 +247,61 @@ struct TrandscodedMediaFileHandler : FileHandler
 
     // Byte based seeking isn't supported in transcoding.
     bool seek( SeekType, off_t ) noexcept final { return false; }
+
+  private:
+  std::string get_video_transcoding_params( vlc_object_t* parent,
+                                          const TranscodeProfile& profile ) const
+  {
+      std::string out;
+      const auto video_tracks = utils::get_media_tracks( *media, VLC_ML_TRACK_TYPE_VIDEO );
+
+      assert( !profile.vcodecs_fallbacks.empty() );
+      if ( !video_tracks.empty() )
+      {
+
+          video_format_t fmt;
+          video_format_Init( &fmt, VLC_CODEC_I420 );
+
+          const vlc_ml_media_track_t& vtrack = video_tracks[0];
+          video_format_Setup( &fmt, VLC_CODEC_I420, vtrack.v.i_width, vtrack.v.i_height,
+                              vtrack.v.i_width, vtrack.v.i_height, 1, 1 );
+          try
+          {
+              vlc_fourcc_t codec = 0;
+              out = vlc_sout_renderer_GetVcodecOption( VLC_OBJECT( parent ),
+                                                        profile.vcodecs_fallbacks, &codec, &fmt,
+                                                        profile.conversion_quality );
+          }
+          catch ( const std::domain_error& e )
+          {
+              msg_Err( parent, "No video encoder was fitting the transcode chain: %s", e.what() );
+          }
+          video_format_Clean( &fmt );
+      }
+      else
+          msg_Err( parent, "%s had no video tracks", media->psz_title );
+      return out;
+  }
+
+  std::string get_audio_transcoding_params( vlc_object_t* ,
+                                            const TranscodeProfile& profile ) const
+  {
+      std::stringstream out;
+
+      // No audio codec
+      if (profile.acodec == 0)
+        return "";
+
+      const auto audio_tracks = utils::get_media_tracks( *media, VLC_ML_TRACK_TYPE_AUDIO );
+      if ( !audio_tracks.empty() )
+      {
+          char codec[5] = { 0 };
+
+          vlc_fourcc_to_char( profile.acodec, codec );
+          out << "channels=2,acodec=" << codec;
+      }
+      return out.str();
+  }
 };
 
 template <typename MLHelper>
@@ -293,7 +323,8 @@ auto get_ml_object( const std::string& token, std::string& extension, vlc_medial
 }
 
 static std::unique_ptr<FileHandler> parse_media_url( std::stringstream& ss,
-                                                     const intf_sys_t& intf_sys )
+                                                     const intf_sys_t& intf_sys,
+                                                     const ClientProfile& client)
 {
     std::string token;
     std::getline( ss, token, '/' );
@@ -301,10 +332,9 @@ static std::unique_ptr<FileHandler> parse_media_url( std::stringstream& ss,
     const TranscodeProfile* profile = nullptr;
     if ( token != "native" )
     {
-        for ( unsigned i = 0; i < intf_sys.transcode_profiles.u_size; ++i )
+        for ( const auto& current_profile : client.transcode_profiles )
         {
-            const TranscodeProfile& current_profile = intf_sys.transcode_profiles.p_profiles[i];
-            if ( token == current_profile.psz_name )
+            if ( token == current_profile.name )
             {
                 profile = &current_profile;
                 break;
@@ -332,7 +362,7 @@ static std::unique_ptr<FileHandler> parse_media_url( std::stringstream& ss,
 
     if ( profile )
     {
-        auto mime_type = utils::get_mimetype( media->i_type, DEFAULT_MUXER );
+        auto mime_type = utils::get_mimetype( media->i_type, profile->mux.file_extension );
         return std::make_unique<TrandscodedMediaFileHandler>( std::move( mime_type ), *profile,
                                                               std::move( media ) );
     }
@@ -410,7 +440,8 @@ static std::unique_ptr<FileHandler> parse_subtitle_url( std::stringstream& ss,
         utils::MimeType{ "text", extension } );
 }
 
-std::unique_ptr<FileHandler> parse_url( const char* url, const intf_sys_t& intf_sys ) noexcept
+std::unique_ptr<FileHandler>
+parse_url( const char* url, const ClientProfile& client, const intf_sys_t& intf_sys ) noexcept
 {
     std::stringstream ss( url );
 
@@ -421,47 +452,10 @@ std::unique_ptr<FileHandler> parse_url( const char* url, const intf_sys_t& intf_
 
     std::getline( ss, token, '/' );
     if ( token == "media" )
-        return parse_media_url( ss, intf_sys );
+        return parse_media_url( ss, intf_sys, client );
     else if ( token == "thumbnail" )
         return parse_thumbnail_url( ss, intf_sys );
     else if ( token == "subtitle" )
         return parse_subtitle_url( ss, intf_sys );
     return nullptr;
-}
-
-static UpnpExtraHeaders* dlna_get_hdr( UpnpListHead* list, const std::string name )
-{
-    for ( auto* it = UpnpListBegin( list ); it != UpnpListEnd( list );
-          it = UpnpListNext( list, it ) )
-    {
-        UpnpExtraHeaders* hd = reinterpret_cast<UpnpExtraHeaders*>( it );
-        std::string hdr_name = UpnpExtraHeaders_get_name_cstr( hd );
-        std::transform( std::begin( hdr_name ), std::end( hdr_name ), std::begin( hdr_name ),
-                        ::tolower );
-        if ( hdr_name == name )
-        {
-            return hd;
-        }
-    }
-    return nullptr;
-}
-
-static void add_response_hdr( UpnpListHead* list, const std::pair<std::string, std::string> resp )
-{
-
-    auto hdr = dlna_get_hdr( list, resp.first );
-    const auto resp_str = resp.first + ": " + resp.second;
-    if ( !hdr )
-    {
-        hdr = UpnpExtraHeaders_new();
-    }
-    UpnpExtraHeaders_set_resp( hdr, resp_str.c_str() );
-    UpnpListInsert( list, UpnpListEnd( list ),
-                    const_cast<UpnpListHead*>( UpnpExtraHeaders_get_node( hdr ) ) );
-}
-
-const char* get_extra_header( UpnpListHead* list, const char* name )
-{
-    auto hdr = dlna_get_hdr( list, name );
-    return hdr != nullptr ? UpnpExtraHeaders_get_value_cstr( hdr ) : nullptr;
 }

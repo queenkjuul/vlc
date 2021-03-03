@@ -3,6 +3,8 @@
 #include "../Option.hpp"
 #include "../xml/xml_wrapper.hpp"
 
+#include "../Common.hpp"
+
 namespace cds
 {
 struct Object
@@ -35,11 +37,13 @@ struct Object
     }
     virtual ~Object() = default;
 
-    xml::Element browse_metadata( xml::Document& doc, const ExtraId& extra_id ) const
+    xml::Element browse_metadata( xml::Document& doc,
+                                  const ExtraId& extra_id,
+                                  const ClientProfile& profile ) const
     {
         auto ret = create_object_element( doc, extra_id );
 
-        dump_metadata( ret, extra_id );
+        dump_metadata( ret, extra_id, profile );
 
         return ret;
     }
@@ -78,6 +82,8 @@ struct Object
           return std::to_string( id ) + ':' + ml_id_str + '(' + extra_id->parent + ')';
         return std::to_string( id ) + ':' + ml_id_str;
     }
-    virtual void dump_metadata( xml::Element& dest, const ExtraId& extra_id ) const = 0;
+    virtual void dump_metadata( xml::Element& dest,
+                                const ExtraId& extra_id,
+                                const ClientProfile& profile ) const = 0;
 };
 } // namespace cds

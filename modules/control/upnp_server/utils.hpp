@@ -2,6 +2,8 @@
 
 #include "Common.hpp"
 
+#include <upnp/ExtraHeaders.h>
+
 #include <string>
 #include <vector>
 #include <chrono>
@@ -39,7 +41,7 @@ using MediaFileRef = ConstRef<vlc_ml_file_t>;
 std::vector<MediaFileRef> get_media_files(const vlc_ml_media_t& media, vlc_ml_file_type_t) noexcept;
 
 std::string get_dlna_extra_protocol_info( const std::string& dlna_profile,
-                                          bool transcode ) noexcept;
+                                          const TranscodeProfile* ) noexcept;
 std::string infer_dlna_profile_name( const std::string& extension ) noexcept;
 
 template <typename Rep, typename Pediod = std::ratio<1>>
@@ -54,4 +56,11 @@ std::string duration_to_string( const char* fmt, std::chrono::duration<Rep, Pedi
 }
 
 time_t parse_dlna_npt_range( const char* value );
+
+namespace http
+{
+UpnpExtraHeaders* get_hdr( UpnpListHead* list, const std::string name );
+void add_response_hdr( UpnpListHead* list, const std::pair<std::string, std::string> resp );
+const char* get_extra_header( UpnpListHead* list, const char* name );
+} // namespace http
 } // namespace utils

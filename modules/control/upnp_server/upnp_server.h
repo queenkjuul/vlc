@@ -27,13 +27,17 @@
 
 #include "../../services_discovery/upnp-wrapper.hpp"
 
+#include <vlc_block.h>
+#include <vlc_stream.h>
+#include <vlc_threads.h>
+
+#include <upnp/ExtraHeaders.h>
+
 #include <atomic>
 #include <functional>
 #include <memory>
 #include <vector>
-#include <vlc_block.h>
-#include <vlc_stream.h>
-#include <vlc_threads.h>
+#include <unordered_map>
 
 #define CDS_ID "urn:upnp-org:serviceId:ContentDirectory"
 #define CMS_ID "urn:upnp-org:serviceId:ConnectionManager"
@@ -134,9 +138,12 @@ typedef struct intf_sys_t
 
     std::atomic<unsigned int> i_update_id;
 
-    TranscodeProfileList transcode_profiles;
     std::vector<std::unique_ptr<cds::Object>> hierarchy;
 
+    static const std::unordered_map<std::string, ClientProfile> CLIENT_PROFILES;
+    static const ClientProfile DEFAULT_PROFILES;
+
+    static const ClientProfile &profile_from_headers(UpnpListHead*, const char *user_agent) noexcept;
 } intf_sys_t;
 
 struct Fifo

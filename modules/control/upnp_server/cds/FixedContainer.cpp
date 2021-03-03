@@ -23,7 +23,8 @@ FixedContainer::FixedContainer( const int64_t id,
 
 Container::BrowseStats FixedContainer::browse_direct_children( xml::Element& dest,
                                                                BrowseParams params,
-                                                               const Object::ExtraId& extra ) const
+                                                               const Object::ExtraId& extra,
+                                                               const ClientProfile& client) const
 {
     assert( child_count == children.size() );
     params.requested =
@@ -33,7 +34,7 @@ Container::BrowseStats FixedContainer::browse_direct_children( xml::Element& des
     for ( ; i + params.offset < params.requested; ++i )
     {
         const Object& child = children.at( i + params.offset );
-        dest.add_child( child.browse_metadata( dest.owner, extra ) );
+        dest.add_child( child.browse_metadata( dest.owner, extra, client) );
     }
     return { i, child_count };
 }

@@ -15,7 +15,6 @@ namespace cds
 class MLFolderContainer : public Container
 {
     vlc_medialibrary_t& ml;
-    const TranscodeProfileList& transcode_profiles;
     const Item& child;
 
     static void dump_folder_metadata(xml::Element& dest, const vlc_ml_folder_t& folder) {
@@ -52,20 +51,18 @@ class MLFolderContainer : public Container
                        int64_t parent_id,
                        const char* name,
                        vlc_medialibrary_t& ml,
-                       const TranscodeProfileList& profiles,
                        const Item& child )
         : Container( id, parent_id, name, 0 )
         , ml( ml )
-        , transcode_profiles( profiles )
         , child( child )
     {
     }
 
-    void dump_metadata( xml::Element& dest, const Object::ExtraId& extra ) const final
+    void dump_metadata( xml::Element& dest, const Object::ExtraId& extra, const ClientProfile& profile ) const final
     {
         if ( !extra.has_value() )
         {
-            Container::dump_metadata( dest, opt::nullopt );
+            Container::dump_metadata( dest, opt::nullopt, profile);
             return;
         }
         const auto folder = ml::Folder::get( ml, extra->ml_id );
@@ -78,7 +75,8 @@ class MLFolderContainer : public Container
 
     BrowseStats browse_direct_children( xml::Element& dest,
                                         const BrowseParams params,
-                                        const Object::ExtraId& extra ) const final
+                                        const Object::ExtraId& extra,
+                                        const ClientProfile& profile ) const final
     {
         const vlc_ml_query_params_t query_params = { nullptr, params.requested, params.offset,
                                                      VLC_ML_SORTING_DEFAULT, true };
@@ -119,7 +117,7 @@ class MLFolderContainer : public Container
                 const auto& media = media_list->p_items[i];
                 auto elem = child.create_object_element(
                     doc, ExtraIdData{ child.id, get_dynamic_id( extra ) } );
-                Item::dump_mlobject_metadata( elem, media, ml, transcode_profiles );
+                Item::dump_mlobject_metadata( elem, media, ml, profile );
                 dest.add_child( std::move( elem ) );
             }
         }
