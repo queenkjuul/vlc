@@ -33,7 +33,7 @@ libupnp_plugin_la_SOURCES = services_discovery/upnp.cpp services_discovery/upnp.
 			    stream_out/dlna/dlna.hpp \
 			    stream_out/dlna/dlna.cpp
 libupnp_plugin_la_CXXFLAGS = $(AM_CXXFLAGS) $(UPNP_CFLAGS)
-libupnp_plugin_la_LDFLAGS = $(AM_LDFLAGS) -rpath '$(sddir)'
+libupnp_plugin_la_LDFLAGS = $(AM_LDFLAGS) -rpath '$(sddir)' -lpthread
 libupnp_plugin_la_LIBADD = $(UPNP_LIBS)
 EXTRA_LTLIBRARIES += libupnp_plugin.la
 sd_LTLIBRARIES += $(LTLIBupnp)
