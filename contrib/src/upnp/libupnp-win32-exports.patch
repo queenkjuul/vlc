@@ -1,6 +1,18 @@
---- upnp/configure.ac.win32	2013-11-15 17:18:45.000000000 +0100
-+++ upnp/configure.ac	2018-05-17 11:41:56.647083600 +0200
-@@ -670,6 +670,17 @@ ACX_PTHREAD(
+From 6334d9726e409cec3c095a8764044aee7624032c Mon Sep 17 00:00:00 2001
+From: Alaric Senat <dev.asenat@posteo.net>
+Date: Wed, 10 Mar 2021 16:07:08 +0100
+Subject: win32 exports
+
+---
+ configure.ac  | 11 +++++++++++
+ libupnp.pc.in |  4 ++--
+ 2 files changed, 13 insertions(+), 2 deletions(-)
+
+diff --git a/configure.ac b/configure.ac
+index 2a73ca1..a92b3dc 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -759,6 +759,17 @@ AX_PTHREAD(
  CC="$PTHREAD_CC"
  CFLAGS="$PTHREAD_CFLAGS $CFLAGS"
  LIBS="$PTHREAD_LIBS $LIBS"
@@ -18,14 +30,20 @@
  #
  # Determine if pthread_rwlock_t is available
  #
---- upnp/libupnp.pc.in.win32	2010-12-23 21:24:05.000000000 +0100
-+++ upnp/libupnp.pc.in	2018-05-17 11:43:06.014745400 +0200
-@@ -6,6 +6,6 @@ includedir=@includedir@
+diff --git a/libupnp.pc.in b/libupnp.pc.in
+index 8c6fc22..fa93393 100644
+--- a/libupnp.pc.in
++++ b/libupnp.pc.in
+@@ -6,7 +6,7 @@ includedir=@includedir@
  Name: libupnp
  Description: Linux SDK for UPnP Devices
  Version: @VERSION@
--Libs: @PTHREAD_CFLAGS@ @PTHREAD_LIBS@ -L${libdir} -lupnp -lthreadutil -lixml 
+-Libs: @PTHREAD_CFLAGS@ @PTHREAD_LIBS@ -L${libdir} -lupnp -lixml
+ Libs.private: @OPENSSL_LIBS@
 -Cflags: @PTHREAD_CFLAGS@ -I${includedir}/upnp
-+Libs: -L${libdir} -lupnp -lthreadutil -lixml @PTHREAD_LIBS@ @WIN32_LIBS@
++Libs: -L${libdir} -lupnp -lixml @PTHREAD_LIBS@ @WIN32_LIBS@
 +Cflags: @PC_CFLAGS@ -I${includedir}/upnp
  
+-- 
+2.29.2
+
