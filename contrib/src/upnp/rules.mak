@@ -17,18 +17,18 @@ $(TARBALLS)/libupnp-$(UPNP_VERSION).tar.bz2:
 UPNP_CFLAGS := $(CFLAGS) -DUPNP_STATIC_LIB
 UPNP_CXXFLAGS := $(CXXFLAGS) -DUPNP_STATIC_LIB
 UPNP_LDFLAGS := $(LDFLAGS)
-CONFIGURE_ARGS := --disable-samples --enable-shared=no --enable-static=yes
+UPNP_CONFIG := --disable-samples --enable-shared=no --enable-static=yes
 
 ifdef HAVE_WIN32
 DEPS_upnp += pthreads $(DEPS_pthreads)
 endif
 ifdef HAVE_WINSTORE
-CONFIGURE_ARGS += --disable-ipv6 --enable-unspecified_server
+UPNP_CONFIG += --disable-ipv6 --enable-unspecified_server
 else
-CONFIGURE_ARGS += --enable-ipv6
+UPNP_CONFIG += --enable-ipv6
 endif
 ifndef WITH_OPTIMIZATION
-CONFIGURE_ARGS += --enable-debug 
+UPNP_CONFIG += --enable-debug
 endif
 
 upnp: libupnp-$(UPNP_VERSION).tar.bz2 .sum-upnp
@@ -51,6 +51,6 @@ endif
 
 .upnp: upnp
 	$(RECONF)
-	cd $< && $(HOSTVARS) LDFLAGS="$(UPNP_LDFLAGS)" CFLAGS="$(UPNP_CFLAGS)" CXXFLAGS="$(UPNP_CXXFLAGS)" ./configure $(CONFIGURE_ARGS) $(HOSTCONF)
+	cd $< && $(HOSTVARS) LDFLAGS="$(UPNP_LDFLAGS)" CFLAGS="$(UPNP_CFLAGS)" CXXFLAGS="$(UPNP_CXXFLAGS)" ./configure $(UPNP_CONFIG) $(HOSTCONF)
 	cd $< && $(MAKE) install
 	touch $@
