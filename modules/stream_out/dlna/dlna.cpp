@@ -105,29 +105,11 @@ static char *getServerIPAddress() {
 
 std::string dlna_write_protocol_info (const protocol_info_t info)
 {
-    std::ostringstream protocol;
-    char dlna_info[448];
-
-    if (info.transport == DLNA_TRANSPORT_PROTOCOL_HTTP)
-        protocol << "http-get:*:";
-
-    protocol << info.profile.mime;
-    protocol << ":";
-
-    if (info.profile.name != "*")
-        protocol << "DLNA.ORG_PN=" << info.profile.name.c_str() << ";";
-
-    dlna_org_flags_t flags = DLNA_ORG_FLAG_STREAMING_TRANSFER_MODE |
-                             DLNA_ORG_FLAG_BACKGROUND_TRANSFERT_MODE |
-                             DLNA_ORG_FLAG_CONNECTION_STALL |
-                             DLNA_ORG_FLAG_DLNA_V15;
-    sprintf (dlna_info, "%s=%.2x;%s=%d;%s=%.8x%.24x",
-               "DLNA.ORG_OP", DLNA_ORG_OPERATION_RANGE,
-               "DLNA.ORG_CI", info.ci,
-               "DLNA.ORG_FLAGS", flags, 0);
-    protocol << dlna_info;
-
-    return protocol.str();
+    const dlna_org_flags_t flags = DLNA_ORG_FLAG_STREAMING_TRANSFER_MODE |
+                                   DLNA_ORG_FLAG_BACKGROUND_TRANSFERT_MODE |
+                                   DLNA_ORG_FLAG_CONNECTION_STALL |
+                                   DLNA_ORG_FLAG_DLNA_V15;
+  return dlna_write_protocol_info(info, flags, DLNA_ORG_OPERATION_RANGE);
 }
 
 std::vector<std::string> split(const std::string &s, char delim) {
