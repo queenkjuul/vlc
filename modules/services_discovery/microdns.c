@@ -359,7 +359,7 @@ parse_entries( const struct rr_entry *p_entries, bool b_renderer,
                         /*
                          * For chromecast, the `ca=` is composed from (at least)
                          * 0x01 to indicate video support
-                         * 0x04 to indivate audio support
+                         * 0x04 to indicate audio support
                          */
                         if ( ( ca & 0x01 ) != 0 )
                             p_srv->renderer.i_renderer_flags |= VLC_RENDERER_CAN_VIDEO;
