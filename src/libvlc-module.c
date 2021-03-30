@@ -1191,6 +1191,11 @@ static const char *const psz_recursive_list_text[] = {
 #define SD_LONGTEXT N_( \
      "Specifies the services discovery modules to preload, separated by " \
      "colons. Typical value is \"sap\"." )
+#define RD_TEXT N_( "Main player renderer URI")
+#define RD_LONGTEXT N_( \
+     "Set the primary renderer URI that the main player will cast to." \
+     "The renderer URI should start by a valid renderer module name " \
+     "(e.g: chromecast://127.0.0.1:8009)" )
 
 #define RANDOM_TEXT N_("Play files randomly forever")
 #define RANDOM_LONGTEXT N_( \
@@ -2196,6 +2201,7 @@ vlc_module_begin ()
               "Flatten files listed by extractors (archive)", NULL, true )
         change_volatile()
 
+    add_string( "renderer", "", RD_TEXT, RD_LONGTEXT, false )
     set_subcategory( SUBCAT_PLAYLIST_SD )
     add_string( "services-discovery", "", SD_TEXT, SD_LONGTEXT, true )
         change_short('S')

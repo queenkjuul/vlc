@@ -41,6 +41,7 @@
 #include <vlc_common.h>
 #include <vlc_modules.h>
 #include <vlc_interface.h>
+#include <vlc_renderer_discovery.h>
 #include <vlc_playlist.h>
 #include "libvlc.h"
 #include "../lib/libvlc_internal.h"
@@ -48,6 +49,29 @@
 
 static int AddIntfCallback( vlc_object_t *, char const *,
                             vlc_value_t , vlc_value_t , void * );
+
+static void
+PlaylistSetPlayerRenderer(vlc_player_t* player, const char *renderer)
+{
+        const char *demux_filter = "";
+        static const char cc_identifier[] = "chromecast://";
+        if ( strncmp( renderer, cc_identifier, sizeof( cc_identifier ) ) )
+            demux_filter = "cc_demux";
+
+        /* We can't know the capabilities of the renderer without querying it.
+         * For now users will have to pass --no-audio or --no-video if the renderer doesn't support
+         * one of thoses */
+        static const int flags = VLC_RENDERER_CAN_AUDIO | VLC_RENDERER_CAN_VIDEO;
+
+        /* For now renderer types are only used as information displayed to the user in UIs.
+         * Creating a special type for this use case seem's ok. */
+        const char *type = "CLI specified";
+
+        vlc_renderer_item_t* item =
+            vlc_renderer_item_new( type, NULL, renderer, NULL, demux_filter, NULL, flags );
+        vlc_player_SetRenderer( player, item );
+        vlc_renderer_item_release( item );
+}
 
 static void
 PlaylistConfigureFromVariables(vlc_playlist_t *playlist, vlc_object_t *obj)
@@ -91,6 +115,13 @@ PlaylistConfigureFromVariables(vlc_playlist_t *playlist, vlc_object_t *obj)
     vlc_player_SetMediaStoppedAction(player, media_stopped_action);
     vlc_player_SetStartPaused(player, start_paused);
     vlc_player_SetPauseOnCork(player, playlist_cork);
+
+    char *renderer = var_InheritString(obj, "renderer");
+    if (renderer)
+    {
+        PlaylistSetPlayerRenderer(player, renderer);
+        free( renderer );
+    }
 
     vlc_playlist_Unlock(playlist);
 }
