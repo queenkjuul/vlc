@@ -543,4 +543,6 @@ libvlc_json_la_SOURCES = \
 libvlc_json_la_CPPFLAGS = $(AM_CPPFLAGS) -I$(srcdir)/demux/json
 libvlc_json_la_LIBADD = $(LTLIBVLCCORE) ../compat/libcompat.la $(LIBM)
 libvlc_json_la_LDFLAGS = -static
+if !HAVE_EMSCRIPTEN
 noinst_LTLIBRARIES += libvlc_json.la
+endif
