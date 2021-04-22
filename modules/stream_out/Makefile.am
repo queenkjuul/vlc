@@ -30,6 +30,7 @@ libstream_out_transcode_plugin_la_SOURCES = \
 	stream_out/transcode/audio.c stream_out/transcode/video.c
 libstream_out_transcode_plugin_la_CFLAGS = $(AM_CFLAGS)
 libstream_out_transcode_plugin_la_LIBADD = $(LIBM)
+libstream_out_hls_plugin_la_SOURCES = stream_out/hls.c
 
 sout_LTLIBRARIES = \
 	libstream_out_dummy_plugin.la \
@@ -47,7 +48,8 @@ sout_LTLIBRARIES = \
 	libstream_out_record_plugin.la \
 	libstream_out_smem_plugin.la \
 	libstream_out_setid_plugin.la \
-	libstream_out_transcode_plugin.la
+	libstream_out_transcode_plugin.la \
+	libstream_out_hls_plugin.la
 
 if HAVE_DECKLINK
 libstream_out_sdi_plugin_la_CXXFLAGS = $(AM_CXXFLAGS) $(CPPFLAGS_decklinkoutput)

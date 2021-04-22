@@ -30,6 +30,9 @@
 # include "config.h"
 #endif
 
+#include <assert.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <sys/types.h>
 #include <time.h>
 #include <fcntl.h>
@@ -104,7 +107,14 @@ static void Close( vlc_object_t * );
 
 #define INTITIAL_SEG_TEXT N_("Number of first segment")
 #define INITIAL_SEG_LONGTEXT N_("The number of the first segment generated")
+#define NO_FS_TEXT                                                             \
+    N_( "Don't store the segments on the filesystem (live only)" )
+#define NO_FS_LONGTEXT                                                         \
+    N_( "The segmented track will be stored in memory instead of on the "      \
+        "filesystem, be cautious as it can lead to big memory consumption if " \
+        "the segment number is too high" )
 
+/* clang-format off */
 vlc_module_begin ()
     set_description( N_("HTTP Live streaming output") )
     set_shortname( N_("LiveHTTP" ))
@@ -125,6 +135,8 @@ vlc_module_begin ()
               NOCACHE_TEXT, NOCACHE_LONGTEXT )
     add_bool( SOUT_CFG_PREFIX "generate-iv", false,
               RANDOMIV_TEXT, RANDOMIV_LONGTEXT )
+    add_bool( SOUT_CFG_PREFIX "no-fs", false,
+              NO_FS_TEXT, NO_FS_LONGTEXT )
     add_string( SOUT_CFG_PREFIX "index", NULL,
                 INDEX_TEXT, INDEX_LONGTEXT )
     add_string( SOUT_CFG_PREFIX "index-url", NULL,
@@ -136,31 +148,57 @@ vlc_module_begin ()
     add_loadfile(SOUT_CFG_PREFIX "key-loadfile", NULL,
                  KEYLOADFILE_TEXT, KEYLOADFILE_LONGTEXT)
     set_callbacks( Open, Close )
-vlc_module_end ()
-
+vlc_module_end ();
+/* clang-format on */
 
 /*****************************************************************************
  * Exported prototypes
  *****************************************************************************/
-static const char *const ppsz_sout_options[] = {
-    "seglen",
-    "splitanywhere",
-    "numsegs",
-    "delsegs",
-    "index",
-    "index-url",
-    "ratecontrol",
-    "caching",
-    "key-uri",
-    "key-file",
-    "key-loadfile",
-    "generate-iv",
-    "initial-segment-number",
-    NULL
-};
+static const char *const ppsz_sout_options[] = { "seglen",
+                                                 "splitanywhere",
+                                                 "numsegs",
+                                                 "delsegs",
+                                                 "index",
+                                                 "index-url",
+                                                 "ratecontrol",
+                                                 "caching",
+                                                 "key-uri",
+                                                 "key-file",
+                                                 "key-loadfile",
+                                                 "generate-iv",
+                                                 "initial-segment-number",
+                                                 "no-fs",
+                                                 NULL };
 
 static ssize_t Write( sout_access_out_t *, block_t * );
 static int Control( sout_access_out_t *, int, va_list );
+
+/*****************************************************************************
+ * IO
+ *****************************************************************************/
+
+typedef struct hls_io hls_io;
+
+static hls_io *hls_io_NewFile( const char *path, int flags );
+static hls_io *hls_io_NewFIFO();
+
+typedef struct
+{
+    int ( *open )( hls_io * );
+    void ( *write )( hls_io *, uint8_t[], size_t );
+    ssize_t ( *read )( hls_io *, size_t );
+    void ( *close )( hls_io * );
+    void ( *release )( hls_io * );
+} hls_io_ops;
+
+struct hls_io
+{
+    vlc_mutex_t lock;
+    bool eof;
+    void *sys;
+
+    hls_io_ops ops;
+};
 
 typedef struct output_segment
 {
@@ -196,6 +234,7 @@ typedef struct
     bool b_caching;
     bool b_generate_iv;
     bool b_segment_has_data;
+    bool b_no_fs;
     uint8_t aes_ivs[16];
     gcry_cipher_hd_t aes_ctx;
     char *key_uri;
@@ -1042,4 +1081,63 @@ static ssize_t Write( sout_access_out_t *p_access, block_t *p_buffer )
     }
 
     return i_write;
+}
+
+/*****************************************************************************
+ * IO: File
+ *****************************************************************************/
+typedef struct
+{
+    const char *path;
+    int flags;
+    int fd;
+} hls_io_FileData;
+
+static int file_open( hls_io *self )
+{
+    hls_io_FileData *sys = self->sys;
+
+    assert( sys->fd == -1 ); // Assert that the file isn't already open
+
+    sys->fd = vlc_open( sys->path, sys->flags );
+    return sys->fd == -1 ? VLC_EGENERIC : VLC_SUCCESS;
+}
+
+static void file_close( hls_io *self )
+{
+    const hls_io_FileData *sys = self->sys;
+    vlc_close(sys->fd);
+}
+
+static void file_write(hls_io* self, uint8_t buffer[], size_t size)
+{
+    const hls_io_FileData *sys = self->sys;
+    write(sys->fd, buffer, size);
+}
+
+static ssize_t file_read(hls_io* self, uint8_t buffer[], size_t size)
+{
+    const hls_io_FileData *sys = self->sys;
+    write(sys->fd, buffer, size);
+}
+
+static hls_io *hls_io_NewFile( const char *path, int flags )
+{
+    hls_io *ret = calloc( 1, sizeof( *ret ) );
+    if ( unlikely( ret == NULL ) )
+        return NULL;
+
+    vlc_mutex_init( &ret->lock );
+
+    hls_io_FileData *sys = malloc( sizeof( *sys ) );
+    if ( unlikely( sys == NULL ) )
+    {
+        free( ret );
+        return NULL;
+    }
+    *sys = ( hls_io_FileData ){ .path = path, .flags = flags, .fd = -1 };
+    ret->sys = sys;
+
+    ret->ops = ( hls_io_ops ){ .open = file_open, .close = file_close };
+    return ret;
 }
