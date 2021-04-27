@@ -65,6 +65,7 @@ enum vout_window_type {
     VOUT_WINDOW_TYPE_WAYLAND /**< Wayland surface */,
     VOUT_WINDOW_TYPE_DCOMP /**< Win32 DirectComposition */,
     VOUT_WINDOW_TYPE_KMS /**< DRM KMS CRTC */,
+    VOUT_WINDOW_TYPE_EMSCRIPTEN_WEBGL /**< Emscripten surface */,
 };
 
 /**
@@ -385,6 +386,7 @@ typedef struct vout_window_t {
         struct wl_surface *wl;   /**< Wayland surface (client pointer) */
         void     *dcomp_visual;  /**<  Win32 direct composition visual */
         uint32_t crtc;           /**< KMS CRTC identifier */
+        uint32_t em_context;     /* Emscripten webgl context */
     } handle;
 
     /** Display server (mandatory)
