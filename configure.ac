@@ -3251,13 +3251,17 @@ have_gl="no"
 PKG_CHECK_MODULES([GL], [gl], [
   have_gl="yes"
 ], [
-  AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
+  AC_MSG_CHECKING([for OpenGL])
+  AC_LINK_IFELSE([AC_LANG_PROGRAM([[
 #ifdef _WIN32
 # include <GL/glew.h>
 #endif
 #include <GL/gl.h>
-]], [
-    [int t0 = GL_TEXTURE0;]])
+]], [[
+	int t0 = GL_TEXTURE0;
+	// glColorMaterial is unavailable in webgl, and emscripten
+	glColorMaterial(GL_FRONT, GL_AMBIENT_AND_DIFFUSE);
+	]])
   ], [
     GL_CFLAGS=""
     AS_IF([test "${SYS}" != "mingw32"], [
