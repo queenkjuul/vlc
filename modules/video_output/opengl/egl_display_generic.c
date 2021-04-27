@@ -52,8 +52,8 @@ static vlc_egl_display_open_fn Open;
 static int
 Open(struct vlc_egl_display *display)
 {
-#ifdef __ANDROID__
-    /* The default display is refcounted on Android */
+#if defined(__ANDROID__) || defined(__EMSCRIPTEN__)
+    /* The default display is refcounted on Android and Emscripten */
     display->display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
 #elif defined(EGL_KHR_display_reference)
     const char *extensions = eglQueryString(EGL_NO_DISPLAY, EGL_EXTENSIONS);
