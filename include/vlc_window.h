@@ -67,6 +67,7 @@ enum vlc_window_type {
     VLC_WINDOW_TYPE_DCOMP /**< Win32 DirectComposition */,
     VLC_WINDOW_TYPE_KMS /**< DRM KMS CRTC */,
     VLC_WINDOW_TYPE_MMAL /**< MMAL window */,
+    VLC_WINDOW_TYPE_EMSCRIPTEN_WEBGL /**< Emscripten surface */,
 };
 
 /**
@@ -400,6 +401,7 @@ typedef struct vlc_window {
         void     *dcomp_visual;  /**<  Win32 direct composition visual */
         uint32_t crtc;           /**< KMS CRTC identifier */
         int      display_id;     /**< MMAL display ID */
+        uint32_t em_context;     /* Emscripten webgl context */
     } handle;
 
     /** Display server (mandatory)
