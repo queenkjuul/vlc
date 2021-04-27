@@ -345,6 +345,13 @@ libcaca_plugin_la_LDFLAGS = $(AM_LDFLAGS) -rpath '$(voutdir)'
 EXTRA_LTLIBRARIES += libcaca_plugin.la
 vout_LTLIBRARIES += $(LTLIBcaca)
 
+### Emscripten ###
+libemscripten_window_plugin_la_SOURCES = video_output/emscripten.c
+
+if HAVE_EMSCRIPTEN
+vout_LTLIBRARIES += libemscripten_window_plugin.la
+endif
+
 ### Common ###
 
 libflaschen_plugin_la_SOURCES = video_output/flaschen.c
