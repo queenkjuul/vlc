@@ -134,3 +134,8 @@ endif
 if HAVE_TVOS
 aout_LTLIBRARIES += libaudiounit_ios_plugin.la
 endif
+
+libemworklet_audio_plugin_la_SOURCES = audio_output/emscripten.cpp
+if HAVE_EMSCRIPTEN
+aout_LTLIBRARIES += libemworklet_audio_plugin.la
+endif
