@@ -2272,6 +2272,11 @@ vlc_module_begin ()
     add_module_list_cat("control", SUBCAT_INTERFACE_CONTROL, NULL,
                         CONTROL_TEXT, CONTROL_LONGTEXT)
 
+    set_subcategory( SUBCAT_INTERFACE_SERVER )
+    add_module_list_cat("server", SUBCAT_INTERFACE_SERVER, NULL,
+                        CONTROL_TEXT, CONTROL_LONGTEXT)
+        change_volatile()
+
 /* Hotkey options*/
     set_subcategory( SUBCAT_INTERFACE_HOTKEYS )
     add_category_hint(N_("Hot keys"), HOTKEY_CAT_LONGTEXT)
