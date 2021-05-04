@@ -81,8 +81,7 @@ static const char *const ppsz_snap_formats[] =
     "values are \"rc\" (remote control), \"http\", \"gestures\" ...)")
 
 #define CONTROL_TEXT N_("Control interfaces")
-#define CONTROL_LONGTEXT N_( \
-    "You can select control interfaces for VLC.")
+#define CONTROL_LONGTEXT N_("You can select control interfaces for VLC.")
 
 #define VERBOSE_TEXT N_("Verbosity (0,1,2)")
 #define VERBOSE_LONGTEXT N_( \
