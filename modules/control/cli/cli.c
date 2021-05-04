@@ -196,7 +196,7 @@ static int Intf(struct cli_client *cl, const char *const *args, size_t count,
 
     (void) cl;
 
-    return intf_Create(vlc_object_instance(intf), count == 1 ? "" : args[1]);
+    return intf_Create(vlc_object_instance(intf), "interface",  count == 1 ? "" : args[1]);
 }
 
 static int Quit(struct cli_client *cl, const char *const *args, size_t count,

@@ -45,7 +45,7 @@ static void Close( vlc_object_t *p_this );
 
 static void AutoRun(libvlc_int_t *libvlc)
 {
-    intf_Create(libvlc, MODULE_STRING);
+    intf_Create(libvlc, "interface", MODULE_STRING);
 }
 
 /*****************************************************************************

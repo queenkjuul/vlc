@@ -128,7 +128,7 @@ vlc_intf_GetMainPlaylist(intf_thread_t *intf)
  * @param chain configuration chain string
  * @return VLC_SUCCESS or an error code
  */
-int intf_Create( libvlc_int_t *libvlc, const char *chain )
+int intf_Create( libvlc_int_t *libvlc, const char *capability, const char *chain )
 {
     assert( libvlc );
     libvlc_priv_t *priv = libvlc_priv(libvlc);
@@ -169,7 +169,7 @@ int intf_Create( libvlc_int_t *libvlc, const char *chain )
 
     p_intf->p_cfg = NULL;
     free( config_ChainCreate( &module, &p_intf->p_cfg, chain ) );
-    p_intf->p_module = module_need( p_intf, "interface", module, true );
+    p_intf->p_module = module_need( p_intf, capability, module, true );
     free(module);
     if( p_intf->p_module == NULL )
     {
@@ -264,7 +264,7 @@ int libvlc_InternalAddIntf(libvlc_int_t *libvlc, const char *name)
     int ret;
 
     if (name != NULL)
-        ret = intf_Create(libvlc, name);
+        ret = intf_Create(libvlc, "interface", name);
     else
     {   /* Default interface */
         libvlc_AutoRun(libvlc);
@@ -274,7 +274,7 @@ int libvlc_InternalAddIntf(libvlc_int_t *libvlc, const char *name)
             msg_Info(libvlc, _("Running vlc with the default interface. "
                      "Use 'cvlc' to use vlc without interface."));
 
-        ret = intf_Create(libvlc, intf);
+        ret = intf_Create(libvlc, "interface", intf);
         free(intf);
         name = "default";
     }
@@ -315,7 +315,7 @@ void intf_DestroyAll(libvlc_int_t *libvlc)
 static int AddIntfCallback( vlc_object_t *obj, char const *var,
                             vlc_value_t old, vlc_value_t cur, void *data )
 {
-    int ret = intf_Create( vlc_object_instance(obj), cur.psz_string );
+    int ret = intf_Create( vlc_object_instance(obj), "interface", cur.psz_string );
     if( ret )
         msg_Err( obj, "interface \"%s\" initialization failed",
                  cur.psz_string );

@@ -72,7 +72,7 @@ static void Close(vlc_object_t *);
 static void AutoRun(libvlc_int_t *libvlc)
 {
     if (var_InheritBool(libvlc, "network-synchronisation"))
-        intf_Create(libvlc, MODULE_STRING);
+        intf_Create(libvlc, "interface", MODULE_STRING);
 }
 
 vlc_module_begin()
