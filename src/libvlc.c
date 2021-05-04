@@ -101,7 +101,7 @@ libvlc_int_t * libvlc_InternalCreate( void )
     return p_libvlc;
 }
 
-static void libvlc_AddInterfaces(libvlc_int_t *libvlc, const char *varname)
+static void libvlc_InternalParseInterfaceChain(libvlc_int_t *libvlc, const char *varname, int (*add_intf)(libvlc_int_t*, const char *))
 {
     char *str = var_InheritString(libvlc, varname);
     if (str == NULL)
@@ -111,11 +111,22 @@ static void libvlc_AddInterfaces(libvlc_int_t *libvlc, const char *varname)
     char *intf = strtok_r(str, ":", &state);
 
     while (intf != NULL) {
-        libvlc_InternalAddIntf(libvlc, intf);
+        add_intf(libvlc, intf);
         intf = strtok_r(NULL, ":", &state);
     }
 
     free(str);
+
+}
+
+static void libvlc_AddInterfaces(libvlc_int_t *libvlc, const char *varname)
+{
+    libvlc_InternalParseInterfaceChain(libvlc, varname, &libvlc_InternalAddIntf);
+}
+
+static void libvlc_AddServerInterfaces(libvlc_int_t *libvlc)
+{
+    libvlc_InternalParseInterfaceChain(libvlc, "server", &libvlc_InternalAddServerIntf);
 }
 
 /**
@@ -278,6 +289,7 @@ int libvlc_InternalInit( libvlc_int_t *p_libvlc, int i_argc,
      */
     libvlc_AddInterfaces(p_libvlc, "extraintf");
     libvlc_AddInterfaces(p_libvlc, "control");
+    libvlc_AddServerInterfaces(p_libvlc);
 
 #ifdef __APPLE__
     var_Create( p_libvlc, "drawable-view-top", VLC_VAR_INTEGER );

@@ -283,6 +283,16 @@ int libvlc_InternalAddIntf(libvlc_int_t *libvlc, const char *name)
     return ret;
 }
 
+int libvlc_InternalAddServerIntf(libvlc_int_t *libvlc, const char *name)
+{
+    assert(name != NULL);
+    const int ret = intf_Create(libvlc, name, "interface server");
+
+    if (ret != VLC_SUCCESS)
+        msg_Err(libvlc, "server interface \"%s\" initialization failed", name);
+    return ret;
+}
+
 /**
  * Stops and destroys all interfaces, then the playlist.
  * @warning FIXME
