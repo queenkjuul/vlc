@@ -48,6 +48,8 @@
 
 static int AddIntfCallback( vlc_object_t *, char const *,
                             vlc_value_t , vlc_value_t , void * );
+static int AddServerCallback( vlc_object_t *obj, char const *var,
+                              vlc_value_t old, vlc_value_t cur, void *data );
 
 static void
 PlaylistConfigureFromVariables(vlc_playlist_t *playlist, vlc_object_t *obj)
@@ -154,15 +156,20 @@ int intf_Create( libvlc_int_t *libvlc, const char *capability, const char *chain
         val.psz_string = (char *)"rc,none";
         var_Change( p_intf, "intf-add", VLC_VAR_ADDCHOICE, val, _("Console") );
     }
-    val.psz_string = (char *)"telnet,none";
-    var_Change( p_intf, "intf-add", VLC_VAR_ADDCHOICE, val, _("Telnet") );
-    val.psz_string = (char *)"http,none";
-    var_Change( p_intf, "intf-add", VLC_VAR_ADDCHOICE, val, _("Web") );
     val.psz_string = (char *)"gestures,none";
     var_Change( p_intf, "intf-add", VLC_VAR_ADDCHOICE, val,
                 _("Mouse Gestures") );
 
     var_AddCallback( p_intf, "intf-add", AddIntfCallback, NULL );
+
+    var_Create( p_intf, "serv-add", VLC_VAR_STRING | VLC_VAR_ISCOMMAND );
+    var_Change( p_intf, "serv-add", VLC_VAR_SETTEXT, _("Add Server Interface") );
+    val.psz_string = (char *)"telnet,none";
+    var_Change( p_intf, "serv-add", VLC_VAR_ADDCHOICE, val, _("Telnet") );
+    val.psz_string = (char *)"http,none";
+    var_Change( p_intf, "serv-add", VLC_VAR_ADDCHOICE, val, _("Web") );
+    var_AddCallback( p_intf, "serv-add", AddServerCallback, NULL );
+
 
     /* Choose the best module */
     char *module;
@@ -328,6 +335,18 @@ static int AddIntfCallback( vlc_object_t *obj, char const *var,
     int ret = intf_Create( vlc_object_instance(obj), "interface", cur.psz_string );
     if( ret )
         msg_Err( obj, "interface \"%s\" initialization failed",
+                 cur.psz_string );
+
+    (void) var; (void) old; (void) data;
+    return ret;
+}
+
+static int AddServerCallback( vlc_object_t *obj, char const *var,
+                              vlc_value_t old, vlc_value_t cur, void *data )
+{
+    int ret = intf_Create( vlc_object_instance(obj), "interface server", cur.psz_string );
+    if( ret )
+        msg_Err( obj, "server interface \"%s\" initialization failed",
                  cur.psz_string );
 
     (void) var; (void) old; (void) data;
