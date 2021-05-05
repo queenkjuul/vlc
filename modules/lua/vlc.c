@@ -106,7 +106,7 @@ vlc_module_begin ()
                 change_integer_range( 1, 65535 )
             add_password("telnet-password", NULL, TELNETPWD_TEXT,
                          TELNETPWD_LONGTEXT)
-        set_capability( "interface", 0 )
+        set_capability( "interface server", 0 )
         set_callbacks( Open_LuaTelnet, Close_LuaIntf )
         set_description( N_("Lua Telnet") )
         add_shortcut( "luatelnet", "telnet" )
