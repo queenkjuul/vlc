@@ -189,14 +189,24 @@ static int Help(struct cli_client *cl, const char *const *args, size_t count,
     return 0;
 }
 
+static int StartInterface(intf_thread_t *intf, const char *capability,
+                          const char *chain)
+{
+    return intf_Create(vlc_object_instance(intf), capability, chain);
+}
+
 static int Intf(struct cli_client *cl, const char *const *args, size_t count,
                 void *data)
 {
-    intf_thread_t *intf = data;
-
     (void) cl;
+    return StartInterface(data, "interface",  count == 1 ? "" : args[1]);
+}
 
-    return intf_Create(vlc_object_instance(intf), "interface",  count == 1 ? "" : args[1]);
+static int Serv(struct cli_client *cl, const char *const *args, size_t count,
+                void *data)
+{
+    (void) cl;
+    return StartInterface(data, "interface server",  count == 1 ? "" : args[1]);
 }
 
 static int Quit(struct cli_client *cl, const char *const *args, size_t count,
@@ -270,6 +280,7 @@ static const struct cli_handler cmds[] =
     { "quit", Quit },
 
     { "intf", Intf },
+    { "serv", Serv },
     { "key", KeyAction },
     { "hotkey", KeyAction },
 };
