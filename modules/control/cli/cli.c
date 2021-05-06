@@ -156,11 +156,11 @@ static int Help(struct cli_client *cl, const char *const *args, size_t count,
     msg_rc("%s", _("| faster . . . . . . . . . .  faster playing of stream"));
     msg_rc("%s", _("| slower . . . . . . . . . .  slower playing of stream"));
     msg_rc("%s", _("| normal . . . . . . . . . .  normal playing of stream"));
-    msg_rc("%s", _("| frame. . . . . . . . . .  play frame by frame"));
+    msg_rc("%s", _("| frame . . . . . . . . . . . . .  play frame by frame"));
     msg_rc("%s", _("| f [on|off] . . . . . . . . . . . . toggle fullscreen"));
     msg_rc("%s", _("| info . . . . .  information about the current stream"));
     msg_rc("%s", _("| stats  . . . . . . . .  show statistical information"));
-    msg_rc("%s", _("| get_time . . seconds elapsed since stream's beginning"));
+    msg_rc("%s", _("| get_time .  seconds elapsed since stream's beginning"));
     msg_rc("%s", _("| is_playing . . . .  1 if a stream plays, 0 otherwise"));
     msg_rc("%s", _("| get_title . . . . .  the title of the current stream"));
     msg_rc("%s", _("| get_length . . . .  the length of the current stream"));
