@@ -395,10 +395,16 @@ QMenu *VLCMenuBar::ViewMenu( intf_thread_t *p_intf, QMenu *current, MainInterfac
  **/
 QMenu *VLCMenuBar::InterfacesMenu( intf_thread_t *p_intf, QMenu *current )
 {
-    assert(current);
-    VLCVarChoiceModel* model = new VLCVarChoiceModel(VLC_OBJECT(p_intf), "intf-add", current);
-    CheckableListMenu* submenu = new CheckableListMenu(qtr("Interfaces"), model, CheckableListMenu::UNGROUPED, current);
-    current->addMenu(submenu);
+    assert( current );
+
+    const auto MakeSubmenu = [p_intf, current] ( const QString& name, const char *var ) {
+        VLCVarChoiceModel* model = new VLCVarChoiceModel( VLC_OBJECT( p_intf ), var, current );
+        return new CheckableListMenu( name, model, CheckableListMenu::UNGROUPED, current );
+    };
+
+    current->addMenu( MakeSubmenu( qtr( "Interfaces" ), "intf-add" ) );
+    current->addMenu( MakeSubmenu( qtr( "Server Interfaces" ), "serv-add" ) );
+
     return current;
 }
 
