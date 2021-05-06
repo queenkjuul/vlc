@@ -180,6 +180,9 @@ static int Help(struct cli_client *cl, const char *const *args, size_t count,
     msg_rc("%s", _("| strack [X] . . . . . . . . .  set/get subtitle track"));
     msg_rc("%s", _("| key [hotkey name] . . . . . .  simulate hotkey press"));
     msg_rc(  "| ");
+    msg_rc("%s", _("| intf [interface name] . . . . . . start an interface"));
+    msg_rc("%s", _("| serv [server name] . . . .  start a server interface"));
+    msg_rc(  "| ");
     msg_rc("%s", _("| help . . . . . . . . . . . . . . . this help message"));
     msg_rc("%s", _("| logout . . . . . . .  exit (if in socket connection)"));
     msg_rc("%s", _("| quit . . . . . . . . . . . . . . . . . . .  quit vlc"));
