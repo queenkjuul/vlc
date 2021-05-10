@@ -51,6 +51,10 @@
 #define SERVER_NAME_DESC N_("Upnp server name")
 #define SERVER_NAME_LONGTEXT N_("The client exposed upnp server name")
 
+#define SERVER_ACCEPT_RISK_TEXT N_( "Accept sharing your media on the current network" )
+#define SERVER_ACCEPT_RISK_LONGTEXT                                                                \
+    N_( "Accept to enable the upnp server, it will expose your device's media on the current "     \
+        "network. Please make sure you are in a trusted network" )
 
 struct intf_sys_t
 {
@@ -78,6 +82,7 @@ struct intf_sys_t
                               { vlc_ml_event_unregister_callback( p_ml, p_ch ); } )
         , uuid( nullptr, &free )
         , upnp( nullptr, []( UpnpInstanceWrapper* p_upnp ) { p_upnp->release(); } )
+        , interrupt( vlc_interrupt_create(), &vlc_interrupt_destroy )
     {
     }
 
@@ -99,6 +104,19 @@ struct intf_sys_t
         UpnpEnableWebserver( false );
         upnp_running.store( false );
     }
+
+    // `--upnp-server-accept-risk` option
+    bool accept_risk;
+
+    // We need to create a separate threaded context to properly display the privacy warning dialog
+    // at server initialization without blocking the `Open` callback.
+    vlc_thread_t init_thread;
+
+    // Spawning a warning dialog will make the init_thread stall waiting for user input. This is
+    // problematic when the module needs to close while the dialog is still waiting. Using the
+    // interupt API  allow us to force stop the dialog and close cleanly without delay.
+    std::unique_ptr<vlc_interrupt_t, decltype( &vlc_interrupt_destroy )> interrupt;
+    void* interrupt_data[2];
 };
 
 /// Transcoded media data blocks are held into that FIFO waiting the http upnp callbacks
