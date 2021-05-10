@@ -190,6 +190,8 @@ vlc_module_begin()
         set_callbacks(Server::open, Server::close);
 
         add_string(SERVER_PREFIX "name", SERVER_DEFAULT_NAME, SERVER_NAME_DESC, SERVER_NAME_LONGTEXT)
+        add_bool(SERVER_PREFIX "accept-risk", false, SERVER_ACCEPT_RISK_TEXT, SERVER_ACCEPT_RISK_LONGTEXT)
+          change_volatile()
 
     add_submodule()
         add_shortcut("upnp-out")
