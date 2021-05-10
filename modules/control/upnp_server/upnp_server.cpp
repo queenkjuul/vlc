@@ -34,6 +34,7 @@
 #include <vlc_player.h>
 #include <vlc_rand.h>
 #include <vlc_stream_extractor.h>
+#include <vlc_dialog.h>
 #include <vlc_url.h>
 
 #include <atomic>
@@ -501,6 +502,46 @@ static bool init_upnp( intf_thread_t* intf )
     return true;
 }
 
+// Spawn a warning privacy dialog and then init the UPNP server.
+// Must be called in a separate thread to avoid blocking the Open callback.
+static void* init_upnp_with_dialog( void* opaque )
+{
+    auto* intf = static_cast<intf_thread_t*>( opaque );
+    intf_sys_t* sys = intf->p_sys;
+
+    vlc_interrupt_set( sys->interrupt.get() );
+
+    static constexpr auto title = N_( "UPNP Server startup" );
+    static constexpr auto warning =
+        N_( "VLC is about to start the UPNP server module, this protocol will expose your indexed "
+            "media on the current network. Please make sure you are on a trusted network before "
+            "pressing continue." );
+    const int dialog =
+        vlc_dialog_wait_question( VLC_OBJECT( intf ), VLC_DIALOG_QUESTION_WARNING, N_( "Cancel" ),
+                                  N_( "Continue" ), nullptr, title, warning );
+
+    vlc_interrupt_forward_stop( sys->interrupt_data );
+
+    if ( dialog < 0 )
+    {
+        msg_Err(
+            intf,
+            N_( "The UPNP server exposes your indexed media on the current network which is risked "
+                "if you are not on a trusted network. If you are sure you are on a secure network, "
+                "restart with the option `--" SERVER_PREFIX
+                "accept-risk\" to enable the server." ) );
+        return nullptr;
+    }
+    else if ( dialog != 1 )
+    {
+        msg_Info( intf, N_( "User canceled the UPNP server startup by canceling the dialog." ) );
+        return nullptr;
+    }
+
+    init_upnp( intf );
+    return nullptr;
+}
+
 namespace Server
 {
 
@@ -529,9 +570,27 @@ int open( vlc_object_t* p_this )
                                   []( UpnpInstanceWrapper* p_upnp ) { p_upnp->release(); } );
 
     p_sys->obj_hierarchy = cds::init_hierarchy( *p_ml );
+    p_sys->accept_risk = var_InheritBool( p_this, SERVER_PREFIX "accept-risk" );
 
+    // In the case the accept risk option is passed, we know the user does not need privacy warnings
+    // and basically should know what he's doing. Calling the module with this option initiate the
+    // UPNP server in the `Open` thread as the operation isn't blocking anymore.
+    if ( p_sys->accept_risk == true )
+    {
+        if ( init_upnp( p_intf ) == false )
+        {
+            delete p_sys;
+            return VLC_EGENERIC;
+        }
+        return VLC_SUCCESS;
+    }
 
-    if ( !init_upnp( p_intf ) )
+    // In the case where accept-risk isn't passed, initialization is done in a separate
+    // interruptible thread that will wait for user confirmation.
+    vlc_interrupt_forward_start( p_sys->interrupt.get(), p_sys->interrupt_data );
+    const int status =
+        vlc_clone( &p_sys->init_thread, &init_upnp_with_dialog, p_intf, VLC_THREAD_PRIORITY_LOW );
+    if ( status != VLC_SUCCESS )
     {
         delete p_sys;
         return VLC_EGENERIC;
@@ -543,8 +602,14 @@ int open( vlc_object_t* p_this )
 void close( vlc_object_t* p_this )
 {
     intf_thread_t* intf = (intf_thread_t*)p_this;
-    intf_sys_t* p_sys = intf->p_sys;
-    p_sys->close_server();
-    delete p_sys;
+    intf_sys_t* sys = intf->p_sys;
+    if ( sys->accept_risk == false )
+    {
+        vlc_interrupt_kill( sys->interrupt.get() );
+        vlc_join( sys->init_thread, nullptr );
+    }
+
+    sys->close_server();
+    delete sys;
 }
 } // namespace Server
