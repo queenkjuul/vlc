@@ -260,18 +260,56 @@ typedef struct
     uint8_t stuffing_bytes[16];
     ssize_t stuffing_size;
     vlc_array_t segments_t;
+
+    httpd_host_t *http_host;
 } sout_access_out_sys_t;
 
-struct
+typedef struct httpd_callback_sys_t
 {
     httpd_host_t *host;
-} http_context;
-static int url_cb( httpd_client_t *cl,
+    const hls_io *io;
+} httpd_callback_sys_t;
+
+static int url_cb( httpd_callback_sys_t *data,
+                   httpd_client_t *cl,
                    httpd_message_t *answer,
                    const httpd_message_t *query )
 {
     if ( !answer || !query || !cl )
         return VLC_SUCCESS;
+
+    void *reading_context = data->io->ops.new_reading_context( data->io );
+    if ( reading_context == NULL )
+        return VLC_EGENERIC;
+
+    assert( data->io->size );
+
+    answer->p_body = malloc( data->io->size );
+
+    size_t to_read = data->io->size;
+    size_t cursor = 0;
+    while ( to_read != 0 )
+    {
+        const ssize_t read = data->io->ops.read(
+            reading_context, answer->p_body + cursor, to_read );
+
+        if ( read == -1 )
+            goto err;
+
+        cursor += read;
+        to_read -= read;
+    }
+    answer->i_body = cursor;
+
+    answer->i_proto = HTTPD_PROTO_HTTP;
+    answer->i_version = 0;
+    answer->i_type = HTTPD_MSG_ANSWER;
+    answer->i_status = 200;
+
+    return VLC_SUCCESS;
+err:
+    free( answer->p_body );
+    return VLC_EGENERIC;
 }
 
 static int LoadCryptFile( sout_access_out_t *p_access );
@@ -376,6 +414,10 @@ static int Open( vlc_object_t *p_this )
 
     p_access->pf_write = Write;
     p_access->pf_control = Control;
+
+    p_sys->http_host = vlc_http_HostNew(VLC_OBJECT(p_access));
+    assert(p_sys->http_host); // TODO actual check
+
 
     return VLC_SUCCESS;
 }
@@ -939,6 +981,8 @@ static void Close( vlc_object_t *p_this )
 
         destroySegment( segment );
     }
+
+    httpd_HostDelete( p_sys->http_host );
 
     free( p_sys->psz_indexUrl );
     free( p_sys->psz_indexPath );
