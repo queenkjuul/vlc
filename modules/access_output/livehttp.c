@@ -186,23 +186,25 @@ static int Control( sout_access_out_t *, int, va_list );
 typedef struct hls_io hls_io;
 
 static hls_io *hls_io_NewFile( const char *path, int flags );
-// TODO: static hls_io *hls_io_NewFIFO();
+static hls_io *hls_io_NewBlockChain();
 
 typedef struct
 {
     /* Usual IO manipulations */
     int ( *open )( hls_io * );
-    ssize_t ( *write )( hls_io *, uint8_t[], size_t );
+    /* Write a block using the IO implementation, this function takes ownership
+     * of the block */
+    ssize_t ( *write )( hls_io *, block_t * );
     void ( *close )( hls_io * );
 
     /* Reading is an opaque value providing the necessary tools for
      * multithreaded reads */
-    void *( *new_reading_context )( hls_io * );
+    void *( *new_reading_context )( const hls_io * );
     void ( *release_reading_context )( void * );
     ssize_t ( *read )( void *, uint8_t[], size_t );
 
-    /* Destroy and/or unlink the IO representation, useful to get rid of
-     * segments before releasing */
+    /* Destroy and/or unlink the IO representation, used to get rid of
+     * segments content before actually releasing the data structure */
     int ( *destroy )( hls_io * );
 
     /* Release IO internal state */
@@ -212,6 +214,7 @@ typedef struct
 struct hls_io
 {
     void *sys;
+    size_t size;
 
     hls_io_ops ops;
 };
@@ -992,8 +995,9 @@ static ssize_t openNextFile( sout_access_out_t *p_access,
         return -1;
     }
 
-    segment->p_handle = hls_io_NewFile(
-        segment->psz_filename, O_WRONLY | O_CREAT | O_LARGEFILE | O_TRUNC );
+   // segment->p_handle = hls_io_NewFile(
+   //     segment->psz_filename, O_WRONLY | O_CREAT | O_LARGEFILE | O_TRUNC );
+    segment->p_handle = hls_io_NewBlockChain();
     if ( segment->p_handle == NULL ||
          segment->p_handle->ops.open( segment->p_handle ) != VLC_SUCCESS )
     {
@@ -1215,11 +1219,16 @@ static void file_close( hls_io *self )
     sys->fd = -1;
 }
 
-static ssize_t file_write( hls_io *self, uint8_t buffer[], size_t size )
+static ssize_t file_write( hls_io *self, block_t *block )
 {
     const hls_io_FileData *sys = self->sys;
     assert( sys->fd != -1 );
-    return write( sys->fd, buffer, size );
+    assert( block->p_next == NULL );
+
+    const ssize_t wrote = write( sys->fd, block->p_buffer, block->i_buffer );
+
+    block_Release( block );
+    return wrote;
 }
 
 struct hls_io_FileRContext
@@ -1227,7 +1236,7 @@ struct hls_io_FileRContext
     int fd;
 };
 
-static void *file_new_reading_context( hls_io *self )
+static void *file_new_reading_context( const hls_io *self )
 {
     const hls_io_FileData *sys = self->sys;
 
@@ -1294,7 +1303,7 @@ static hls_io *hls_io_NewFile( const char *path, int flags )
         ( hls_io_ops ){ .open = file_open,
                         .write = file_write,
                         .new_reading_context = file_new_reading_context,
-                        .release_reading_context = file_release_reading_context,
+                        .release_reading_context = free,
                         .read = file_read,
                         .close = file_close,
                         .destroy = file_destroy,
@@ -1307,94 +1316,133 @@ err:
 }
 
 /*****************************************************************************
- * IO: Fifo
+ * IO: BlockChain
  *****************************************************************************/
 
 typedef struct
 {
-    block_fifo_t *fifo;
-    size_t read_cursor;
-} hls_io_FifoData;
+    block_t *begin;
+    block_t *end;
+} hls_io_BlockChainData;
 
-static int fifo_open( hls_io *self )
+static int blockchain_open( hls_io *self )
 {
-    const hls_io_FifoData *sys = self->sys;
-    assert( sys->fifo != NULL );
+    const hls_io_BlockChainData *sys = self->sys;
+    assert( sys->begin == NULL );
+    assert( sys->end == NULL );
     return VLC_SUCCESS;
 }
 
-static void fifo_close( hls_io *self )
-{
-    hls_io_FifoData *sys = self->sys;
+static void blockchain_close( hls_io *self ) { (void)self; }
 
-    sys->read_cursor = 0;
+static ssize_t blockchain_write( hls_io *self, block_t *block )
+{
+    assert( block != NULL );
+    assert( block->p_next == NULL );
+    hls_io_BlockChainData *sys = self->sys;
+
+    block_ChainAppend( &sys->end, block );
+
+    sys->end = block;
+
+    if ( sys->begin == NULL )
+        sys->begin = block;
+
+    return block->i_buffer;
 }
 
-static ssize_t fifo_write( hls_io *self, uint8_t buffer[], size_t size )
+struct hls_io_BlockChainRContext
 {
-    hls_io_FifoData *sys = self->sys;
-    assert( sys->fifo != NULL );
+    const block_t *current_block;
 
-    block_t *block = block_Alloc( size );
-    if ( unlikely( block == NULL ) )
-        return -1;
+    /* If read stop in the middle of a block buffer, this cursor keeps track of
+     * the byte where copy stopped. */
+    size_t block_cursor;
+};
 
-    memcpy( block->p_buffer, buffer, size );
+static void *blockchain_new_reading_context( const hls_io *self )
+{
+    const hls_io_BlockChainData *sys = self->sys;
 
-    block_FifoPut( sys->fifo, block );
-    return size;
+    struct hls_io_BlockChainRContext *ret = malloc( sizeof( *ret ) );
+    if ( unlikely( ret != NULL ) )
+        return NULL;
+
+    *ret = ( struct hls_io_BlockChainRContext ){ .current_block = sys->begin,
+                                                 .block_cursor = 0 };
+
+    return ret;
 }
 
-static ssize_t fifo_read( hls_io *self, uint8_t buffer[], size_t size )
+static ssize_t
+blockchain_read( void *reading_context, uint8_t buffer[], size_t size )
 {
-    const hls_io_FileData *sys = self->sys;
-    assert( sys->fd != -1 );
-    // TODO read from cursor every time
+    struct hls_io_BlockChainRContext *context = reading_context;
 
-    return read( sys->fd, buffer, size );
+    size_t total = 0;
+    while ( context->current_block != NULL && size != 0 )
+    {
+        const block_t *current = context->current_block;
+
+        const size_t copy =
+            __MIN( size, current->i_buffer - context->block_cursor );
+
+        memcpy( buffer, current->p_buffer + context->block_cursor, copy );
+
+        if ( copy == size )
+        {
+            /* We need to stop reading in the middle of a block. We then
+             * remember the block buffer copy position */
+            context->block_cursor = copy;
+        }
+        else
+        {
+            context->block_cursor = 0;
+            context->current_block = current->p_next;
+        }
+
+        size -= copy;
+        buffer += copy;
+        total += copy;
+    }
+    return total;
 }
 
-static int fifo_destroy( hls_io *self )
+static int blockchain_destroy( hls_io *self )
 {
-    const hls_io_FileData *sys = self->sys;
+    hls_io_BlockChainData *sys = self->sys;
+    if ( sys->begin != NULL )
+        block_ChainRelease( sys->begin );
     return VLC_SUCCESS;
 }
 
-static void fifo_release( hls_io *self )
+static void blockchain_release( hls_io *self )
 {
-    hls_io_FifoData *sys = self->sys;
-    if ( sys->fifo != NULL )
-        block_FifoRelease( sys->fifo );
+    blockchain_destroy( self );
+    /* No extra internal state to free */
 }
 
-static hls_io *hls_io_NewFifo()
+static hls_io *hls_io_NewBlockChain()
 {
     hls_io *ret = calloc( 1, sizeof( *ret ) );
     if ( unlikely( ret == NULL ) )
         return NULL;
 
-    //    vlc_mutex_init( &ret->lock );
-
-    hls_io_FifoData *sys = malloc( sizeof( *sys ) );
-    if ( unlikely( sys == NULL ) )
+    ret->sys = calloc( 1, sizeof( hls_io_BlockChainData ) );
+    if ( unlikely( ret->sys == NULL ) )
     {
-        goto err;
+        free( ret );
+        return NULL;
     }
 
-    *sys = ( hls_io_FifoData ){ .fifo = block_FifoNew(), .read_cursor = 0 };
-    if ( unlikely( sys->fifo == NULL ) )
-        goto err;
-    ret->sys = sys;
-
-    ret->ops = ( hls_io_ops ){ .open = fifo_open,
-                               .write = fifo_write,
-                               .read = fifo_read,
-                               .close = fifo_close,
-                               .destroy = fifo_destroy,
-                               .release = fifo_release };
+    ret->ops =
+        ( hls_io_ops ){ .open = blockchain_open,
+                        .write = blockchain_write,
+                        .new_reading_context = blockchain_new_reading_context,
+                        .release_reading_context = free,
+                        .read = blockchain_read,
+                        .close = blockchain_close,
+                        .destroy = blockchain_destroy,
+                        .release = blockchain_release };
     return ret;
-
-err:
-    free( ret );
-    return NULL;
 }
