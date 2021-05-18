@@ -1114,6 +1114,32 @@ static int CheckSegmentChange( sout_access_out_t *p_access, block_t *p_buffer )
     return writevalue;
 }
 
+static gcry_error_t encrypt_segment(sout_access_out_sys_t *p_sys, block_t *output )
+{
+    if ( p_sys->stuffing_size )
+    {
+        output =
+            block_Realloc( output, p_sys->stuffing_size, output->i_buffer );
+        if ( unlikely( !output ) )
+            return VLC_ENOMEM;
+        memcpy( output->p_buffer, p_sys->stuffing_bytes, p_sys->stuffing_size );
+        p_sys->stuffing_size = 0;
+    }
+    size_t original = output->i_buffer;
+    size_t padded = ( output->i_buffer + 15 ) & ~15;
+    size_t pad = padded - original;
+    if ( pad )
+    {
+        p_sys->stuffing_size = 16 - pad;
+        output->i_buffer -= p_sys->stuffing_size;
+        memcpy( p_sys->stuffing_bytes, &output->p_buffer[output->i_buffer],
+                p_sys->stuffing_size );
+    }
+
+    return  gcry_cipher_encrypt( p_sys->aes_ctx, output->p_buffer,
+                                            output->i_buffer, NULL, 0 );
+}
+
 static ssize_t writeSegment( hls_io *handle, sout_access_out_t *p_access )
 {
     sout_access_out_sys_t *p_sys = p_access->p_sys;
@@ -1133,30 +1159,7 @@ static ssize_t writeSegment( hls_io *handle, sout_access_out_t *p_access )
     {
         if ( p_sys->key_uri && !crypted )
         {
-            if ( p_sys->stuffing_size )
-            {
-                output = block_Realloc( output, p_sys->stuffing_size,
-                                        output->i_buffer );
-                if ( unlikely( !output ) )
-                    return VLC_ENOMEM;
-                memcpy( output->p_buffer, p_sys->stuffing_bytes,
-                        p_sys->stuffing_size );
-                p_sys->stuffing_size = 0;
-            }
-            size_t original = output->i_buffer;
-            size_t padded = ( output->i_buffer + 15 ) & ~15;
-            size_t pad = padded - original;
-            if ( pad )
-            {
-                p_sys->stuffing_size = 16 - pad;
-                output->i_buffer -= p_sys->stuffing_size;
-                memcpy( p_sys->stuffing_bytes,
-                        &output->p_buffer[output->i_buffer],
-                        p_sys->stuffing_size );
-            }
-
-            gcry_error_t err = gcry_cipher_encrypt(
-                p_sys->aes_ctx, output->p_buffer, output->i_buffer, NULL, 0 );
+            const gcry_error_t err = encrypt_segment( p_sys, output );
             if ( err )
             {
                 msg_Err( p_access, "Encryption failure: %s ",
