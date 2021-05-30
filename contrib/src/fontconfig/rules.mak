@@ -21,6 +21,10 @@ fontconfig: fontconfig-$(FONTCONFIG_VERSION).tar.gz .sum-fontconfig
 	# include the generated fcobjshash.h, not the one from src/
 	sed -i.orig -e 's,"fcobjshash.h",<fcobjshash.h>,' $(UNPACK_DIR)/src/fcobjs.c
 	$(call pkg_static, "fontconfig.pc.in")
+ifdef HAVE_EMSCRIPTEN
+	$(APPLY) $(SRC)/fontconfig/add-initial-support-for-wasm32-emscripten.patch
+	$(UPDATE_AUTOCONFIG)
+endif
 	$(MOVE)
 
 FONTCONFIG_CONF := --enable-libxml2 --disable-docs
