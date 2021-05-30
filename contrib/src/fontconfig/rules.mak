@@ -23,6 +23,10 @@ ifdef HAVE_WIN32
 endif
 	$(RM) $(UNPACK_DIR)/src/fcobjshash.gperf
 	$(call pkg_static, "fontconfig.pc.in")
+ifdef HAVE_EMSCRIPTEN
+	$(APPLY) $(SRC)/fontconfig/add-initial-support-for-wasm32-emscripten.patch
+	$(UPDATE_AUTOCONFIG)
+endif
 	$(MOVE)
 
 FONTCONFIG_CONF := $(HOSTCONF) \
