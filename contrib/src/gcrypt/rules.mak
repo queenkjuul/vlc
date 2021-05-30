@@ -65,6 +65,12 @@ ifeq ($(ARCH),aarch64)
 GCRYPT_CONF += --disable-arm-crypto-support
 endif
 endif
+ifdef HAVE_EMSCRIPTEN
+GCRYPT_CONF += --disable-asm --disable-aesni-support ac_cv_func_syslog=no --disable-sse41-support
+GCRYPT_CONF += --disable-avx-support --disable-avx2-support --disable-padlock-support
+GCRYPT_CONF += --disable-amd64-as-feature-detection --disable-drng-support
+GCRYPT_CONF += --disable-pclmul-support
+endif
 
 .gcrypt: gcrypt
 	$(RECONF)
