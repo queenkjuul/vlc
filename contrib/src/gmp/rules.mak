@@ -13,6 +13,9 @@ ifeq ($(ARCH),mips64el)
 GMP_CONF += --disable-assembly
 endif
 endif
+ifdef HAVE_EMSCRIPTEN
+GMP_CONF += --disable-assembly
+endif
 
 ifdef HAVE_WIN32
 ifeq ($(ARCH),arm)
