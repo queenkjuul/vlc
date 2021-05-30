@@ -73,6 +73,10 @@ ifeq ($(ARCH),aarch64)
 endif
 endif
 
+ifdef HAVE_EMSCRIPTEN
+	GNUTLS_CONF += --disable-hardware-acceleration
+endif
+
 .gnutls: gnutls
 	$(MAKEBUILDDIR)
 	$(GNUTLS_ENV) $(MAKECONFIGURE) $(GNUTLS_CONF)
