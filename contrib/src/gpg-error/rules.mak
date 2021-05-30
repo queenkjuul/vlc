@@ -25,6 +25,7 @@ endif
 	$(APPLY) $(SRC)/gpg-error/version-bump-gawk-5.patch
 	$(APPLY) $(SRC)/gpg-error/win32-extern-struct.patch
 	$(APPLY) $(SRC)/gpg-error/darwin-triplet.patch
+	$(APPLY) $(SRC)/gpg-error/emscripten.patch
 ifndef HAVE_WIN32
 	cp -f -- "$(SRC)/gpg-error/lock-obj-pub.posix.h" \
 		"$(UNPACK_DIR)/src/lock-obj-pub.native.h"
