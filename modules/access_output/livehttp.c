@@ -42,6 +42,7 @@
 #include <vlc_block.h>
 #include <vlc_charset.h>
 #include <vlc_fs.h>
+#include <vlc_memstream.h>
 #include <vlc_httpd.h>
 #include <vlc_plugin.h>
 #include <vlc_sout.h>
@@ -194,7 +195,7 @@ typedef struct
     int ( *open )( hls_io * );
     /* Write a block using the IO implementation, this function takes ownership
      * of the block */
-    ssize_t ( *write )( hls_io *, block_t * );
+    block_t *( *consume )( hls_io *, block_t * );
     void ( *close )( hls_io * );
 
     /* Reading is an opaque value providing the necessary tools for
@@ -205,7 +206,7 @@ typedef struct
 
     /* Destroy and/or unlink the IO representation, used to get rid of
      * segments content before actually releasing the data structure */
-    int ( *destroy )( hls_io * );
+    int ( *unlink )( hls_io * );
 
     /* Release IO internal state */
     void ( *release )( hls_io * );
@@ -229,6 +230,8 @@ typedef struct output_segment
     uint32_t i_segment_number;
     uint8_t aes_ivs[16];
     hls_io *p_handle;
+    httpd_url_t *url;
+    bool closed;
 } output_segment_t;
 
 typedef struct
@@ -257,18 +260,13 @@ typedef struct
     uint8_t aes_ivs[16];
     gcry_cipher_hd_t aes_ctx;
     char *key_uri;
-    uint8_t stuffing_bytes[16];
+    block_t *stuffing_bytes;
     ssize_t stuffing_size;
     vlc_array_t segments_t;
+    hls_io *p_ongoing_segment;
 
     httpd_host_t *http_host;
 } sout_access_out_sys_t;
-
-typedef struct httpd_callback_sys_t
-{
-    httpd_host_t *host;
-    const hls_io *io;
-} httpd_callback_sys_t;
 
 static int url_cb( httpd_callback_sys_t *data,
                    httpd_client_t *cl,
@@ -278,20 +276,26 @@ static int url_cb( httpd_callback_sys_t *data,
     if ( !answer || !query || !cl )
         return VLC_SUCCESS;
 
-    void *reading_context = data->io->ops.new_reading_context( data->io );
+    const output_segment_t *segment = (output_segment_t *)data;
+    const hls_io *io = segment->p_handle;
+
+    printf("fetching %s\n", segment->psz_filename);;
+
+    void *reading_context = io->ops.new_reading_context( io );
     if ( reading_context == NULL )
         return VLC_EGENERIC;
 
-    assert( data->io->size );
+    assert( io->size );
+    assert( segment->closed );
 
-    answer->p_body = malloc( data->io->size );
+    answer->p_body = malloc( io->size );
 
-    size_t to_read = data->io->size;
+    size_t to_read = io->size;
     size_t cursor = 0;
     while ( to_read != 0 )
     {
-        const ssize_t read = data->io->ops.read(
-            reading_context, answer->p_body + cursor, to_read );
+        const ssize_t read =
+            io->ops.read( reading_context, answer->p_body + cursor, to_read );
 
         if ( read == -1 )
             goto err;
@@ -299,6 +303,8 @@ static int url_cb( httpd_callback_sys_t *data,
         cursor += read;
         to_read -= read;
     }
+
+    io->ops.release_reading_context( reading_context );
     answer->i_body = cursor;
 
     answer->i_proto = HTTPD_PROTO_HTTP;
@@ -306,8 +312,12 @@ static int url_cb( httpd_callback_sys_t *data,
     answer->i_type = HTTPD_MSG_ANSWER;
     answer->i_status = 200;
 
+    httpd_MsgAdd( answer, "Content-type", "%s", "video/mpeg" );
+    httpd_MsgAdd( answer, "Cache-Control", "no-cache" );
+    httpd_MsgAdd( answer, "Connection", "close" );
     return VLC_SUCCESS;
 err:
+    io->ops.release_reading_context( reading_context );
     free( answer->p_body );
     return VLC_EGENERIC;
 }
@@ -364,6 +374,7 @@ static int Open( vlc_object_t *p_this )
 
     vlc_array_init( &p_sys->segments_t );
 
+    p_sys->stuffing_bytes = block_Alloc(16);
     p_sys->stuffing_size = 0;
 
     p_sys->psz_indexPath = NULL;
@@ -622,10 +633,16 @@ static char *formatSegmentPath( char *psz_path, uint32_t i_seg )
 
 static void destroySegment( output_segment_t *segment )
 {
+
+    hls_io *handler = segment->p_handle;
+    //handler->ops.destroy( handler );
+    handler->ops.release( handler );
+    free( handler );
     free( segment->psz_filename );
     free( segment->psz_duration );
     free( segment->psz_uri );
     free( segment->psz_key_uri );
+    httpd_UrlDelete( segment->url );
     free( segment );
 }
 
@@ -705,38 +722,43 @@ static int updateIndexAndDel( sout_access_out_t *p_access,
     if ( p_sys->psz_indexPath )
     {
         int val;
-        FILE *fp;
-        char *psz_idxTmp;
-        if ( asprintf( &psz_idxTmp, "%s.tmp", p_sys->psz_indexPath ) < 0 )
-            return -1;
+        struct vlc_memstream ms;
 
-        fp = vlc_fopen( psz_idxTmp, "wt" );
-        if ( !fp )
+        //FILE *fp;
+        //char *psz_idxTmp;
+        //if ( asprintf( &psz_idxTmp, "%s.tmp", p_sys->psz_indexPath ) < 0 )
+        //    return -1;
+
+        //fp = vlc_fopen( psz_idxTmp, "wt" );
+        if (vlc_memstream_open(&ms) != VLC_SUCCESS)
         {
-            msg_Err( p_access, "cannot open index file `%s'", psz_idxTmp );
-            free( psz_idxTmp );
+            //msg_Err( p_access, "cannot open index file `%s'", psz_idxTmp );
+            //free( psz_idxTmp );
             return -1;
         }
 
-        if ( fprintf( fp,
-                      "#EXTM3U\n#EXT-X-TARGETDURATION:%.0f\n#EXT-X-VERSION:3\n#"
-                      "EXT-X-ALLOW-CACHE:%s"
-                      "%s\n#EXT-X-MEDIA-SEQUENCE:%" PRIu32 "\n%s",
-                      ceil( secf_from_vlc_tick( p_sys->segment_max_length ) ),
-                      p_sys->b_caching ? "YES" : "NO",
-                      p_sys->i_numsegs > 0 ? ""
-                      : b_isend            ? "\n#EXT-X-PLAYLIST-TYPE:VOD"
-                                           : "\n#EXT-X-PLAYLIST-TYPE:EVENT",
-                      i_firstseg,
-                      ( ( p_sys->i_initial_segment > 1 ) &&
-                        ( p_sys->i_initial_segment == i_firstseg ) )
-                          ? "#EXT-X-DISCONTINUITY\n"
-                          : "" ) < 0 )
+        int status = vlc_memstream_printf(
+            &ms,
+            "#EXTM3U\n#EXT-X-TARGETDURATION:%.0f\n#EXT-X-VERSION:3\n#"
+            "EXT-X-ALLOW-CACHE:%s"
+            "%s\n#EXT-X-MEDIA-SEQUENCE:%" PRIu32 "\n%s",
+            ceil( secf_from_vlc_tick( p_sys->segment_max_length ) ),
+            p_sys->b_caching ? "YES" : "NO",
+            p_sys->i_numsegs > 0 ? ""
+            : b_isend            ? "\n#EXT-X-PLAYLIST-TYPE:VOD"
+                                 : "\n#EXT-X-PLAYLIST-TYPE:EVENT",
+            i_firstseg,
+            ( ( p_sys->i_initial_segment > 1 ) &&
+              ( p_sys->i_initial_segment == i_firstseg ) )
+                ? "#EXT-X-DISCONTINUITY\n"
+                : "" );
+        if ( status < 0 )
         {
-            free( psz_idxTmp );
-            fclose( fp );
+//            free( psz_idxTmp );
+ //           fclose( fp );
             return -1;
         }
+
         char *psz_current_uri = NULL;
 
         for ( uint32_t i = i_firstseg; i <= p_sys->i_segment; i++ )
@@ -764,32 +786,33 @@ static int updateIndexAndDel( sout_access_out_t *p_access,
                         iv_lo <<= 8;
                         iv_lo |= segment->aes_ivs[8 + j] & 0xff;
                     }
-                    ret = fprintf( fp,
+                    ret = vlc_memstream_printf( &ms,
                                    "#EXT-X-KEY:METHOD=AES-128,URI=\"%s\",IV=0X%"
                                    "16.16llx%16.16llx\n",
                                    segment->psz_key_uri, iv_hi, iv_lo );
                 }
                 else
                 {
-                    ret = fprintf( fp, "#EXT-X-KEY:METHOD=AES-128,URI=\"%s\"\n",
-                                   segment->psz_key_uri );
+                    ret = vlc_memstream_printf(
+                        &ms, "#EXT-X-KEY:METHOD=AES-128,URI=\"%s\"\n",
+                        segment->psz_key_uri );
                 }
                 if ( ret < 0 )
                 {
                     free( psz_current_uri );
-                    free( psz_idxTmp );
-                    fclose( fp );
+                    //free( psz_idxTmp );
+                    //fclose( fp );
                     return -1;
                 }
             }
 
-            val = fprintf( fp, "#EXTINF:%s,\n%s\n", segment->psz_duration,
+            val = vlc_memstream_printf( &ms, "#EXTINF:%s,\n%s\n", segment->psz_duration,
                            segment->psz_uri );
             if ( val < 0 )
             {
                 free( psz_current_uri );
-                free( psz_idxTmp );
-                fclose( fp );
+               // free( psz_idxTmp );
+               // fclose( fp );
                 return -1;
             }
         }
@@ -797,14 +820,16 @@ static int updateIndexAndDel( sout_access_out_t *p_access,
 
         if ( b_isend )
         {
-            if ( fputs( STR_ENDLIST, fp ) < 0 )
+            if ( vlc_memstream_write( &ms, STR_ENDLIST,
+                                      sizeof( STR_ENDLIST ) ) < 0 )
             {
-                free( psz_idxTmp );
-                fclose( fp );
+//                free( psz_idxTmp );
+//                fclose( fp );
                 return -1;
             }
         }
-        fclose( fp );
+        //fclose( fp );
+        vlc_memstream_flush(&ms);
 
         val = vlc_rename( psz_idxTmp, p_sys->psz_indexPath );
 
@@ -831,11 +856,6 @@ static int updateIndexAndDel( sout_access_out_t *p_access,
                  segment->i_segment_number );
         vlc_array_remove( &p_sys->segments_t, 0 );
 
-        // if ( segment->psz_filename )
-        //{
-        //    vlc_unlink( segment->psz_filename );
-        //}
-
         destroySegment( segment );
         i_index_offset -= 1;
     }
@@ -858,15 +878,19 @@ static void closeCurrentSegment( sout_access_out_t *p_access,
                                : NULL;
     if ( handle != NULL )
     {
-        output_segment_t *segment = vlc_array_item_at_index(
-            &p_sys->segments_t, vlc_array_count( &p_sys->segments_t ) - 1 );
+        output_segment_t *segment =
+            (output_segment_t *)vlc_array_item_at_index( &p_sys->segments_t,
+                                                         seg_count - 1 );
+        hls_io *handle = seg_count ? segment->p_handle : NULL;
 
         if ( p_sys->key_uri )
         {
-            size_t pad = 16 - p_sys->stuffing_size;
-            memset( &p_sys->stuffing_bytes[p_sys->stuffing_size], pad, pad );
-            gcry_error_t err = gcry_cipher_encrypt(
-                p_sys->aes_ctx, p_sys->stuffing_bytes, 16, NULL, 0 );
+            block_t *stuffing = p_sys->stuffing_bytes;
+            const size_t pad = stuffing->i_buffer - p_sys->stuffing_size;
+            memset( &stuffing->p_buffer[p_sys->stuffing_size], pad, pad );
+            gcry_error_t err =
+                gcry_cipher_encrypt( p_sys->aes_ctx, stuffing->p_buffer,
+                                     stuffing->i_buffer, NULL, 0 );
 
             if ( err )
             {
@@ -875,18 +899,19 @@ static void closeCurrentSegment( sout_access_out_t *p_access,
             }
             else
             {
-                ssize_t ret =
-                    handle->ops.write( handle, p_sys->stuffing_bytes, 16 );
-                if ( ret != 16 )
+                block_t *ret = handle->ops.consume(
+                    handle, block_Duplicate( p_sys->stuffing_bytes ) );
+                if ( ret != NULL )
+                {
+                    block_Release( ret );
                     msg_Err( p_access, "Couldn't write 16 bytes" );
+                }
             }
             p_sys->stuffing_size = 0;
         }
 
         handle->ops.close( handle );
-        handle->ops.release( handle );
-        free( handle );
-        segment->p_handle = NULL;
+        segment->closed = true;
 
         if ( !( us_asprintf(
                  &segment->psz_duration, "%.2f",
@@ -976,11 +1001,14 @@ static void Close( vlc_object_t *p_this )
         {
             msg_Dbg( p_access, "Removing segment number %d name %s",
                      segment->i_segment_number, segment->psz_filename );
-            vlc_unlink( segment->psz_filename );
+            hls_io *handle = segment->p_handle;
+            handle->ops.unlink( handle );
         }
 
         destroySegment( segment );
     }
+
+    block_Release( p_sys->stuffing_bytes );
 
     httpd_HostDelete( p_sys->http_host );
 
@@ -1065,8 +1093,13 @@ static ssize_t openNextFile( sout_access_out_t *p_access,
         if ( p_sys->b_generate_iv )
             memcpy( segment->aes_ivs, p_sys->aes_ivs, sizeof( uint8_t ) * 16 );
     }
+    printf("%s\n", segment->psz_filename);
+    segment->url =
+        httpd_UrlNew( p_sys->http_host, segment->psz_filename, NULL, NULL );
+    assert(segment->url);
+    httpd_UrlCatch( segment->url, HTTPD_MSG_GET, &url_cb, (void *)segment );
     msg_Dbg( p_access, "Successfully opened livehttp file: %s (%" PRIu32 ")",
-             segment->psz_filename, i_newseg );
+             segment->psz_uri, i_newseg );
 
     p_sys->psz_cursegPath = strdup( segment->psz_filename );
     p_sys->i_segment = i_newseg;
@@ -1085,17 +1118,22 @@ static int CheckSegmentChange( sout_access_out_t *p_access, block_t *p_buffer )
     vlc_tick_t ongoing_length = 0;
 
     size_t seg_count = vlc_array_count( &p_sys->segments_t );
-    hls_io *handle = seg_count ? ( (output_segment_t *)vlc_array_item_at_index(
-                                       &p_sys->segments_t, seg_count - 1 ) )
-                                     ->p_handle
-                               : NULL;
+    const output_segment_t *segment =
+        seg_count ? (output_segment_t *)vlc_array_item_at_index(
+                        &p_sys->segments_t, seg_count - 1 )
+                  : NULL;
+
     block_ChainProperties( p_sys->full_segments, NULL, NULL, &current_length );
     block_ChainProperties( p_sys->ongoing_segment, NULL, NULL,
                            &ongoing_length );
 
-    if ( handle != NULL && ( ( p_buffer->i_length + current_length +
+    if ( segment != NULL && ( ( p_buffer->i_length + current_length +
                                ongoing_length ) >= p_sys->segment_max_length ) )
     {
+
+        hls_io *handle = seg_count ? segment->p_handle : NULL;
+        printf("SLEEP\n");
+        sleep(5);
         writevalue = writeSegment( handle, p_access );
         if ( unlikely( writevalue < 0 ) )
         {
@@ -1103,10 +1141,11 @@ static int CheckSegmentChange( sout_access_out_t *p_access, block_t *p_buffer )
             return -1;
         }
         closeCurrentSegment( p_access, p_sys, false );
-        return writevalue;
     }
 
-    if ( unlikely( handle == NULL ) )
+    //const size_t num_seg = var_GetInteger(p_access, "numsegs");
+    //if ( num_seg == 0 || seg_count < num_seg )
+    if ( segment == NULL || segment->closed )
     {
         if ( openNextFile( p_access, p_sys ) < 0 )
             return -1;
@@ -1114,7 +1153,7 @@ static int CheckSegmentChange( sout_access_out_t *p_access, block_t *p_buffer )
     return writevalue;
 }
 
-static gcry_error_t encrypt_segment(sout_access_out_sys_t *p_sys, block_t *output )
+static gcry_error_t encryptBlock(sout_access_out_sys_t *p_sys, block_t *output )
 {
     if ( p_sys->stuffing_size )
     {
@@ -1159,7 +1198,7 @@ static ssize_t writeSegment( hls_io *handle, sout_access_out_t *p_access )
     {
         if ( p_sys->key_uri && !crypted )
         {
-            const gcry_error_t err = encrypt_segment( p_sys, output );
+            const gcry_error_t err = encryptBlock( p_sys, output );
             if ( err )
             {
                 msg_Err( p_access, "Encryption failure: %s ",
@@ -1169,28 +1208,33 @@ static ssize_t writeSegment( hls_io *handle, sout_access_out_t *p_access )
             crypted = true;
         }
 
-        ssize_t val =
-            handle->ops.write( handle, output->p_buffer, output->i_buffer );
-        if ( val == -1 )
-        {
-            if ( errno == EINTR )
-                continue;
-            return -1;
-        }
+        block_t *p_next = output->p_next;
 
-        if ( (size_t)val >= output->i_buffer )
+        output->p_next = NULL;
+
+        const size_t output_size = output->i_buffer;
+
+        block_t *not_wrote = handle->ops.consume( handle, output );
+
+        //if ( val == -1 )
+        //{
+        //    if ( errno == EINTR )
+        //        continue;
+        //    return -1;
+        //}
+
+        if ( not_wrote == NULL )
         {
-            block_t *p_next = output->p_next;
-            block_Release( output );
             output = p_next;
             crypted = false;
+            i_write += output_size;
         }
         else
         {
-            output->p_buffer += val;
-            output->i_buffer -= val;
+            not_wrote->p_next = p_next;
+            output = not_wrote;
+            i_write += output_size - not_wrote->i_buffer;
         }
-        i_write += val;
     }
     return i_write;
 }
@@ -1266,16 +1310,27 @@ static void file_close( hls_io *self )
     sys->fd = -1;
 }
 
-static ssize_t file_write( hls_io *self, block_t *block )
+static block_t *file_consume( hls_io *self, block_t *block )
 {
     const hls_io_FileData *sys = self->sys;
     assert( sys->fd != -1 );
-    assert( block->p_next == NULL );
 
     const ssize_t wrote = write( sys->fd, block->p_buffer, block->i_buffer );
 
+    if ( likely( wrote >= 0 ) )
+        self->size += wrote;
+
+    const ssize_t bytes_left = block->i_buffer - wrote;
+    block_t *ret = NULL;
+    if ( bytes_left > 0 )
+    {
+        ret = block_Alloc( bytes_left );
+        memcpy( ret->p_buffer, block->p_buffer + wrote, bytes_left );
+    }
+
     block_Release( block );
-    return wrote;
+
+    return ret;
 }
 
 struct hls_io_FileRContext
@@ -1288,11 +1343,11 @@ static void *file_new_reading_context( const hls_io *self )
     const hls_io_FileData *sys = self->sys;
 
     struct hls_io_FileRContext *ret = calloc( 1, sizeof( *ret ) );
-    if ( unlikely( ret != NULL ) )
+    if ( unlikely( ret == NULL ) )
         return NULL;
 
     ret->fd = open( sys->path, O_RDONLY | O_LARGEFILE );
-    if ( ret->fd == -1 )
+    if ( unlikely( ret->fd == -1 ) )
     {
         free( ret );
         return NULL;
@@ -1301,7 +1356,15 @@ static void *file_new_reading_context( const hls_io *self )
     return ret;
 }
 
-static void file_release_reading_context( void *context ) { free( context ); }
+static void file_release_reading_context( void *opaque )
+{
+    struct hls_io_FileRContext *context = opaque;
+
+    assert( context->fd > 0 );
+    close( context->fd );
+
+    free( context );
+}
 
 static ssize_t file_read( void *reading_context, uint8_t buffer[], size_t size )
 {
@@ -1310,7 +1373,7 @@ static ssize_t file_read( void *reading_context, uint8_t buffer[], size_t size )
     return read( context->fd, buffer, size );
 }
 
-static int file_destroy( hls_io *self )
+static int file_unlink( hls_io *self )
 {
     const hls_io_FileData *sys = self->sys;
     assert( sys->path != NULL );
@@ -1324,6 +1387,7 @@ static void file_release( hls_io *self )
     if ( sys->fd != -1 )
         vlc_close( sys->fd );
     free( sys->path );
+    free( sys );
 }
 
 static hls_io *hls_io_NewFile( const char *path, int flags )
@@ -1348,12 +1412,12 @@ static hls_io *hls_io_NewFile( const char *path, int flags )
 
     ret->ops =
         ( hls_io_ops ){ .open = file_open,
-                        .write = file_write,
+                        .consume = file_consume,
                         .new_reading_context = file_new_reading_context,
-                        .release_reading_context = free,
+                        .release_reading_context = file_release_reading_context,
                         .read = file_read,
                         .close = file_close,
-                        .destroy = file_destroy,
+                        .unlink = file_unlink,
                         .release = file_release };
     return ret;
 
@@ -1373,7 +1437,7 @@ typedef struct
 } hls_io_BlockChainData;
 
 static int blockchain_open( hls_io *self )
-{
+{printf("OPEN\n");
     const hls_io_BlockChainData *sys = self->sys;
     assert( sys->begin == NULL );
     assert( sys->end == NULL );
@@ -1382,10 +1446,9 @@ static int blockchain_open( hls_io *self )
 
 static void blockchain_close( hls_io *self ) { (void)self; }
 
-static ssize_t blockchain_write( hls_io *self, block_t *block )
+static block_t *blockchain_consume( hls_io *self, block_t *block )
 {
     assert( block != NULL );
-    assert( block->p_next == NULL );
     hls_io_BlockChainData *sys = self->sys;
 
     block_ChainAppend( &sys->end, block );
@@ -1395,7 +1458,9 @@ static ssize_t blockchain_write( hls_io *self, block_t *block )
     if ( sys->begin == NULL )
         sys->begin = block;
 
-    return block->i_buffer;
+    self->size += block->i_buffer;
+
+    return NULL;
 }
 
 struct hls_io_BlockChainRContext
@@ -1409,10 +1474,11 @@ struct hls_io_BlockChainRContext
 
 static void *blockchain_new_reading_context( const hls_io *self )
 {
+    printf("RCONTEXT\n");
     const hls_io_BlockChainData *sys = self->sys;
 
     struct hls_io_BlockChainRContext *ret = malloc( sizeof( *ret ) );
-    if ( unlikely( ret != NULL ) )
+    if ( unlikely( ret == NULL ) )
         return NULL;
 
     *ret = ( struct hls_io_BlockChainRContext ){ .current_block = sys->begin,
@@ -1424,6 +1490,7 @@ static void *blockchain_new_reading_context( const hls_io *self )
 static ssize_t
 blockchain_read( void *reading_context, uint8_t buffer[], size_t size )
 {
+    printf("READ\n");
     struct hls_io_BlockChainRContext *context = reading_context;
 
     size_t total = 0;
@@ -1455,22 +1522,25 @@ blockchain_read( void *reading_context, uint8_t buffer[], size_t size )
     return total;
 }
 
-static int blockchain_destroy( hls_io *self )
+static int blockchain_unlink( hls_io *self )
 {
-    hls_io_BlockChainData *sys = self->sys;
-    if ( sys->begin != NULL )
-        block_ChainRelease( sys->begin );
     return VLC_SUCCESS;
+    (void) self;
 }
 
 static void blockchain_release( hls_io *self )
 {
-    blockchain_destroy( self );
-    /* No extra internal state to free */
+    printf("RELEASE\n");
+    hls_io_BlockChainData *sys = self->sys;
+    if ( sys->begin != NULL )
+        block_ChainRelease( sys->begin );
+
+    free( self->sys );
 }
 
 static hls_io *hls_io_NewBlockChain()
 {
+    printf("NEW\n");
     hls_io *ret = calloc( 1, sizeof( *ret ) );
     if ( unlikely( ret == NULL ) )
         return NULL;
@@ -1484,12 +1554,12 @@ static hls_io *hls_io_NewBlockChain()
 
     ret->ops =
         ( hls_io_ops ){ .open = blockchain_open,
-                        .write = blockchain_write,
+                        .consume = blockchain_consume,
                         .new_reading_context = blockchain_new_reading_context,
                         .release_reading_context = free,
                         .read = blockchain_read,
                         .close = blockchain_close,
-                        .destroy = blockchain_destroy,
+                        .unlink = blockchain_unlink,
                         .release = blockchain_release };
     return ret;
 }
