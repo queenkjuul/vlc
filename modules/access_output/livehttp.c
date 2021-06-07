@@ -229,8 +229,8 @@ typedef struct output_segment
     vlc_tick_t segment_length;
     uint32_t i_segment_number;
     uint8_t aes_ivs[16];
-    hls_io *p_handle;
-    httpd_url_t *url;
+    hls_io *io_handle;
+    httpd_url_t *httpd_file;
     bool closed;
 } output_segment_t;
 
@@ -240,7 +240,7 @@ typedef struct
     char *psz_indexPath;
     char *psz_indexUrl;
     char *psz_keyfile;
-    vlc_tick_t i_keyfile_modification;
+    vlc_tick_t last_segment_exposed_time;
     vlc_tick_t segment_max_length;
     vlc_tick_t current_segment_length;
     uint32_t i_segment;
@@ -263,12 +263,80 @@ typedef struct
     block_t *stuffing_bytes;
     ssize_t stuffing_size;
     vlc_array_t segments_t;
-    hls_io *p_ongoing_segment;
+
+    hls_io *p_playlist;
+    vlc_mutex_t playlist_lock;
+    httpd_url_t *playlist_file;
 
     httpd_host_t *http_host;
 } sout_access_out_sys_t;
 
-static int url_cb( httpd_callback_sys_t *data,
+static int url_playlist_cb( httpd_callback_sys_t *data,
+                   httpd_client_t *cl,
+                   httpd_message_t *answer,
+                   const httpd_message_t *query )
+{
+    if ( !answer || !query || !cl )
+        return VLC_SUCCESS;
+
+    sout_access_out_sys_t *p_sys = (sout_access_out_sys_t*)data;
+
+    const hls_io *io = p_sys->p_playlist;
+
+    vlc_mutex_lock( &p_sys->playlist_lock );
+
+    if (io == NULL)
+        goto err;
+
+    void *reading_context = io->ops.new_reading_context( io );
+    if ( reading_context == NULL )
+        goto err;
+
+    answer->i_body = io->size;
+    answer->p_body = malloc( io->size );
+    if ( unlikely( data == NULL ) )
+        goto err;
+
+    size_t to_read = io->size;
+    size_t cursor = 0;
+    while ( to_read != 0 )
+    {
+        const ssize_t read =
+            io->ops.read( reading_context, answer->p_body + cursor, to_read );
+
+        if ( read == -1 )
+        {
+            io->ops.release_reading_context( reading_context );
+            goto err;
+        }
+
+        cursor += read;
+        to_read -= read;
+    }
+
+    io->ops.release_reading_context( reading_context );
+
+    vlc_mutex_unlock( &p_sys->playlist_lock );
+
+    answer->i_proto = HTTPD_PROTO_HTTP;
+    answer->i_version = 0;
+    answer->i_type = HTTPD_MSG_ANSWER;
+    answer->i_status = 200;
+
+    httpd_MsgAdd( answer, "Content-type", "application/vnd.apple.mpegurl" );
+    httpd_MsgAdd( answer, "Cache-Control", "no-cache" );
+    httpd_MsgAdd( answer, "Connection", "close" );
+    httpd_MsgAdd( answer, "Access-Control-Allow-Origin", "*" );
+    httpd_MsgAdd( answer, "Access-Control-Expose-Headers", "Content-Length" );
+    return VLC_SUCCESS;
+
+err:
+    vlc_mutex_unlock( &p_sys->playlist_lock );
+    free( answer->p_body );
+    return VLC_EGENERIC;
+}
+
+static int url_segment_cb( httpd_callback_sys_t *data,
                    httpd_client_t *cl,
                    httpd_message_t *answer,
                    const httpd_message_t *query )
@@ -277,7 +345,7 @@ static int url_cb( httpd_callback_sys_t *data,
         return VLC_SUCCESS;
 
     const output_segment_t *segment = (output_segment_t *)data;
-    const hls_io *io = segment->p_handle;
+    const hls_io *io = segment->io_handle;
 
     printf("fetching %s\n", segment->psz_filename);;
 
@@ -312,9 +380,11 @@ static int url_cb( httpd_callback_sys_t *data,
     answer->i_type = HTTPD_MSG_ANSWER;
     answer->i_status = 200;
 
-    httpd_MsgAdd( answer, "Content-type", "%s", "video/mpeg" );
+    httpd_MsgAdd( answer, "Content-type", "video/mpeg" );
     httpd_MsgAdd( answer, "Cache-Control", "no-cache" );
     httpd_MsgAdd( answer, "Connection", "close" );
+    httpd_MsgAdd( answer, "Access-Control-Allow-Origin", "*" );
+    httpd_MsgAdd( answer, "Access-Control-Expose-Headers", "Content-Length" );
     return VLC_SUCCESS;
 err:
     io->ops.release_reading_context( reading_context );
@@ -429,6 +499,12 @@ static int Open( vlc_object_t *p_this )
     p_sys->http_host = vlc_http_HostNew(VLC_OBJECT(p_access));
     assert(p_sys->http_host); // TODO actual check
 
+    vlc_mutex_init( &p_sys->playlist_lock );
+
+    p_sys->playlist_file =
+        httpd_UrlNew( p_sys->http_host, "/mystream", NULL, NULL );
+    httpd_UrlCatch(p_sys->playlist_file, HTTPD_MSG_GET, url_playlist_cb, (void*) p_sys);
+    p_sys->last_segment_exposed_time = VLC_TICK_INVALID;
 
     return VLC_SUCCESS;
 }
@@ -633,8 +709,7 @@ static char *formatSegmentPath( char *psz_path, uint32_t i_seg )
 
 static void destroySegment( output_segment_t *segment )
 {
-
-    hls_io *handler = segment->p_handle;
+    hls_io *handler = segment->io_handle;
     //handler->ops.destroy( handler );
     handler->ops.release( handler );
     free( handler );
@@ -642,7 +717,7 @@ static void destroySegment( output_segment_t *segment )
     free( segment->psz_duration );
     free( segment->psz_uri );
     free( segment->psz_key_uri );
-    httpd_UrlDelete( segment->url );
+    httpd_UrlDelete( segment->httpd_file );
     free( segment );
 }
 
@@ -670,7 +745,7 @@ static uint32_t segmentAmountNeeded( sout_access_out_sys_t *p_sys )
 /************************************************************************
  * isFirstItemRemovable: Check for draft 11 section 6.2.2
  * check that the first item has been around outside playlist
- * segment->segment_length + (p_sys->i_numsegs * p_sys->segment_max_length)
+ * segment->segment_/24length + (p_sys->i_numsegs * p_sys->segment_max_length)
  *before it is removed.
  ************************************************************************/
 static bool isFirstItemRemovable( sout_access_out_sys_t *p_sys,
@@ -821,7 +896,7 @@ static int updateIndexAndDel( sout_access_out_t *p_access,
         if ( b_isend )
         {
             if ( vlc_memstream_write( &ms, STR_ENDLIST,
-                                      sizeof( STR_ENDLIST ) ) < 0 )
+                                      sizeof( STR_ENDLIST ) - 1 ) < 0 )
             {
 //                free( psz_idxTmp );
 //                fclose( fp );
@@ -829,20 +904,51 @@ static int updateIndexAndDel( sout_access_out_t *p_access,
             }
         }
         //fclose( fp );
-        vlc_memstream_flush(&ms);
 
-        val = vlc_rename( psz_idxTmp, p_sys->psz_indexPath );
+        status = vlc_memstream_close( &ms );
+        assert( status == VLC_SUCCESS );
 
-        if ( val < 0 )
+        block_t *clone = block_Alloc( ms.length );
+        memcpy( clone->p_buffer, ms.ptr, ms.length );
+        free( ms.ptr );
+
+        vlc_mutex_lock(&p_sys->playlist_lock);
+
+        if (p_sys->p_playlist != NULL)
         {
-            vlc_unlink( psz_idxTmp );
-            msg_Err( p_access, "Error moving LiveHttp index file" );
+            p_sys->p_playlist->ops.unlink( p_sys->p_playlist );
+            p_sys->p_playlist->ops.release( p_sys->p_playlist );
+            free( p_sys->p_playlist );
         }
-        else
-            msg_Dbg( p_access, "LiveHttpIndexComplete: %s",
-                     p_sys->psz_indexPath );
 
-        free( psz_idxTmp );
+       // p_sys->p_playlist = hls_io_NewBlockChain();
+         p_sys->p_playlist = hls_io_NewFile(
+             p_sys->psz_indexPath, O_WRONLY | O_CREAT | O_TRUNC );
+        if ( unlikely( p_sys->p_playlist == NULL ) )
+        {
+            // TODO proper error handling
+            vlc_mutex_unlock( &p_sys->playlist_lock );
+            return -1;
+        }
+
+        p_sys->p_playlist->ops.open( p_sys->p_playlist );
+        p_sys->p_playlist->ops.consume( p_sys->p_playlist, clone );
+        p_sys->p_playlist->ops.close( p_sys->p_playlist );
+
+       vlc_mutex_unlock(&p_sys->playlist_lock);
+
+       // val = vlc_rename( psz_idxTmp, p_sys->psz_indexPath );
+
+       // if ( val < 0 )
+       // {
+       //     vlc_unlink( psz_idxTmp );
+       //     msg_Err( p_access, "Error moving LiveHttp index file" );
+       // }
+       // else
+       //     msg_Dbg( p_access, "LiveHttpIndexComplete: %s",
+       //              p_sys->psz_indexPath );
+
+       // free( psz_idxTmp );
     }
 
     // Then take care of deletion
@@ -874,14 +980,14 @@ static void closeCurrentSegment( sout_access_out_t *p_access,
 
     hls_io *handle = seg_count ? ( (output_segment_t *)vlc_array_item_at_index(
                                        &p_sys->segments_t, seg_count - 1 ) )
-                                     ->p_handle
+                                     ->io_handle
                                : NULL;
     if ( handle != NULL )
     {
         output_segment_t *segment =
             (output_segment_t *)vlc_array_item_at_index( &p_sys->segments_t,
                                                          seg_count - 1 );
-        hls_io *handle = seg_count ? segment->p_handle : NULL;
+        hls_io *handle = seg_count ? segment->io_handle : NULL;
 
         if ( p_sys->key_uri )
         {
@@ -970,10 +1076,13 @@ static void Close( vlc_object_t *p_this )
     }
 
     size_t seg_count = vlc_array_count( &p_sys->segments_t );
-    hls_io *handle = seg_count ? ( (output_segment_t *)vlc_array_item_at_index(
-                                       &p_sys->segments_t, seg_count - 1 ) )
-                                     ->p_handle
-                               : NULL;
+    output_segment_t *segment =
+        seg_count ? (output_segment_t *)vlc_array_item_at_index(
+                        &p_sys->segments_t, seg_count - 1 )
+
+                  : NULL;
+    hls_io *handle = segment ? segment->io_handle : NULL;
+
     ssize_t writevalue = writeSegment( handle, p_access );
     msg_Dbg( p_access, "Writing.. %zd", writevalue );
     if ( unlikely( writevalue < 0 ) )
@@ -985,12 +1094,24 @@ static void Close( vlc_object_t *p_this )
     }
 
     closeCurrentSegment( p_access, p_sys, true );
+    vlc_tick_sleep( p_sys->segment_max_length + VLC_TICK_FROM_SEC(1));
 
-    if ( p_sys->key_uri )
+    httpd_UrlDelete( p_sys->playlist_file );
+
+
+    vlc_mutex_lock( &p_sys->playlist_lock );
+    if ( p_sys->p_playlist )
     {
-        gcry_cipher_close( p_sys->aes_ctx );
-        free( p_sys->key_uri );
+        p_sys->p_playlist->ops.unlink( p_sys->p_playlist );
+        p_sys->p_playlist->ops.release( p_sys->p_playlist );
+        free( p_sys->p_playlist );
     }
+    vlc_mutex_unlock( &p_sys->playlist_lock );
+
+    // Wait a sufficient amount of time (according to the standard) before removing the segments.
+    // TODO: This should be implemented only when draining as it blocks the Close for a big amount of time.
+    const vlc_tick_t duration = segment->segment_length + (p_sys->i_numsegs * p_sys->segment_max_length);
+    vlc_tick_sleep(duration);
 
     while ( vlc_array_count( &p_sys->segments_t ) > 0 )
     {
@@ -1001,11 +1122,17 @@ static void Close( vlc_object_t *p_this )
         {
             msg_Dbg( p_access, "Removing segment number %d name %s",
                      segment->i_segment_number, segment->psz_filename );
-            hls_io *handle = segment->p_handle;
+            hls_io *handle = segment->io_handle;
             handle->ops.unlink( handle );
         }
 
         destroySegment( segment );
+    }
+
+    if ( p_sys->key_uri )
+    {
+        gcry_cipher_close( p_sys->aes_ctx );
+        free( p_sys->key_uri );
     }
 
     block_Release( p_sys->stuffing_bytes );
@@ -1069,9 +1196,9 @@ static ssize_t openNextFile( sout_access_out_t *p_access,
 
    // segment->p_handle = hls_io_NewFile(
    //     segment->psz_filename, O_WRONLY | O_CREAT | O_LARGEFILE | O_TRUNC );
-    segment->p_handle = hls_io_NewBlockChain();
-    if ( segment->p_handle == NULL ||
-         segment->p_handle->ops.open( segment->p_handle ) != VLC_SUCCESS )
+    segment->io_handle = hls_io_NewBlockChain();
+    if ( segment->io_handle == NULL ||
+         segment->io_handle->ops.open( segment->io_handle ) != VLC_SUCCESS )
     {
         msg_Err( p_access, "cannot open `%s' (%s)", segment->psz_filename,
                  vlc_strerror_c( errno ) );
@@ -1094,10 +1221,10 @@ static ssize_t openNextFile( sout_access_out_t *p_access,
             memcpy( segment->aes_ivs, p_sys->aes_ivs, sizeof( uint8_t ) * 16 );
     }
     printf("%s\n", segment->psz_filename);
-    segment->url =
+    segment->httpd_file =
         httpd_UrlNew( p_sys->http_host, segment->psz_filename, NULL, NULL );
-    assert(segment->url);
-    httpd_UrlCatch( segment->url, HTTPD_MSG_GET, &url_cb, (void *)segment );
+    assert(segment->httpd_file);
+    httpd_UrlCatch( segment->httpd_file, HTTPD_MSG_GET, &url_segment_cb, (void *)segment );
     msg_Dbg( p_access, "Successfully opened livehttp file: %s (%" PRIu32 ")",
              segment->psz_uri, i_newseg );
 
@@ -1131,16 +1258,25 @@ static int CheckSegmentChange( sout_access_out_t *p_access, block_t *p_buffer )
                                ongoing_length ) >= p_sys->segment_max_length ) )
     {
 
-        hls_io *handle = seg_count ? segment->p_handle : NULL;
-        printf("SLEEP\n");
-        sleep(5);
+        hls_io *handle = seg_count ? segment->io_handle : NULL;
         writevalue = writeSegment( handle, p_access );
         if ( unlikely( writevalue < 0 ) )
         {
             block_ChainRelease( p_buffer );
             return -1;
         }
+        if ( p_sys->last_segment_exposed_time != VLC_TICK_INVALID )
+        {
+            const vlc_tick_t now = vlc_tick_now();
+            const vlc_tick_t sleep = p_sys->current_segment_length -
+                                     ( now - p_sys->last_segment_exposed_time );
+            printf( "SLEEPING %d, current length=%d\n",
+                    MS_FROM_VLC_TICK( sleep ),
+                    MS_FROM_VLC_TICK( p_sys->current_segment_length ) );
+            vlc_tick_sleep( sleep );
+        }
         closeCurrentSegment( p_access, p_sys, false );
+        p_sys->last_segment_exposed_time = vlc_tick_now();
     }
 
     //const size_t num_seg = var_GetInteger(p_access, "numsegs");
@@ -1246,6 +1382,16 @@ static ssize_t Write( sout_access_out_t *p_access, block_t *p_buffer )
 {
     size_t i_write = 0;
     sout_access_out_sys_t *p_sys = p_access->p_sys;
+
+//    const size_t count = vlc_array_count( &p_sys->segments_t );
+ //   if (count == p_sys->i_numsegs)
+ //   {
+ //       const output_segment_t *first = vlc_array_item_at_index( &p_sys->segments_t, 0 );
+ //       vlc_tick_t now = vlc_tick_now();
+ //       printf("SLEEPING %d\n", first->exposed_time - now + first->segment_length);
+ //       vlc_tick_sleep(first->exposed_time - now + first->segment_length);
+ //   }
+
     while ( p_buffer )
     {
         /* Check if current block is already past segment-length
