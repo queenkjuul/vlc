@@ -197,8 +197,9 @@ typedef struct
     /* Usual IO manipulations */
     int ( *open )( hls_io * );
     /* Write a block using the IO implementation, this function takes ownership
-     * of the block */
-    block_t *( *consume )( hls_io *, block_t * );
+     * of the block.
+     * Returns data not consumed (if any) in a new block */
+    block_t *( *consume_block )( hls_io *, block_t * );
     void ( *close )( hls_io * );
 
     /* Reading is an opaque value providing the necessary tools for
@@ -836,7 +837,7 @@ static int updateIndexAndDel( sout_access_out_t *p_access,
         }
 
         p_sys->p_playlist->ops.open( p_sys->p_playlist );
-        p_sys->p_playlist->ops.consume( p_sys->p_playlist, clone );
+        p_sys->p_playlist->ops.consume_block( p_sys->p_playlist, clone );
         p_sys->p_playlist->ops.close( p_sys->p_playlist );
 
         vlc_mutex_unlock( &p_sys->playlist_lock );
@@ -900,7 +901,7 @@ static void closeCurrentSegment( sout_access_out_t *p_access,
         }
         else
         {
-            block_t *ret = handle->ops.consume(
+            block_t *ret = handle->ops.consume_block(
                 handle, block_Duplicate( p_sys->stuffing_bytes ) );
             if ( ret != NULL )
             {
@@ -1262,7 +1263,7 @@ static ssize_t writeSegment( hls_io *handle, sout_access_out_t *p_access )
 
         const size_t output_size = output->i_buffer;
 
-        block_t *not_wrote = handle->ops.consume( handle, output );
+        block_t *not_wrote = handle->ops.consume_block( handle, output );
 
         // if ( val == -1 )
         //{
@@ -1359,7 +1360,7 @@ static void file_close( hls_io *self )
     sys->fd = -1;
 }
 
-static block_t *file_consume( hls_io *self, block_t *block )
+static block_t *file_consume_block( hls_io *self, block_t *block )
 {
     const hls_io_FileData *sys = self->sys;
     assert( sys->fd != -1 );
@@ -1461,7 +1462,7 @@ static hls_io *hls_io_NewFile( const char *path, int flags )
 
     ret->ops =
         ( hls_io_ops ){ .open = file_open,
-                        .consume = file_consume,
+                        .consume_block = file_consume_block,
                         .new_reading_context = file_new_reading_context,
                         .release_reading_context = file_release_reading_context,
                         .read = file_read,
@@ -1496,7 +1497,7 @@ static int blockchain_open( hls_io *self )
 
 static void blockchain_close( hls_io *self ) { (void)self; }
 
-static block_t *blockchain_consume( hls_io *self, block_t *block )
+static block_t *blockchain_consume_block( hls_io *self, block_t *block )
 {
     assert( block != NULL );
     hls_io_BlockChainData *sys = self->sys;
@@ -1604,7 +1605,7 @@ static hls_io *hls_io_NewBlockChain()
 
     ret->ops =
         ( hls_io_ops ){ .open = blockchain_open,
-                        .consume = blockchain_consume,
+                        .consume_block = blockchain_consume_block,
                         .new_reading_context = blockchain_new_reading_context,
                         .release_reading_context = free,
                         .read = blockchain_read,
