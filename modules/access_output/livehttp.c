@@ -117,12 +117,19 @@ static void Close( vlc_object_t * );
 #define INTITIAL_SEG_TEXT N_( "Number of first segment" )
 #define INITIAL_SEG_LONGTEXT N_( "The number of the first segment generated" )
 
-#define NO_FS_TEXT                                                             \
-    N_( "Don't store the segments on the filesystem (live only)" )
-#define NO_FS_LONGTEXT                                                         \
-    N_( "The segmented track will be stored in memory instead of on the "      \
-        "filesystem, be cautious as it can lead to big memory consumption if " \
-        "the segment number is too high" )
+#define IO_TYPE_TEXT                                                             \
+    N_( "Specify the segment IO method" )
+#define IO_TYPE_LONGTEXT                                                       \
+    N_( "Specify the segment IO method. Choose `file' to output segments on "  \
+        "the filesystem or `memory' to output segments to memory chunks." )
+enum hls_io_type
+{
+    HLS_IO_TYPE_FILE = 0,
+    HLS_IO_TYPE_MEMORY,
+};
+static const char *const io_type_vlc[] = { "file", "memory" };
+
+static const char *const io_type_user[] = { N_( "File" ), N_( "Memory" ) };
 
 /* clang-format off */
 vlc_module_begin ()
@@ -144,9 +151,11 @@ vlc_module_begin ()
     add_bool( SOUT_CFG_PREFIX "caching", false,
               NOCACHE_TEXT, NOCACHE_LONGTEXT )
     add_bool( SOUT_CFG_PREFIX "generate-iv", false,
-              RANDOMIV_TEXT, RANDOMIV_LONGTEXT )
-    add_bool( SOUT_CFG_PREFIX "no-fs", false,
-              NO_FS_TEXT, NO_FS_LONGTEXT )
+              RANDOMIV_TEXT, RANDOMIV_LONGTEXT, false )
+    add_string( SOUT_CFG_PREFIX "io-type", io_type_vlc[HLS_IO_TYPE_FILE],
+                IO_TYPE_TEXT, IO_TYPE_LONGTEXT, false )
+        change_string_list( io_type_vlc, io_type_user)
+        change_safe()
     add_string( SOUT_CFG_PREFIX "index", NULL,
                 INDEX_TEXT, INDEX_LONGTEXT )
     add_string( SOUT_CFG_PREFIX "index-url", NULL,
@@ -260,13 +269,14 @@ typedef struct
     bool b_caching;
     bool b_generate_iv;
     bool b_segment_has_data;
-    bool b_no_fs;
+    enum hls_io_type io_type;
     uint8_t aes_ivs[16];
     gcry_cipher_hd_t aes_ctx;
     char *key_uri;
     block_t *stuffing_bytes;
     ssize_t stuffing_size;
     vlc_array_t segments_t;
+
 
     hls_io *p_playlist;
     vlc_mutex_t playlist_lock;
@@ -343,6 +353,12 @@ static int Open( vlc_object_t *p_this )
     p_sys->b_generate_iv =
         var_GetBool( p_access, SOUT_CFG_PREFIX "generate-iv" );
     p_sys->b_segment_has_data = false;
+
+    char *type_str = var_GetString( p_access, SOUT_CFG_PREFIX "io-type" );
+    p_sys->io_type = strcmp( type_str, io_type_vlc[0] ) == 0
+                         ? HLS_IO_TYPE_FILE
+                         : HLS_IO_TYPE_MEMORY;
+    free(type_str);
 
     vlc_array_init( &p_sys->segments_t );
 
@@ -826,9 +842,11 @@ static int updateIndexAndDel( sout_access_out_t *p_access,
             free( p_sys->p_playlist );
         }
 
-        // p_sys->p_playlist = hls_io_NewBlockChain();
-        p_sys->p_playlist = hls_io_NewFile( p_sys->psz_indexPath,
-                                            O_WRONLY | O_CREAT | O_TRUNC );
+        if ( p_sys->io_type == HLS_IO_TYPE_FILE )
+            p_sys->p_playlist = hls_io_NewFile( p_sys->psz_indexPath,
+                                                O_WRONLY | O_CREAT | O_TRUNC );
+        else if ( p_sys->io_type == HLS_IO_TYPE_FILE )
+            p_sys->p_playlist = hls_io_NewBlockChain();
         if ( unlikely( p_sys->p_playlist == NULL ) )
         {
             // TODO proper error handling
@@ -1109,9 +1127,12 @@ static ssize_t openNextFile( sout_access_out_t *p_access,
         return -1;
     }
 
-    // segment->p_handle = hls_io_NewFile(
-    //     segment->psz_filename, O_WRONLY | O_CREAT | O_LARGEFILE | O_TRUNC );
-    segment->io_handle = hls_io_NewBlockChain();
+    if ( p_sys->io_type == HLS_IO_TYPE_FILE )
+        segment->io_handle = hls_io_NewFile(
+            segment->psz_filename, O_WRONLY | O_CREAT | O_LARGEFILE | O_TRUNC );
+    else if ( p_sys->io_type == HLS_IO_TYPE_MEMORY )
+        segment->io_handle = hls_io_NewBlockChain();
+
     if ( segment->io_handle == NULL ||
          segment->io_handle->ops.open( segment->io_handle ) != VLC_SUCCESS )
     {
