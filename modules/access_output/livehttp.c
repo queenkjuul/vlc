@@ -94,7 +94,10 @@ static void Close( vlc_object_t * );
 #define DELSEGS_TEXT N_( "Delete segments" )
 #define DELSEGS_LONGTEXT N_( "Delete segments when they are no longer needed" )
 
-#define RATECONTROL_TEXT N_( "Use muxers rate control mechanism" )
+#define PACE_TEXT N_( "Enable pacing" )
+#define PACE_LONGTEXT                                                          \
+    N_( "Pace the decoder at the real output segment rate, useful for "        \
+        "livestreaming" )
 
 #define KEYURI_TEXT N_( "AES key URI to place in playlist" )
 
@@ -132,12 +135,12 @@ vlc_module_begin ()
     add_integer( SOUT_CFG_PREFIX "seglen", 10, SEGLEN_TEXT, SEGLEN_LONGTEXT )
     add_integer( SOUT_CFG_PREFIX "numsegs", 0, NUMSEGS_TEXT, NUMSEGS_LONGTEXT )
     add_integer( SOUT_CFG_PREFIX "initial-segment-number", 1, INTITIAL_SEG_TEXT, INITIAL_SEG_LONGTEXT )
-    add_bool( SOUT_CFG_PREFIX "splitanywhere", false,
+    add_bool( SOUT_CFG_PREFIX "splitanywhere", true,
               SPLITANYWHERE_TEXT, SPLITANYWHERE_LONGTEXT )
     add_bool( SOUT_CFG_PREFIX "delsegs", true,
               DELSEGS_TEXT, DELSEGS_LONGTEXT )
-    add_bool( SOUT_CFG_PREFIX "ratecontrol", false,
-              RATECONTROL_TEXT, RATECONTROL_TEXT )
+    add_bool( SOUT_CFG_PREFIX "pace", false,
+              PACE_TEXT, PACE_TEXT )
     add_bool( SOUT_CFG_PREFIX "caching", false,
               NOCACHE_TEXT, NOCACHE_LONGTEXT )
     add_bool( SOUT_CFG_PREFIX "generate-iv", false,
@@ -167,7 +170,7 @@ static const char *const ppsz_sout_options[] = { "seglen",
                                                  "delsegs",
                                                  "index",
                                                  "index-url",
-                                                 "ratecontrol",
+                                                 "pace",
                                                  "caching",
                                                  "key-uri",
                                                  "key-file",
@@ -251,7 +254,7 @@ typedef struct
     unsigned i_numsegs;
     unsigned i_initial_segment;
     bool b_delsegs;
-    bool b_ratecontrol;
+    bool b_pace;
     bool b_splitanywhere;
     bool b_caching;
     bool b_generate_iv;
@@ -333,8 +336,8 @@ static int Open( vlc_object_t *p_this )
     p_sys->b_splitanywhere =
         var_GetBool( p_access, SOUT_CFG_PREFIX "splitanywhere" );
     p_sys->b_delsegs = var_GetBool( p_access, SOUT_CFG_PREFIX "delsegs" );
-    p_sys->b_ratecontrol =
-        var_GetBool( p_access, SOUT_CFG_PREFIX "ratecontrol" );
+    p_sys->b_pace =
+        var_GetBool( p_access, SOUT_CFG_PREFIX "pace" );
     p_sys->b_caching = var_GetBool( p_access, SOUT_CFG_PREFIX "caching" );
     p_sys->b_generate_iv =
         var_GetBool( p_access, SOUT_CFG_PREFIX "generate-iv" );
@@ -948,8 +951,8 @@ static void write_last_segment(sout_access_out_t* p_access, output_segment_t *la
     }
 
     closeCurrentSegment( p_access, p_sys, true );
-    vlc_tick_sleep( p_sys->segment_max_length + VLC_TICK_FROM_SEC( 1 ) );
-
+    if ( p_sys->b_pace )
+        vlc_tick_sleep( p_sys->segment_max_length + VLC_TICK_FROM_SEC( 1 ) );
 }
 
 static void destroy_segments( sout_access_out_t *p_access )
@@ -1036,7 +1039,8 @@ static void Close( vlc_object_t *p_this )
         const vlc_tick_t duration =
             last_segment->segment_length +
             ( p_sys->i_numsegs * p_sys->segment_max_length );
-        vlc_tick_sleep( duration );
+        if ( p_sys->b_pace )
+            vlc_tick_sleep( duration );
 
         destroy_segments( p_access );
     }
@@ -1067,8 +1071,7 @@ static int Control( sout_access_out_t *p_access, int i_query, va_list args )
     case ACCESS_OUT_CONTROLS_PACE:
     {
         bool *pb = va_arg( args, bool * );
-        *pb = !p_sys->b_ratecontrol;
-        //*pb = true;
+        *pb = p_sys->b_pace;
         break;
     }
 
@@ -1182,7 +1185,8 @@ static int CheckSegmentChange( sout_access_out_t *p_access, block_t *p_buffer )
             printf( "SLEEPING %d, current length=%d\n",
                     MS_FROM_VLC_TICK( sleep ),
                     MS_FROM_VLC_TICK( p_sys->current_segment_length ) );
-            vlc_tick_sleep( sleep );
+            if ( p_sys->b_pace )
+                vlc_tick_sleep( sleep );
         }
         closeCurrentSegment( p_access, p_sys, false );
         p_sys->last_segment_exposed_time = vlc_tick_now();
@@ -1290,16 +1294,6 @@ static ssize_t Write( sout_access_out_t *p_access, block_t *p_buffer )
 {
     size_t i_write = 0;
     sout_access_out_sys_t *p_sys = p_access->p_sys;
-
-    //    const size_t count = vlc_array_count( &p_sys->segments_t );
-    //   if (count == p_sys->i_numsegs)
-    //   {
-    //       const output_segment_t *first = vlc_array_item_at_index(
-    //       &p_sys->segments_t, 0 ); vlc_tick_t now = vlc_tick_now();
-    //       printf("SLEEPING %d\n", first->exposed_time - now +
-    //       first->segment_length); vlc_tick_sleep(first->exposed_time - now +
-    //       first->segment_length);
-    //   }
 
     while ( p_buffer )
     {
