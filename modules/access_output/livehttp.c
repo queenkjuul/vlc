@@ -47,6 +47,7 @@
 #include <vlc_plugin.h>
 #include <vlc_sout.h>
 #include <vlc_strings.h>
+#include <vlc_url.h>
 
 #include <gcrypt.h>
 #include <vlc_gcrypt.h>
@@ -114,6 +115,10 @@ static void Close( vlc_object_t * );
 #define RANDOMIV_TEXT N_( "Use randomized IV for encryption" )
 #define RANDOMIV_LONGTEXT N_( "Generate IV instead using segment-number as IV" )
 
+#define ENABLE_HTTPD_TEXT N_( "Enable VLC HTTP implementation" )
+#define ENABLE_HTTPD_LONGTEXT                                                  \
+    N_( "Share the HLS stream though VLC's own HTTP implementation" )
+
 #define INTITIAL_SEG_TEXT N_( "Number of first segment" )
 #define INITIAL_SEG_LONGTEXT N_( "The number of the first segment generated" )
 
@@ -122,14 +127,11 @@ static void Close( vlc_object_t * );
 #define IO_TYPE_LONGTEXT                                                       \
     N_( "Specify the segment IO method. Choose `file' to output segments on "  \
         "the filesystem or `memory' to output segments to memory chunks." )
-enum hls_io_type
-{
-    HLS_IO_TYPE_FILE = 0,
-    HLS_IO_TYPE_MEMORY,
-};
-static const char *const io_type_vlc[] = { "file", "memory" };
-
-static const char *const io_type_user[] = { N_( "File" ), N_( "Memory" ) };
+//enum hls_io_type
+//{
+//    HLS_IO_TYPE_FILE = 0,
+//    HLS_IO_TYPE_MEMORY,
+//};
 
 /* clang-format off */
 vlc_module_begin ()
@@ -151,13 +153,19 @@ vlc_module_begin ()
     add_bool( SOUT_CFG_PREFIX "caching", false,
               NOCACHE_TEXT, NOCACHE_LONGTEXT )
     add_bool( SOUT_CFG_PREFIX "generate-iv", false,
-              RANDOMIV_TEXT, RANDOMIV_LONGTEXT, false )
-    add_string( SOUT_CFG_PREFIX "io-type", io_type_vlc[HLS_IO_TYPE_FILE],
-                IO_TYPE_TEXT, IO_TYPE_LONGTEXT, false )
-        change_string_list( io_type_vlc, io_type_user)
-        change_safe()
-    add_string( SOUT_CFG_PREFIX "index", NULL,
-                INDEX_TEXT, INDEX_LONGTEXT )
+              RANDOMIV_TEXT, RANDOMIV_LONGTEXT )
+//    add_bool( SOUT_CFG_PREFIX "enable-httpd", false,
+//              ENABLE_HTTPD_TEXT, ENABLE_HTTPD_LONGTEXT, true )
+//    add_string( SOUT_CFG_PREFIX "io-type", io_type_vlc[HLS_IO_TYPE_FILE],
+//                IO_TYPE_TEXT, IO_TYPE_LONGTEXT, true )
+//        change_string_list( io_type_vlc, io_type_user)
+//        change_safe()
+    add_string( SOUT_CFG_PREFIX "index-path", NULL,
+                INDEX_TEXT, INDEX_LONGTEXT)
+    add_string( SOUT_CFG_PREFIX "segment-url", NULL,
+                INDEXURL_TEXT, INDEXURL_LONGTEXT)
+    add_string( SOUT_CFG_PREFIX "segment-path", NULL,
+                INDEXURL_TEXT, INDEXURL_LONGTEXT )
     add_string( SOUT_CFG_PREFIX "index-url", NULL,
                 INDEXURL_TEXT, INDEXURL_LONGTEXT )
     add_string( SOUT_CFG_PREFIX "key-uri", NULL,
@@ -177,7 +185,9 @@ static const char *const ppsz_sout_options[] = { "seglen",
                                                  "splitanywhere",
                                                  "numsegs",
                                                  "delsegs",
-                                                 "index",
+                                                 "index-path",
+                                                 "segment-url",
+                                                 "segment-path",
                                                  "index-url",
                                                  "pace",
                                                  "caching",
@@ -186,7 +196,6 @@ static const char *const ppsz_sout_options[] = { "seglen",
                                                  "key-loadfile",
                                                  "generate-iv",
                                                  "initial-segment-number",
-                                                 "no-fs",
                                                  NULL };
 
 static ssize_t Write( sout_access_out_t *, block_t * );
@@ -198,8 +207,11 @@ static int Control( sout_access_out_t *, int, va_list );
 
 typedef struct hls_io hls_io;
 
-static hls_io *hls_io_NewFile( const char *path, int flags );
-static hls_io *hls_io_NewBlockChain();
+/*
+ * Create a new io descriptor.
+ * if path is NULL flags is ignored and a memory-only io is returned.
+ */
+static hls_io *hls_io_New( const char *path, int flags );
 
 typedef struct
 {
@@ -236,6 +248,7 @@ struct hls_io
 typedef struct output_segment
 {
     char *psz_filename;
+    char *psz_path;
     char *psz_uri;
     char *psz_key_uri;
     char *psz_duration;
@@ -252,6 +265,9 @@ typedef struct
     char *psz_cursegPath;
     char *psz_indexPath;
     char *psz_indexUrl;
+    char *psz_segmentUrl;
+    vlc_url_t segmentParsedUrl;
+    char *psz_segmentPath;
     char *psz_keyfile;
     vlc_tick_t last_segment_exposed_time;
     vlc_tick_t segment_max_length;
@@ -269,7 +285,6 @@ typedef struct
     bool b_caching;
     bool b_generate_iv;
     bool b_segment_has_data;
-    enum hls_io_type io_type;
     uint8_t aes_ivs[16];
     gcry_cipher_hd_t aes_ctx;
     char *key_uri;
@@ -282,6 +297,7 @@ typedef struct
     vlc_mutex_t playlist_lock;
     httpd_url_t *playlist_file;
 
+    bool enable_httpd;
     httpd_host_t *http_host;
 } sout_access_out_sys_t;
 
@@ -354,19 +370,13 @@ static int Open( vlc_object_t *p_this )
         var_GetBool( p_access, SOUT_CFG_PREFIX "generate-iv" );
     p_sys->b_segment_has_data = false;
 
-    char *type_str = var_GetString( p_access, SOUT_CFG_PREFIX "io-type" );
-    p_sys->io_type = strcmp( type_str, io_type_vlc[0] ) == 0
-                         ? HLS_IO_TYPE_FILE
-                         : HLS_IO_TYPE_MEMORY;
-    free(type_str);
-
     vlc_array_init( &p_sys->segments_t );
 
     p_sys->stuffing_bytes = block_Alloc( 16 );
     p_sys->stuffing_size = 0;
 
     p_sys->psz_indexPath = NULL;
-    psz_idx = var_GetNonEmptyString( p_access, SOUT_CFG_PREFIX "index" );
+    psz_idx = var_GetNonEmptyString( p_access, SOUT_CFG_PREFIX "index-path" );
     if ( psz_idx )
     {
         char *psz_tmp;
@@ -382,6 +392,10 @@ static int Open( vlc_object_t *p_this )
             vlc_unlink( p_sys->psz_indexPath );
     }
 
+    p_sys->psz_segmentUrl =
+        var_GetNonEmptyString( p_access, SOUT_CFG_PREFIX "segment-url" );
+    p_sys->psz_segmentPath =
+        var_GetNonEmptyString( p_access, SOUT_CFG_PREFIX "segment-path" );
     p_sys->psz_indexUrl =
         var_GetNonEmptyString( p_access, SOUT_CFG_PREFIX "index-url" );
     p_sys->psz_keyfile =
@@ -389,12 +403,29 @@ static int Open( vlc_object_t *p_this )
     p_sys->key_uri =
         var_GetNonEmptyString( p_access, SOUT_CFG_PREFIX "key-uri" );
 
+    //TODO: Real runtime check
+    assert(p_sys->psz_segmentUrl);
+    assert(p_sys->psz_indexPath || p_sys->psz_indexUrl);
+
+    p_sys->enable_httpd = p_sys->psz_indexUrl != NULL;
+
+    // Validate the given url and store it to keep the vpath
+    // TODO free that
+    if ( p_sys->enable_httpd &&
+         vlc_UrlParse( &p_sys->segmentParsedUrl, p_sys->psz_segmentUrl ) !=
+             VLC_SUCCESS )
+    {
+        //TODO error handling
+    }
+
+
     p_access->p_sys = p_sys;
 
     if ( p_sys->psz_keyfile && ( LoadCryptFile( p_access ) < 0 ) )
     {
         free( p_sys->psz_indexUrl );
         free( p_sys->psz_indexPath );
+        free( p_sys->psz_segmentUrl );
         free( p_sys );
         msg_Err( p_access, "Encryption init failed" );
         return VLC_EGENERIC;
@@ -403,6 +434,7 @@ static int Open( vlc_object_t *p_this )
     {
         free( p_sys->psz_indexUrl );
         free( p_sys->psz_indexPath );
+        free( p_sys->psz_segmentUrl );
         free( p_sys );
         msg_Err( p_access, "Encryption init failed" );
         return VLC_EGENERIC;
@@ -414,15 +446,18 @@ static int Open( vlc_object_t *p_this )
     p_access->pf_write = Write;
     p_access->pf_control = Control;
 
-    p_sys->http_host = vlc_http_HostNew( VLC_OBJECT( p_access ) );
-    assert( p_sys->http_host ); // TODO actual check
+    if ( p_sys->enable_httpd )
+    {
+        p_sys->http_host = vlc_http_HostNew( VLC_OBJECT( p_access ) );
+        assert( p_sys->http_host ); // TODO actual check
+        p_sys->playlist_file =
+            httpd_UrlNew( p_sys->http_host, p_sys->psz_indexUrl, NULL, NULL );
+        httpd_UrlCatch( p_sys->playlist_file, HTTPD_MSG_GET, url_playlist_cb,
+                        (void *)p_sys );
+    }
 
     vlc_mutex_init( &p_sys->playlist_lock );
 
-    p_sys->playlist_file =
-        httpd_UrlNew( p_sys->http_host, "/mystream", NULL, NULL );
-    httpd_UrlCatch( p_sys->playlist_file, HTTPD_MSG_GET, url_playlist_cb,
-                    (void *)p_sys );
     p_sys->last_segment_exposed_time = VLC_TICK_INVALID;
 
     return VLC_SUCCESS;
@@ -636,7 +671,8 @@ static void destroySegment( output_segment_t *segment )
     free( segment->psz_duration );
     free( segment->psz_uri );
     free( segment->psz_key_uri );
-    httpd_UrlDelete( segment->httpd_file );
+    if ( segment->httpd_file )
+        httpd_UrlDelete( segment->httpd_file );
     free( segment );
 }
 
@@ -842,11 +878,8 @@ static int updateIndexAndDel( sout_access_out_t *p_access,
             free( p_sys->p_playlist );
         }
 
-        if ( p_sys->io_type == HLS_IO_TYPE_FILE )
-            p_sys->p_playlist = hls_io_NewFile( p_sys->psz_indexPath,
-                                                O_WRONLY | O_CREAT | O_TRUNC );
-        else if ( p_sys->io_type == HLS_IO_TYPE_FILE )
-            p_sys->p_playlist = hls_io_NewBlockChain();
+        p_sys->p_playlist =
+            hls_io_New( p_sys->psz_indexPath, O_WRONLY | O_CREAT | O_TRUNC );
         if ( unlikely( p_sys->p_playlist == NULL ) )
         {
             // TODO proper error handling
@@ -1038,7 +1071,10 @@ static void Close( vlc_object_t *p_this )
         write_last_segment( p_access, last_segment );
     }
 
-    httpd_UrlDelete( p_sys->playlist_file );
+    if ( p_sys->enable_httpd )
+    {
+        httpd_UrlDelete( p_sys->playlist_file );
+    }
 
     vlc_mutex_lock( &p_sys->playlist_lock );
     if ( p_sys->p_playlist )
@@ -1072,10 +1108,14 @@ static void Close( vlc_object_t *p_this )
 
     block_Release( p_sys->stuffing_bytes );
 
-    httpd_HostDelete( p_sys->http_host );
+    if ( p_sys->http_host )
+    {
+        httpd_HostDelete( p_sys->http_host );
+    }
 
     free( p_sys->psz_indexUrl );
     free( p_sys->psz_indexPath );
+    free( p_sys->psz_segmentUrl );
     free( p_sys );
 
     msg_Dbg( p_access, "livehttp access output closed" );
@@ -1116,9 +1156,11 @@ static ssize_t openNextFile( sout_access_out_t *p_access,
 
     segment->i_segment_number = i_newseg;
     segment->psz_filename = formatSegmentPath( p_access->psz_path, i_newseg );
-    char *psz_idxFormat =
-        p_sys->psz_indexUrl ? p_sys->psz_indexUrl : p_access->psz_path;
-    segment->psz_uri = formatSegmentPath( psz_idxFormat, i_newseg );
+
+    if (p_sys->psz_segmentPath)
+        segment->psz_path = formatSegmentPath( p_sys->psz_segmentPath, i_newseg );
+    if (p_sys->psz_segmentUrl)
+        segment->psz_uri = formatSegmentPath( p_sys->segmentParsedUrl.psz_path, i_newseg );
 
     if ( unlikely( !segment->psz_filename ) )
     {
@@ -1127,11 +1169,8 @@ static ssize_t openNextFile( sout_access_out_t *p_access,
         return -1;
     }
 
-    if ( p_sys->io_type == HLS_IO_TYPE_FILE )
-        segment->io_handle = hls_io_NewFile(
-            segment->psz_filename, O_WRONLY | O_CREAT | O_LARGEFILE | O_TRUNC );
-    else if ( p_sys->io_type == HLS_IO_TYPE_MEMORY )
-        segment->io_handle = hls_io_NewBlockChain();
+    segment->io_handle = hls_io_New(
+        segment->psz_path, O_WRONLY | O_CREAT | O_LARGEFILE | O_TRUNC );
 
     if ( segment->io_handle == NULL ||
          segment->io_handle->ops.open( segment->io_handle ) != VLC_SUCCESS )
@@ -1157,11 +1196,15 @@ static ssize_t openNextFile( sout_access_out_t *p_access,
             memcpy( segment->aes_ivs, p_sys->aes_ivs, sizeof( uint8_t ) * 16 );
     }
     printf( "%s\n", segment->psz_filename );
-    segment->httpd_file =
-        httpd_UrlNew( p_sys->http_host, segment->psz_filename, NULL, NULL );
-    assert( segment->httpd_file );
-    httpd_UrlCatch( segment->httpd_file, HTTPD_MSG_GET, &url_segment_cb,
-                    (void *)segment );
+    if ( p_sys->enable_httpd )
+    {
+        assert(segment->psz_uri);
+        segment->httpd_file =
+            httpd_UrlNew( p_sys->http_host, segment->psz_uri, NULL, NULL );
+        assert( segment->httpd_file );// TODO proper check
+        httpd_UrlCatch( segment->httpd_file, HTTPD_MSG_GET, &url_segment_cb,
+                        (void *)segment );
+    }
     msg_Dbg( p_access, "Successfully opened livehttp file: %s (%" PRIu32 ")",
              segment->psz_uri, i_newseg );
 
@@ -1170,6 +1213,7 @@ static ssize_t openNextFile( sout_access_out_t *p_access,
     p_sys->b_segment_has_data = false;
     return 1;
 }
+
 /*****************************************************************************
  * CheckSegmentChange: Check if segment needs to be closed and new opened
  *****************************************************************************/
@@ -1636,6 +1680,12 @@ static hls_io *hls_io_NewBlockChain()
     return ret;
 }
 
+static hls_io *hls_io_New( const char *path, int flags )
+{
+    if ( path == NULL )
+        return hls_io_NewBlockChain();
+    return hls_io_NewFile( path, flags );
+}
 /*****************************************************************************
  * HTTP: Utils
  *****************************************************************************/
