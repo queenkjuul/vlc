@@ -12,12 +12,6 @@ access_out_LTLIBRARIES = \
 	libaccess_output_http_plugin.la \
 	libaccess_output_udp_plugin.la
 
-libaccess_output_livehttp_plugin_la_SOURCES = access_output/livehttp.c
-libaccess_output_livehttp_plugin_la_CFLAGS = $(AM_CFLAGS) $(GCRYPT_CFLAGS)
-libaccess_output_livehttp_plugin_la_LIBADD = $(GCRYPT_LIBS) -lgpg-error $(LIBM)
-if HAVE_GCRYPT
-access_out_LTLIBRARIES += libaccess_output_livehttp_plugin.la
-endif
 
 libaccess_output_shout_plugin_la_SOURCES = access_output/shout.c
 libaccess_output_shout_plugin_la_CPPFLAGS = $(AM_CPPFLAGS) $(SHOUT_CFLAGS)

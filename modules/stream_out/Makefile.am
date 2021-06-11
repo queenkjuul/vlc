@@ -30,7 +30,15 @@ libstream_out_transcode_plugin_la_SOURCES = \
 	stream_out/transcode/audio.c stream_out/transcode/video.c
 libstream_out_transcode_plugin_la_CFLAGS = $(AM_CFLAGS)
 libstream_out_transcode_plugin_la_LIBADD = $(LIBM)
-libstream_out_hls_plugin_la_SOURCES = stream_out/hls.c
+libstream_out_hls_plugin_la_SOURCES = stream_out/hls/sout.c \
+																			stream_out/hls/aco.c \
+																			stream_out/hls/io.c \
+																			stream_out/hls/common.h
+libstream_out_hls_plugin_la_CFLAGS = $(AM_CFLAGS) $(GCRYPT_CFLAGS)
+libstream_out_hls_plugin_la_LIBADD = $(GCRYPT_LIBS) -lgpg-error $(LIBM)
+if HAVE_GCRYPT
+access_out_LTLIBRARIES += libaccess_output_livehttp_plugin.la
+endif
 
 sout_LTLIBRARIES = \
 	libstream_out_dummy_plugin.la \
