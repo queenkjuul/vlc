@@ -211,8 +211,6 @@ inline IP_ADAPTER_ADDRESSES* ListAdapters()
     return addresses;
 }
 
-#ifdef UPNP_ENABLE_IPV6
-
 inline char* getPreferedAdapter()
 {
     IP_ADAPTER_ADDRESSES *p_adapter, *addresses;
@@ -241,8 +239,6 @@ inline char* getPreferedAdapter()
     free(addresses);
     return NULL;
 }
-
-#else
 
 inline char *getIpv4ForMulticast()
 {
@@ -330,10 +326,7 @@ done:
     free(addresses);
     return NULL;
 }
-#endif /* UPNP_ENABLE_IPV6 */
 #else /* _WIN32 */
-
-#ifdef UPNP_ENABLE_IPV6
 
 #ifdef __APPLE__
 #include <TargetConditionals.h>
@@ -409,14 +402,7 @@ inline char *getPreferedAdapter()
 }
 
 #endif
-#else
-
-inline char *getIpv4ForMulticast()
-{
-    return NULL;
-}
-
-#endif
 
 #endif /* _WIN32 */
-#endif /* UPNP_WRAPPER_H */
+
+#endif
