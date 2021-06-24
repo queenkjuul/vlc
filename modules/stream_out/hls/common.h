@@ -9,6 +9,11 @@
 
 #include <vlc_httpd.h>
 
+#define SOUT_CFG_PREFIX "sout-hls-"
+int SoutOpen( vlc_object_t * );
+void SoutClose( vlc_object_t * );
+
+#define ACO_CFG_PREFIX "aco-hls-"
 int AccessOpen( vlc_object_t * );
 void AccessClose( vlc_object_t * );
 
@@ -71,6 +76,11 @@ typedef struct
     bool closed;
 } hls_segment;
 
+typedef struct {
+    const hls_io *handle;
+    vlc_mutex_t lock;
+} hls_index;
+
 #define HLS_SOUT_CALLBACKS_VAR "sout-hls-callbacks"
 struct hls_sout_callbacks
 {
@@ -82,10 +92,18 @@ struct hls_sout_callbacks
     void ( *segment_removed )( void *,
                                const sout_access_out_t *,
                                const hls_segment * );
+
+    void ( *index_updated )( void *,
+                             const sout_access_out_t *,
+                             const hls_io * );
 };
 
 int url_segment_cb( const hls_segment *segment,
                     httpd_client_t *cl,
                     httpd_message_t *answer,
                     const httpd_message_t *query );
+int url_index_cb( hls_index *index,
+                  httpd_client_t *cl,
+                  httpd_message_t *answer,
+                  const httpd_message_t *query );
 #endif

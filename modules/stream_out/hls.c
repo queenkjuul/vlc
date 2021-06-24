@@ -1,7 +1,7 @@
 /*****************************************************************************
- * hls.c: HLS stream output module
+ * hls.c: VLC HLS plugin module
  *****************************************************************************
- * Copyright (C) 2003-2011 VLC authors and VideoLAN
+ * Copyright (C) 2003-2021 VLC authors and VideoLAN
  *
  * Authors: Alaric Senat <dev.asenat@posteo.net>
  *
@@ -28,27 +28,6 @@
 #include <vlc_plugin.h>
 #include <vlc_sout.h>
 
-/*****************************************************************************
- * Module descriptor
- *****************************************************************************/
-static int Open( vlc_object_t * );
-static void Close( vlc_object_t * );
-
-#define SOUT_CFG_PREFIX "sout-hls-"
-
-/* clang-format off */
-vlc_module_begin()
-    set_shortname( "HLS" )
-    set_description( N_( "HLS stream output" ) )
-    set_capability( "sout output", 50 )
-    add_shortcut( "hls" )
-    set_category( CAT_SOUT )
-    set_subcategory( SUBCAT_SOUT_STREAM )
-
-    // add_string( SOUT_CFG_PREFIX "access", "", ACCESS_TEXT, ACCESS_LONGTEXT, false );
-    set_callbacks( Open, Close )
-vlc_module_end();
-/* clang-format on */
 
 static const char *const sout_options[] = { NULL };
 
@@ -108,7 +87,7 @@ static const struct sout_stream_operations ops = {
     Add, Del, Send, Control, Flush,
 };
 
-static int Open( vlc_object_t *this )
+static int SoutOpen( vlc_object_t *this )
 {
     sout_stream_t *stream = (sout_stream_t *)this;
 
@@ -143,7 +122,7 @@ err:
     return VLC_EGENERIC;
 }
 
-static void Close( vlc_object_t *this )
+static void SoutClose( vlc_object_t *this )
 {
     sout_stream_t *stream = (sout_stream_t *)this;
     sout_stream_sys_t *sys = stream->p_sys;

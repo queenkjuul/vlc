@@ -1,7 +1,7 @@
 /*****************************************************************************
- * hls.c: HLS stream output module
+ * hls.c: HLS plugin entry points
  *****************************************************************************
- * Copyright (C) 2003-2011 VLC authors and VideoLAN
+ * Copyright (C) 2003-2021 VLC authors and VideoLAN
  *
  * Authors: Alaric Senat <dev.asenat@posteo.net>
  *
@@ -23,23 +23,72 @@
 /*****************************************************************************
  * Preamble
  *****************************************************************************/
-
 #include "common.h"
 
 #include <vlc_plugin.h>
-#include <vlc_queue.h>
-#include <vlc_sout.h>
-
-#include <assert.h>
 
 /*****************************************************************************
  * Module descriptor
  *****************************************************************************/
-static int Open( vlc_object_t * );
-static void Close( vlc_object_t * );
 
-#define SOUT_CFG_PREFIX "sout-hls-"
+#define SEGLEN_TEXT N_( "Segment length" )
+#define SEGLEN_LONGTEXT N_( "Length of TS stream segments" )
+#define SPLITANYWHERE_TEXT N_( "Split segments anywhere" )
+#define SPLITANYWHERE_LONGTEXT                                                 \
+    N_( "Don't require a keyframe before splitting "                           \
+        "a segment. Needed for audio only." )
 
+#define NUMSEGS_TEXT N_( "Number of segments" )
+#define NUMSEGS_LONGTEXT N_( "Number of segments to include in index" )
+
+#define NOCACHE_TEXT N_( "Allow cache" )
+#define NOCACHE_LONGTEXT                                                       \
+    N_( "Add EXT-X-ALLOW-CACHE:NO directive in playlist-file if this is "      \
+        "disabled" )
+
+#define INDEX_TEXT N_( "Index file" )
+#define INDEX_LONGTEXT N_( "Path to the index file to create" )
+
+#define INDEXURL_TEXT N_( "Full URL to put in index file" )
+#define INDEXURL_LONGTEXT                                                      \
+    N_( "Full URL to put in index file. "                                      \
+        "Use #'s to represent segment number" )
+
+#define DELSEGS_TEXT N_( "Delete segments" )
+#define DELSEGS_LONGTEXT N_( "Delete segments when they are no longer needed" )
+
+#define PACE_TEXT N_( "Enable pacing" )
+#define PACE_LONGTEXT                                                          \
+    N_( "Pace the decoder at the real output segment rate, useful for "        \
+        "livestreaming" )
+
+#define KEYURI_TEXT N_( "AES key URI to place in playlist" )
+
+#define KEYFILE_TEXT N_( "AES key file" )
+#define KEYFILE_LONGTEXT N_( "File containing the 16 bytes encryption key" )
+
+#define KEYLOADFILE_TEXT                                                       \
+    N_( "File where vlc reads key-uri and keyfile-location" )
+#define KEYLOADFILE_LONGTEXT                                                   \
+    N_( "File is read when segment starts and is assumed to be in format: "    \
+        "key-uri\\nkey-file. File is read on the segment opening and "         \
+        "values are used on that segment." )
+
+#define RANDOMIV_TEXT N_( "Use randomized IV for encryption" )
+#define RANDOMIV_LONGTEXT N_( "Generate IV instead using segment-number as IV" )
+
+#define ENABLE_HTTPD_TEXT N_( "Enable VLC HTTP implementation" )
+#define ENABLE_HTTPD_LONGTEXT                                                  \
+    N_( "Share the HLS stream though VLC's own HTTP implementation" )
+
+#define INTITIAL_SEG_TEXT N_( "Number of first segment" )
+#define INITIAL_SEG_LONGTEXT N_( "The number of the first segment generated" )
+
+#define IO_TYPE_TEXT                                                             \
+    N_( "Specify the segment IO method" )
+#define IO_TYPE_LONGTEXT                                                       \
+    N_( "Specify the segment IO method. Choose `file' to output segments on "  \
+        "the filesystem or `memory' to output segments to memory chunks." )
 /* clang-format off */
 vlc_module_begin()
     set_shortname( "HLS" )
@@ -49,199 +98,42 @@ vlc_module_begin()
     set_category( CAT_SOUT )
     set_subcategory( SUBCAT_SOUT_STREAM )
 
-    // add_string( SOUT_CFG_PREFIX "access", "", ACCESS_TEXT, ACCESS_LONGTEXT, false );
-    set_callbacks( Open, Close )
+    set_callbacks( SoutOpen, SoutClose )
+
+    add_submodule()
+        set_description( N_("HTTP Live streaming output") )
+        set_shortname( N_("LiveHTTP" ))
+        add_shortcut( "livehttp" )
+        set_capability( "sout access", 0 )
+        set_category( CAT_SOUT )
+        set_subcategory( SUBCAT_SOUT_ACO )
+        add_integer( ACO_CFG_PREFIX "seglen", 10, SEGLEN_TEXT, SEGLEN_LONGTEXT, false )
+        add_integer( ACO_CFG_PREFIX "numsegs", 0, NUMSEGS_TEXT, NUMSEGS_LONGTEXT, false )
+        add_integer( ACO_CFG_PREFIX "initial-segment-number", 1, INTITIAL_SEG_TEXT, INITIAL_SEG_LONGTEXT, false )
+        add_bool( ACO_CFG_PREFIX "splitanywhere", true,
+                  SPLITANYWHERE_TEXT, SPLITANYWHERE_LONGTEXT, true )
+        add_bool( ACO_CFG_PREFIX "delsegs", true,
+                  DELSEGS_TEXT, DELSEGS_LONGTEXT, true )
+        add_bool( ACO_CFG_PREFIX "pace", false,
+                  PACE_TEXT, PACE_LONGTEXT, true )
+        add_bool( ACO_CFG_PREFIX "caching", false,
+                  NOCACHE_TEXT, NOCACHE_LONGTEXT, true )
+        add_bool( ACO_CFG_PREFIX "generate-iv", false,
+                  RANDOMIV_TEXT, RANDOMIV_LONGTEXT, true )
+        add_string( ACO_CFG_PREFIX "index-path", NULL,
+                    INDEX_TEXT, INDEX_LONGTEXT, false )
+        add_string( ACO_CFG_PREFIX "segment-url", NULL,
+                    INDEXURL_TEXT, INDEXURL_LONGTEXT, false )
+        add_string( ACO_CFG_PREFIX "segment-path", NULL,
+                    INDEXURL_TEXT, INDEXURL_LONGTEXT, false )
+        add_string( ACO_CFG_PREFIX "index-url", NULL,
+                    INDEXURL_TEXT, INDEXURL_LONGTEXT, false )
+        add_string( ACO_CFG_PREFIX "key-uri", NULL,
+                    KEYURI_TEXT, KEYURI_TEXT, true )
+        add_loadfile(ACO_CFG_PREFIX "key-file", NULL,
+                     KEYFILE_TEXT, KEYFILE_LONGTEXT)
+        add_loadfile(ACO_CFG_PREFIX "key-loadfile", NULL,
+                     KEYLOADFILE_TEXT, KEYLOADFILE_LONGTEXT)
+        set_callbacks( AccessOpen, AccessClose )
 vlc_module_end();
 /* clang-format on */
-
-static const char *const sout_options[] = { NULL };
-
-typedef struct
-{
-    sout_mux_t *mux;
-
-    httpd_host_t *httpd_host;
-    vlc_queue_t segments_http_context;
-    struct hls_sout_callbacks callbacks;
-} sout_stream_sys_t;
-
-/*****************************************************************************
- * Module callbacks
- *****************************************************************************/
-
-static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt )
-{
-    sout_stream_sys_t *sys = p_stream->p_sys;
-    return sout_MuxAddStream( sys->mux, p_fmt );
-}
-
-static void Del( sout_stream_t *p_stream, void *id )
-{
-    sout_stream_sys_t *sys = p_stream->p_sys;
-    sout_MuxDeleteStream( sys->mux, (sout_input_t *)id );
-}
-
-static int Send( sout_stream_t *p_stream, void *id, block_t *p_buffer )
-{
-    sout_stream_sys_t *sys = p_stream->p_sys;
-    return sout_MuxSendBuffer( sys->mux, (sout_input_t *)id, p_buffer );
-}
-
-static int Control( sout_stream_t *stream, int query, va_list args )
-{
-    (void)stream;
-    // const sout_stream_sys_t *sys = stream->p_sys;
-
-    switch ( query )
-    {
-    case SOUT_STREAM_IS_SYNCHRONOUS:
-        *va_arg( args, bool * ) = false; // TODO
-        break;
-
-    default:
-        return VLC_EGENERIC;
-    }
-    return VLC_SUCCESS;
-}
-
-static void Flush( sout_stream_t *p_stream, void *id )
-{
-    sout_stream_sys_t *sys = p_stream->p_sys;
-    sout_MuxFlush( sys->mux, (sout_input_t *)id );
-}
-
-static const struct sout_stream_operations ops = {
-    Add, Del, Send, Control, Flush,
-};
-
-typedef struct segment_http_context
-{
-    httpd_url_t *url;
-    struct segment_http_context *next;
-} segment_http_context;
-
-static int SegmentAdded( void *opaque,
-                         const sout_access_out_t *access,
-                         const hls_segment *segment )
-{
-    sout_stream_sys_t *sys = opaque;
-
-    assert( sys->mux->p_access == access );
-
-    segment_http_context *context = calloc( 1, sizeof( *context ) );
-    if ( unlikely( context == NULL ) )
-        return VLC_ENOMEM;
-
-    char *segment_url;
-    const int result =
-        asprintf( &segment_url, "/%" PRIu32 ".ts", segment->i_segment_number );
-    if ( unlikely( result == -1 ) )
-    {
-        free( context );
-        return VLC_ENOMEM;
-    }
-
-    context->url = httpd_UrlNew( sys->httpd_host, segment_url, NULL, NULL );
-    if ( unlikely( context->url == NULL ) )
-    {
-        free( context );
-        free( segment_url );
-        return VLC_ENOMEM;
-    }
-    httpd_UrlCatch( context->url, HTTPD_MSG_GET,
-                    (httpd_callback_t)url_segment_cb, (void *)segment );
-
-    vlc_queue_Enqueue( &sys->segments_http_context, context );
-
-    free( segment_url );
-    return VLC_SUCCESS;
-}
-
-static void SegmentRemoved( void *opaque,
-                            const sout_access_out_t *access,
-                            const hls_segment *segment )
-{
-    sout_stream_sys_t *sys = opaque;
-
-    assert( sys->mux->p_access == access );
-
-    segment_http_context *context =
-        vlc_queue_Dequeue( &sys->segments_http_context );
-
-    // Should not be called when the queue is empty.
-    assert( context );
-
-    httpd_UrlDelete( context->url );
-    free( context );
-
-    (void)segment;
-}
-
-static int Open( vlc_object_t *this )
-{
-    sout_stream_t *stream = (sout_stream_t *)this;
-
-    sout_stream_sys_t *sys = stream->p_sys = calloc( 1, sizeof( *sys ) );
-    if ( unlikely( sys == NULL ) )
-        return VLC_ENOMEM;
-
-    config_ChainParse( stream, SOUT_CFG_PREFIX, sout_options, stream->p_cfg );
-
-    sout_access_out_t *access = sout_AccessOutNew( stream, "livehttp", NULL );
-    if ( unlikely( access == NULL ) )
-    {
-        msg_Err( stream, "Can't create the livehttp access-out module." );
-        goto err;
-    }
-
-    sys->mux = sout_MuxNew( access, "ts" );
-    if ( unlikely( sys->mux == NULL ) )
-    {
-        msg_Err( stream, "Can't create ts muxer." );
-        goto err;
-    }
-
-    sys->httpd_host = vlc_http_HostNew( VLC_OBJECT( access ) );
-    if ( unlikely( sys->httpd_host == NULL ) )
-    {
-        sout_MuxDelete( sys->mux );
-        goto err;
-    }
-
-    vlc_queue_Init( &sys->segments_http_context,
-                    offsetof( segment_http_context, next ) );
-
-    sys->callbacks =
-        ( struct hls_sout_callbacks ){ .sout_sys = sys,
-                                       .segment_added = SegmentAdded,
-                                       .segment_removed = SegmentRemoved };
-
-    var_Create( access, HLS_SOUT_CALLBACKS_VAR, VLC_VAR_ADDRESS );
-    var_SetAddress( access, HLS_SOUT_CALLBACKS_VAR, &sys->callbacks );
-
-    stream->ops = &ops;
-    return VLC_SUCCESS;
-err:
-    if ( access != NULL )
-        sout_AccessOutDelete( access );
-    free( sys );
-    return VLC_EGENERIC;
-}
-
-static void Close( vlc_object_t *this )
-{
-    sout_stream_t *stream = (sout_stream_t *)this;
-    sout_stream_sys_t *sys = stream->p_sys;
-    sout_access_out_t *access = sys->mux->p_access;
-
-    sout_MuxDelete( sys->mux );
-
-    var_Destroy( access, HLS_SOUT_CALLBACKS_VAR );
-    sout_AccessOutDelete( access );
-    // All segments should have been cleaned up after the access release.
-    assert( vlc_queue_IsEmpty( &sys->segments_http_context ) );
-
-    httpd_HostDelete( sys->httpd_host );
-
-    free( sys );
-}

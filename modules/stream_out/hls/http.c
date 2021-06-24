@@ -73,3 +73,38 @@ int url_segment_cb( const hls_segment *segment,
     set_http_headers( answer );
     return VLC_SUCCESS;
 }
+
+int url_index_cb( hls_index *index,
+                     httpd_client_t *cl,
+                     httpd_message_t *answer,
+                     const httpd_message_t *query )
+{
+    if ( !answer || !query || !cl )
+        return VLC_SUCCESS;
+
+    vlc_mutex_lock( &index->lock );
+
+    const hls_io *io = index->handle;
+    if ( io == NULL )
+        goto err;
+
+    answer->i_body = io->size;
+    answer->p_body = io_read_all( io );
+    if ( answer->p_body == NULL )
+        goto err;
+
+    vlc_mutex_unlock( &index->lock );
+
+    answer->i_proto = HTTPD_PROTO_HTTP;
+    answer->i_version = 0;
+    answer->i_type = HTTPD_MSG_ANSWER;
+    answer->i_status = 200;
+
+    set_http_headers( answer );
+
+    return VLC_SUCCESS;
+
+err:
+    vlc_mutex_unlock( &index->lock );
+    return VLC_EGENERIC;
+}
