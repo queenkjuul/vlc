@@ -107,9 +107,11 @@ vlc_module_begin()
         set_capability( "sout access", 0 )
         set_category( CAT_SOUT )
         set_subcategory( SUBCAT_SOUT_ACO )
+
         add_integer( ACO_CFG_PREFIX "seglen", 10, SEGLEN_TEXT, SEGLEN_LONGTEXT, false )
         add_integer( ACO_CFG_PREFIX "numsegs", 0, NUMSEGS_TEXT, NUMSEGS_LONGTEXT, false )
         add_integer( ACO_CFG_PREFIX "initial-segment-number", 1, INTITIAL_SEG_TEXT, INITIAL_SEG_LONGTEXT, false )
+
         add_bool( ACO_CFG_PREFIX "splitanywhere", true,
                   SPLITANYWHERE_TEXT, SPLITANYWHERE_LONGTEXT, true )
         add_bool( ACO_CFG_PREFIX "delsegs", true,
@@ -125,8 +127,6 @@ vlc_module_begin()
         add_string( ACO_CFG_PREFIX "segment-url", NULL,
                     INDEXURL_TEXT, INDEXURL_LONGTEXT, false )
         add_string( ACO_CFG_PREFIX "segment-path", NULL,
-                    INDEXURL_TEXT, INDEXURL_LONGTEXT, false )
-        add_string( ACO_CFG_PREFIX "index-url", NULL,
                     INDEXURL_TEXT, INDEXURL_LONGTEXT, false )
         add_string( ACO_CFG_PREFIX "key-uri", NULL,
                     KEYURI_TEXT, KEYURI_TEXT, true )

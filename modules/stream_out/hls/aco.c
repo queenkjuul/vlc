@@ -59,61 +59,6 @@
 #define MAX_RENAME_RETRIES 10
 
 /*****************************************************************************
- * Module descriptor
- *****************************************************************************/
-
-//enum hls_io_type
-//{
-//    HLS_IO_TYPE_FILE = 0,
-//    HLS_IO_TYPE_MEMORY,
-//};
-
-/* clang-format off */
-//vlc_module_begin ()
-//    set_description( N_("HTTP Live streaming output") )
-//    set_shortname( N_("LiveHTTP" ))
-//    add_shortcut( "livehttp" )
-//    set_capability( "sout access", 0 )
-//    set_category( CAT_SOUT )
-//    set_subcategory( SUBCAT_SOUT_ACO )
-//    add_integer( SOUT_CFG_PREFIX "seglen", 10, SEGLEN_TEXT, SEGLEN_LONGTEXT, false )
-//    add_integer( SOUT_CFG_PREFIX "numsegs", 0, NUMSEGS_TEXT, NUMSEGS_LONGTEXT, false )
-//    add_integer( SOUT_CFG_PREFIX "initial-segment-number", 1, INTITIAL_SEG_TEXT, INITIAL_SEG_LONGTEXT, false )
-//    add_bool( SOUT_CFG_PREFIX "splitanywhere", true,
-//              SPLITANYWHERE_TEXT, SPLITANYWHERE_LONGTEXT, true )
-//    add_bool( SOUT_CFG_PREFIX "delsegs", true,
-//              DELSEGS_TEXT, DELSEGS_LONGTEXT, true )
-//    add_bool( SOUT_CFG_PREFIX "pace", false,
-//              PACE_TEXT, PACE_LONGTEXT, true )
-//    add_bool( SOUT_CFG_PREFIX "caching", false,
-//              NOCACHE_TEXT, NOCACHE_LONGTEXT, true )
-//    add_bool( SOUT_CFG_PREFIX "generate-iv", false,
-//              RANDOMIV_TEXT, RANDOMIV_LONGTEXT, true )
-////    add_bool( SOUT_CFG_PREFIX "enable-httpd", false,
-////              ENABLE_HTTPD_TEXT, ENABLE_HTTPD_LONGTEXT, true )
-////    add_string( SOUT_CFG_PREFIX "io-type", io_type_vlc[HLS_IO_TYPE_FILE],
-////                IO_TYPE_TEXT, IO_TYPE_LONGTEXT, true )
-////        change_string_list( io_type_vlc, io_type_user)
-////        change_safe()
-//    add_string( SOUT_CFG_PREFIX "index-path", NULL,
-//                INDEX_TEXT, INDEX_LONGTEXT, false )
-//    add_string( SOUT_CFG_PREFIX "segment-url", NULL,
-//                INDEXURL_TEXT, INDEXURL_LONGTEXT, false )
-//    add_string( SOUT_CFG_PREFIX "segment-path", NULL,
-//                INDEXURL_TEXT, INDEXURL_LONGTEXT, false )
-//    add_string( SOUT_CFG_PREFIX "index-url", NULL,
-//                INDEXURL_TEXT, INDEXURL_LONGTEXT, false )
-//    add_string( SOUT_CFG_PREFIX "key-uri", NULL,
-//                KEYURI_TEXT, KEYURI_TEXT, true )
-//    add_loadfile(SOUT_CFG_PREFIX "key-file", NULL,
-//                 KEYFILE_TEXT, KEYFILE_LONGTEXT)
-//    add_loadfile(SOUT_CFG_PREFIX "key-loadfile", NULL,
-//                 KEYLOADFILE_TEXT, KEYLOADFILE_LONGTEXT)
-//    set_callbacks( AccessOpen, AccessClose )
-//vlc_module_end ();
-/* clang-format on */
-
-/*****************************************************************************
  * Exported prototypes
  *****************************************************************************/
 static const char *const ppsz_sout_options[] = { "seglen",
@@ -123,7 +68,6 @@ static const char *const ppsz_sout_options[] = { "seglen",
                                                  "index-path",
                                                  "segment-url",
                                                  "segment-path",
-                                                 "index-url",
                                                  "pace",
                                                  "caching",
                                                  "key-uri",
@@ -140,7 +84,6 @@ typedef struct
 {
     char *psz_cursegPath;
     char *psz_indexPath;
-    char *psz_indexUrl;
     char *psz_segmentUrl;
     char *psz_segmentPath;
     char *psz_keyfile;
@@ -261,8 +204,6 @@ int AccessOpen( vlc_object_t *p_this )
         var_GetNonEmptyString( p_access, ACO_CFG_PREFIX "segment-url" );
     p_sys->psz_segmentPath =
         var_GetNonEmptyString( p_access, ACO_CFG_PREFIX "segment-path" );
-    p_sys->psz_indexUrl =
-        var_GetNonEmptyString( p_access, ACO_CFG_PREFIX "index-url" );
     p_sys->psz_keyfile =
         var_GetNonEmptyString( p_access, ACO_CFG_PREFIX "key-loadfile" );
     p_sys->key_uri =
@@ -272,13 +213,11 @@ int AccessOpen( vlc_object_t *p_this )
 
     //TODO: Real runtime check
     assert(p_sys->psz_segmentUrl);
-    assert(p_sys->psz_indexPath || p_sys->psz_indexUrl);
 
     p_access->p_sys = p_sys;
 
     if ( p_sys->psz_keyfile && ( LoadCryptFile( p_access ) < 0 ) )
     {
-        free( p_sys->psz_indexUrl );
         free( p_sys->psz_indexPath );
         free( p_sys->psz_segmentUrl );
         free( p_sys );
@@ -287,7 +226,6 @@ int AccessOpen( vlc_object_t *p_this )
     }
     else if ( !p_sys->psz_keyfile && ( CryptSetup( p_access, NULL ) < 0 ) )
     {
-        free( p_sys->psz_indexUrl );
         free( p_sys->psz_indexPath );
         free( p_sys->psz_segmentUrl );
         free( p_sys );
@@ -944,7 +882,6 @@ void AccessClose( vlc_object_t *p_this )
 
     block_Release( p_sys->stuffing_bytes );
 
-    free( p_sys->psz_indexUrl );
     free( p_sys->psz_indexPath );
     free( p_sys->psz_segmentUrl );
     free( p_sys );

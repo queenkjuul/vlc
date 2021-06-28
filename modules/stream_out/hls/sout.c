@@ -40,10 +40,10 @@ typedef struct
     sout_mux_t *mux;
 
     httpd_host_t *httpd_host;
-    vlc_queue_t segments_http_context;
 
-    httpd_url_t *httpd_index_url;
+    httpd_url_t *httpd_aco_index_url;
     hls_index index;
+    vlc_queue_t segments_http_context;
 
     struct hls_sout_callbacks callbacks;
 } sout_stream_sys_t;
@@ -115,7 +115,6 @@ static int SegmentAdded( void *opaque,
     if (vlc_UrlParse(&url, segment->psz_uri) != VLC_SUCCESS)
         return VLC_EGENERIC;
 
-    printf("2: %s\n", url.psz_path);
     segment_http_context *context = calloc( 1, sizeof( *context ) );
     if ( unlikely( context == NULL ) )
         return VLC_ENOMEM;
@@ -191,12 +190,12 @@ int SoutOpen( vlc_object_t *this )
         return VLC_ENOMEM;
     }
 
-    sys->httpd_index_url =
+    sys->httpd_aco_index_url =
         httpd_UrlNew( sys->httpd_host, "/index.m3u8", NULL, NULL );
-    if ( unlikely( sys->httpd_index_url == NULL ) )
+    if ( unlikely( sys->httpd_aco_index_url == NULL ) )
         goto err;
 
-    httpd_UrlCatch( sys->httpd_index_url, HTTPD_MSG_GET,
+    httpd_UrlCatch( sys->httpd_aco_index_url, HTTPD_MSG_GET,
                     (httpd_callback_t)url_index_cb, (void *)&sys->index );
 
     sys->callbacks =
@@ -205,7 +204,6 @@ int SoutOpen( vlc_object_t *this )
                                        .segment_removed = SegmentRemoved,
                                        .index_updated = IndexUpdated };
 
-    printf("0: %p\n", sys);
     var_Create( this, HLS_SOUT_CALLBACKS_VAR, VLC_VAR_ADDRESS );
     var_SetAddress( this, HLS_SOUT_CALLBACKS_VAR, &sys->callbacks );
 
@@ -222,7 +220,6 @@ int SoutOpen( vlc_object_t *this )
     }
 
     sys->mux = sout_MuxNew( access, "ts" );
-    printf("1: %p\n", sys);
     if ( unlikely( sys->mux == NULL ) )
     {
         msg_Err( stream, "Can't create ts muxer." );
@@ -233,8 +230,8 @@ int SoutOpen( vlc_object_t *this )
     stream->ops = &ops;
     return VLC_SUCCESS;
 err:
-    if (sys->httpd_index_url)
-        httpd_UrlDelete(sys->httpd_index_url);
+    if (sys->httpd_aco_index_url)
+        httpd_UrlDelete(sys->httpd_aco_index_url);
     httpd_HostDelete( sys->httpd_host );
     free( sys );
     return VLC_EGENERIC;
@@ -253,7 +250,7 @@ void SoutClose( vlc_object_t *this )
     // All segments should have been cleaned up after the access release.
     assert( vlc_queue_IsEmpty( &sys->segments_http_context ) );
 
-    httpd_UrlDelete(sys->httpd_index_url);
+    httpd_UrlDelete(sys->httpd_aco_index_url);
     httpd_HostDelete( sys->httpd_host );
 
     free( sys );
