@@ -29,11 +29,14 @@
 #include <vlc_plugin.h>
 #include <vlc_queue.h>
 #include <vlc_sout.h>
+#include <vlc_memstream.h>
 #include <vlc_url.h>
 
 #include <assert.h>
 
 static const char *const sout_options[] = { NULL };
+
+struct hls_group;
 
 typedef struct
 {
@@ -46,27 +49,120 @@ typedef struct
     vlc_queue_t segments_http_context;
 
     struct hls_sout_callbacks callbacks;
+
+    struct vlc_memstream main_index_buffer;
 } sout_stream_sys_t;
 
+enum hls_object_type
+{
+    MEDIA,
+    STREAM,
+};
+
+struct hls_object
+{
+    enum hls_object_type type;
+    sout_mux_t *mux;
+
+    httpd_url_t *httpd_aco_index_url;
+    hls_index index;
+
+    httpd_host_t *httpd_host;
+    vlc_queue_t segments_http_context;
+
+    struct hls_sout_callbacks callbacks;
+};
+
+static int hls_object_Init( struct hls_object *dest,
+                            sout_stream_t *sout,
+                            const enum hls_object_type type )
+{
+    sout_access_out_t *access =
+        sout_AccessOutNew( sout, "livehttp", "/tmp/########.ts" );
+    if ( unlikely( access == NULL ) )
+        return VLC_EGENERIC;
+
+    dest->mux = sout_MuxNew( access, "ts" );
+    if ( unlikely( dest->mux == NULL ) )
+    {
+        sout_AccessOutDelete( access );
+        return VLC_EGENERIC;
+    }
+
+    dest->type = type;
+    return VLC_SUCCESS;
+}
+
+static void hls_object_Release(struct hls_object *obj)
+{
+    sout_access_out_t *access = obj->mux->p_access;
+
+    sout_MuxDelete( obj->mux );
+
+    var_Destroy( access, HLS_SOUT_CALLBACKS_VAR );
+    sout_AccessOutDelete( access );
+    // All segments should have been cleaned up after the access release.
+    assert( vlc_queue_IsEmpty( &sys->segments_http_context ) );
+
+    httpd_UrlDelete(sys->httpd_aco_index_url);
+    httpd_HostDelete( sys->httpd_host );
+}
+
+typedef struct
+{
+    struct hls_object base;
+    es_format_t video;
+    es_format_t audio;
+    vlc_array_t medias;
+} hls_stream;
+
+static hls_stream *hls_stream_New(const es_format_t *fmt)
+{
+}
+
+typedef struct
+{
+    struct hls_object base;
+    es_format_t fmt;
+    hls_stream *parent;
+} hls_media;
+
+//static void add_stream(sout_stream_sys_t *sys, const es_format_t *p_fmt)
+//{
+//    if (p_fmt->i_cat == SPU_ES)
+//    {
+//        vlc_memstream_printf(
+//            &sys->main_index_buffer,
+//            "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"%s\",NAME=\"%s\", "
+//            "DEFAULT=YES,AUTOSELECT=YES,LANGUAGE=\"%s\", "
+//            "URI=\"main/english-audio.m3u8\"" );
+//    }
+//}
 /*****************************************************************************
  * Module callbacks
  *****************************************************************************/
 
-static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt )
+static void *Add( sout_stream_t *stream, const es_format_t *p_fmt )
 {
-    sout_stream_sys_t *sys = p_stream->p_sys;
+    sout_stream_sys_t *sys = stream->p_sys;
+
+    if (p_fmt->i_cat == VIDEO_ES)
+    {
+        hls_group group* = malloc();
+    }
+
     return sout_MuxAddStream( sys->mux, p_fmt );
 }
 
-static void Del( sout_stream_t *p_stream, void *id )
+static void Del( sout_stream_t *stream, void *id )
 {
-    sout_stream_sys_t *sys = p_stream->p_sys;
+    sout_stream_sys_t *sys = stream->p_sys;
     sout_MuxDeleteStream( sys->mux, (sout_input_t *)id );
 }
 
-static int Send( sout_stream_t *p_stream, void *id, block_t *p_buffer )
+static int Send( sout_stream_t *stream, void *id, block_t *p_buffer )
 {
-    sout_stream_sys_t *sys = p_stream->p_sys;
+    sout_stream_sys_t *sys = stream->p_sys;
     return sout_MuxSendBuffer( sys->mux, (sout_input_t *)id, p_buffer );
 }
 
