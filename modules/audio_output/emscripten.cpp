@@ -167,11 +167,11 @@ namespace {
 
 	// careful when calling this, you cannot wait on any index
 	// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Atomics/wait
-	uint32_t js_index_wait(sound_buffer_t *sab_ptr, int8_t index) {
+	void js_index_wait(sound_buffer_t *sab_ptr, int8_t index) {
 		int32_t *buffer_view = reinterpret_cast<int32_t *>(sab_ptr);
 		val buffer = val(typed_memory_view(STORAGE_SIZE, buffer_view));
 
-		return val::global("Atomics").call<uint32_t>("wait", buffer, index);
+		val::global("Atomics").call<val>("wait", buffer, index, 0);
 	}
 
 	void Flush( audio_output_t *aout )
@@ -241,7 +241,7 @@ namespace {
 		{
 			// the worklet processor keeps rendering  until tail matches head
 			// it will be notified by an Atomics.notify() from the process() callback
-      // FIXME - This is layout-dependent, which isn't ideal
+			// FIXME - This is layout-dependent, which isn't ideal
 			js_index_wait(sys->sab, 3);
 		}
 
@@ -382,7 +382,8 @@ namespace {
 			i++; \
 		} \
 		Atomics.store(this.tail, 0, tail * 4); \
-		Atomics.notify(this.can_write, 0); \
+		Atomics.store(this.can_write, 0, 1); \
+		Atomics.notify(this.can_write, 0);   \
 		return true; \
 	} \
 } \
