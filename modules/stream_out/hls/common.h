@@ -84,7 +84,7 @@ typedef struct {
 #define HLS_SOUT_CALLBACKS_VAR "sout-hls-callbacks"
 struct hls_sout_callbacks
 {
-    void *sout_sys;
+    void *sys;
 
     int ( *segment_added )( void *,
                             const sout_access_out_t *,

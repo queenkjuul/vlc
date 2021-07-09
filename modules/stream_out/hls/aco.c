@@ -110,7 +110,6 @@ typedef struct
     ssize_t stuffing_size;
     vlc_array_t segments_t;
 
-    struct hls_sout_callbacks *callbacks;
     hls_io *p_index;
 
 
@@ -208,8 +207,6 @@ int AccessOpen( vlc_object_t *p_this )
         var_GetNonEmptyString( p_access, ACO_CFG_PREFIX "key-loadfile" );
     p_sys->key_uri =
         var_GetNonEmptyString( p_access, ACO_CFG_PREFIX "key-uri" );
-
-    p_sys->callbacks = var_InheritAddress(p_access, HLS_SOUT_CALLBACKS_VAR);
 
     //TODO: Real runtime check
     assert(p_sys->psz_segmentUrl);
@@ -444,12 +441,11 @@ static char *formatSegmentPath( char *psz_path, uint32_t i_seg )
 
 static void destroySegment( hls_segment *segment, sout_access_out_t *p_access )
 {
-    sout_access_out_sys_t *sys = p_access->p_sys;
-
     hls_io *handler = segment->io_handle;
     handler->ops.release( handler );
-    if ( sys->callbacks )
-        sys->callbacks->segment_removed( sys->callbacks->sout_sys, p_access, segment );
+    const struct hls_sout_callbacks *callbacks = var_GetAddress( p_access, HLS_SOUT_CALLBACKS_VAR );
+    if ( callbacks )
+        callbacks->segment_removed( callbacks->sys, p_access, segment );
     free( handler );
     free( segment->psz_filename );
     free( segment->psz_duration );
@@ -670,9 +666,10 @@ static int updateIndexAndDel( sout_access_out_t *p_access,
         p_sys->p_index->ops.consume_block( p_sys->p_index, clone );
         p_sys->p_index->ops.close( p_sys->p_index );
 
-        if ( p_sys->callbacks )
-            p_sys->callbacks->index_updated( p_sys->callbacks->sout_sys, p_access,
-                                             p_sys->p_index );
+        const struct hls_sout_callbacks *callbacks =
+            var_GetAddress( p_access, HLS_SOUT_CALLBACKS_VAR );
+        if ( callbacks )
+            callbacks->index_updated( callbacks->sys, p_access, p_sys->p_index );
 
         // val = vlc_rename( psz_idxTmp, p_sys->psz_indexPath );
 
@@ -965,7 +962,8 @@ static ssize_t openNextFile( sout_access_out_t *p_access,
     }
     printf( "%s\n", segment->psz_filename );
 
-    p_sys->callbacks->segment_added(p_sys->callbacks->sout_sys, p_access, segment );
+    const struct hls_sout_callbacks *callbacks = var_GetAddress( p_access, HLS_SOUT_CALLBACKS_VAR );
+    callbacks->segment_added( callbacks->sys, p_access, segment );
 
     msg_Dbg( p_access, "Successfully opened livehttp file: %s (%" PRIu32 ")",
              segment->psz_uri, i_newseg );
