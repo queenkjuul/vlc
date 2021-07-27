@@ -17,6 +17,10 @@ void SoutClose( vlc_object_t * );
 int AccessOpen( vlc_object_t * );
 void AccessClose( vlc_object_t * );
 
+#define MUX_CFG_PREFIX "mux-hls-"
+int MuxOpen( vlc_object_t * );
+void MuxClose( vlc_object_t * );
+
 /*****************************************************************************
  * IO
  *****************************************************************************/
@@ -106,4 +110,7 @@ int url_index_cb( hls_index *index,
                   httpd_client_t *cl,
                   httpd_message_t *answer,
                   const httpd_message_t *query );
+
+block_t *Add_ID3( block_t *data );
+
 #endif

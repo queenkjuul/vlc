@@ -102,8 +102,8 @@ vlc_module_begin()
 
     add_submodule()
         set_description( N_("HTTP Live streaming output") )
-        set_shortname( N_("LiveHTTP" ))
-        add_shortcut( "livehttp" )
+        set_shortname( N_("LiveHTTP" ) )
+        add_shortcut( "livehttp", "hls", "pkd-audio-hls" )
         set_capability( "sout access", 0 )
         set_category( CAT_SOUT )
         set_subcategory( SUBCAT_SOUT_ACO )
@@ -135,5 +135,13 @@ vlc_module_begin()
         add_loadfile(ACO_CFG_PREFIX "key-loadfile", NULL,
                      KEYLOADFILE_TEXT, KEYLOADFILE_LONGTEXT)
         set_callbacks( AccessOpen, AccessClose )
+
+    add_submodule()
+        set_description( N_("HLS packed audio muxer") )
+        set_shortname( N_("HLS Packed") )
+        add_shortcut( "hlspack" )
+        set_capability( "sout mux", 0 )
+        set_callbacks( MuxOpen, MuxClose )
+
 vlc_module_end();
 /* clang-format on */

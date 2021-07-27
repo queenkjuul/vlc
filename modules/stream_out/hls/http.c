@@ -1,9 +1,5 @@
 #include "common.h"
 
-/*****************************************************************************
- * HTTP: Utils
- *****************************************************************************/
-
 static uint8_t *io_read_all( const hls_io *io )
 {
 
@@ -19,8 +15,7 @@ static uint8_t *io_read_all( const hls_io *io )
     size_t cursor = 0;
     while ( to_read != 0 )
     {
-        const ssize_t read =
-            io->ops.read( reading_context, ret + cursor, to_read );
+        const ssize_t read = io->ops.read( reading_context, ret + cursor, to_read );
 
         if ( read == -1 )
         {
@@ -39,7 +34,7 @@ err:
     return NULL;
 }
 
-static void set_http_headers( httpd_message_t *answer )
+static inline void set_http_headers( httpd_message_t *answer )
 {
     httpd_MsgAdd( answer, "Content-type", "application/vnd.apple.mpegurl" );
     httpd_MsgAdd( answer, "Cache-Control", "no-cache" );
@@ -75,9 +70,9 @@ int url_segment_cb( const hls_segment *segment,
 }
 
 int url_index_cb( hls_index *index,
-                     httpd_client_t *cl,
-                     httpd_message_t *answer,
-                     const httpd_message_t *query )
+                  httpd_client_t *cl,
+                  httpd_message_t *answer,
+                  const httpd_message_t *query )
 {
     if ( !answer || !query || !cl )
         return VLC_SUCCESS;

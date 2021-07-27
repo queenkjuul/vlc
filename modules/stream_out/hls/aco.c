@@ -103,6 +103,7 @@ typedef struct
     bool b_caching;
     bool b_generate_iv;
     bool b_segment_has_data;
+    bool b_add_id3;
     uint8_t aes_ivs[16];
     gcry_cipher_hd_t aes_ctx;
     char *key_uri;
@@ -111,9 +112,6 @@ typedef struct
     vlc_array_t segments_t;
 
     hls_io *p_index;
-
-
-
 } sout_access_out_sys_t;
 
 
@@ -163,6 +161,8 @@ int AccessOpen( vlc_object_t *p_this )
 
     p_sys->ongoing_segment = NULL;
     p_sys->ongoing_segment_end = &p_sys->ongoing_segment;
+
+    p_sys->b_add_id3 = !strcmp(p_access->psz_access, "pkd-audio-hls");
 
     p_sys->i_numsegs = var_GetInteger( p_access, ACO_CFG_PREFIX "numsegs" );
     p_sys->i_initial_segment =
@@ -526,99 +526,73 @@ static int updateIndexAndDel( sout_access_out_t *p_access,
         i_index_offset = vlc_array_count( &p_sys->segments_t ) - numsegs;
     }
 
-    // First update index
-    if ( p_sys->psz_indexPath )
+    int val;
+    struct vlc_memstream ms;
+
+    // fp = vlc_fopen( psz_idxTmp, "wt" );
+    if ( vlc_memstream_open( &ms ) != VLC_SUCCESS )
     {
-        int val;
-        struct vlc_memstream ms;
+        // msg_Err( p_access, "cannot open index file `%s'", psz_idxTmp );
+        // free( psz_idxTmp );
+        return -1;
+    }
 
-        // FILE *fp;
-        // char *psz_idxTmp;
-        // if ( asprintf( &psz_idxTmp, "%s.tmp", p_sys->psz_indexPath ) < 0 )
-        //    return -1;
+    int status = vlc_memstream_printf(
+        &ms,
+        "#EXTM3U\n#EXT-X-TARGETDURATION:%.0f\n#EXT-X-VERSION:3\n#"
+        "EXT-X-ALLOW-CACHE:%s"
+        "%s\n#EXT-X-MEDIA-SEQUENCE:%" PRIu32 "\n%s",
+        ceil( secf_from_vlc_tick( p_sys->segment_max_length ) ), p_sys->b_caching ? "YES" : "NO",
+        p_sys->i_numsegs > 0 ? ""
+        : b_isend            ? "\n#EXT-X-PLAYLIST-TYPE:VOD"
+                             : "\n#EXT-X-PLAYLIST-TYPE:EVENT",
+        i_firstseg,
+        ( ( p_sys->i_initial_segment > 1 ) && ( p_sys->i_initial_segment == i_firstseg ) )
+            ? "#EXT-X-DISCONTINUITY\n"
+            : "" );
+    if ( status < 0 )
+    {
+        //            free( psz_idxTmp );
+        //           fclose( fp );
+        return -1;
+    }
 
-        // fp = vlc_fopen( psz_idxTmp, "wt" );
-        if ( vlc_memstream_open( &ms ) != VLC_SUCCESS )
+    char *psz_current_uri = NULL;
+
+    for ( uint32_t i = i_firstseg; i <= p_sys->i_segment; i++ )
+    {
+        // scale to i_index_offset..numsegs + i_index_offset
+        uint32_t index = i - i_firstseg + i_index_offset;
+
+        hls_segment *segment = vlc_array_item_at_index( &p_sys->segments_t, index );
+        if ( p_sys->key_uri &&
+             ( !psz_current_uri || strcmp( psz_current_uri, segment->psz_key_uri ) ) )
         {
-            // msg_Err( p_access, "cannot open index file `%s'", psz_idxTmp );
-            // free( psz_idxTmp );
-            return -1;
-        }
-
-        int status = vlc_memstream_printf(
-            &ms,
-            "#EXTM3U\n#EXT-X-TARGETDURATION:%.0f\n#EXT-X-VERSION:3\n#"
-            "EXT-X-ALLOW-CACHE:%s"
-            "%s\n#EXT-X-MEDIA-SEQUENCE:%" PRIu32 "\n%s",
-            ceil( secf_from_vlc_tick( p_sys->segment_max_length ) ),
-            p_sys->b_caching ? "YES" : "NO",
-            p_sys->i_numsegs > 0 ? ""
-            : b_isend            ? "\n#EXT-X-PLAYLIST-TYPE:VOD"
-                                 : "\n#EXT-X-PLAYLIST-TYPE:EVENT",
-            i_firstseg,
-            ( ( p_sys->i_initial_segment > 1 ) &&
-              ( p_sys->i_initial_segment == i_firstseg ) )
-                ? "#EXT-X-DISCONTINUITY\n"
-                : "" );
-        if ( status < 0 )
-        {
-            //            free( psz_idxTmp );
-            //           fclose( fp );
-            return -1;
-        }
-
-        char *psz_current_uri = NULL;
-
-        for ( uint32_t i = i_firstseg; i <= p_sys->i_segment; i++ )
-        {
-            // scale to i_index_offset..numsegs + i_index_offset
-            uint32_t index = i - i_firstseg + i_index_offset;
-
-            hls_segment *segment =
-                vlc_array_item_at_index( &p_sys->segments_t, index );
-            if ( p_sys->key_uri &&
-                 ( !psz_current_uri ||
-                   strcmp( psz_current_uri, segment->psz_key_uri ) ) )
+            int ret = 0;
+            free( psz_current_uri );
+            psz_current_uri = strdup( segment->psz_key_uri );
+            if ( p_sys->b_generate_iv )
             {
-                int ret = 0;
-                free( psz_current_uri );
-                psz_current_uri = strdup( segment->psz_key_uri );
-                if ( p_sys->b_generate_iv )
+                unsigned long long iv_hi = segment->aes_ivs[0];
+                unsigned long long iv_lo = segment->aes_ivs[8];
+                for ( unsigned short j = 1; j < 8; j++ )
                 {
-                    unsigned long long iv_hi = segment->aes_ivs[0];
-                    unsigned long long iv_lo = segment->aes_ivs[8];
-                    for ( unsigned short j = 1; j < 8; j++ )
-                    {
-                        iv_hi <<= 8;
-                        iv_hi |= segment->aes_ivs[j] & 0xff;
-                        iv_lo <<= 8;
-                        iv_lo |= segment->aes_ivs[8 + j] & 0xff;
-                    }
-                    ret = vlc_memstream_printf(
-                        &ms,
-                        "#EXT-X-KEY:METHOD=AES-128,URI=\"%s\",IV=0X%"
-                        "16.16llx%16.16llx\n",
-                        segment->psz_key_uri, iv_hi, iv_lo );
+                    iv_hi <<= 8;
+                    iv_hi |= segment->aes_ivs[j] & 0xff;
+                    iv_lo <<= 8;
+                    iv_lo |= segment->aes_ivs[8 + j] & 0xff;
                 }
-                else
-                {
-                    ret = vlc_memstream_printf(
-                        &ms, "#EXT-X-KEY:METHOD=AES-128,URI=\"%s\"\n",
-                        segment->psz_key_uri );
-                }
-                if ( ret < 0 )
-                {
-                    free( psz_current_uri );
-                    // free( psz_idxTmp );
-                    // fclose( fp );
-                    return -1;
-                }
+                ret = vlc_memstream_printf( &ms,
+                                            "#EXT-X-KEY:METHOD=AES-128,URI=\"%s\",IV=0X%"
+                                            "16.16llx%16.16llx\n",
+                                            segment->psz_key_uri, iv_hi, iv_lo );
             }
-
-            val =
-                vlc_memstream_printf( &ms, "#EXTINF:%s,\n%s\n",
-                                      segment->psz_duration, segment->psz_uri );
-            if ( val < 0 )
+            else
+            {
+                ret = vlc_memstream_printf( &ms, "#EXT-X-KEY:METHOD=AES-128,URI=\"%s\"\n",
+                                            segment->psz_key_uri );
+            }
+            if ( ret < 0 )
             {
                 free( psz_current_uri );
                 // free( psz_idxTmp );
@@ -626,74 +600,66 @@ static int updateIndexAndDel( sout_access_out_t *p_access,
                 return -1;
             }
         }
-        free( psz_current_uri );
 
-        if ( b_isend )
+        val = vlc_memstream_printf( &ms, "#EXTINF:%s,\n%s\n", segment->psz_duration,
+                                    segment->psz_uri );
+        if ( val < 0 )
         {
-            if ( vlc_memstream_write( &ms, STR_ENDLIST,
-                                      sizeof( STR_ENDLIST ) - 1 ) < 0 )
-            {
-                //                free( psz_idxTmp );
-                //                fclose( fp );
-                return -1;
-            }
-        }
-        // fclose( fp );
-
-        status = vlc_memstream_close( &ms );
-        assert( status == VLC_SUCCESS );
-
-        block_t *clone = block_Alloc( ms.length );
-        memcpy( clone->p_buffer, ms.ptr, ms.length );
-        free( ms.ptr );
-
-        if ( p_sys->p_index != NULL )
-        {
-            p_sys->p_index->ops.unlink( p_sys->p_index );
-            p_sys->p_index->ops.release( p_sys->p_index );
-            free( p_sys->p_index );
-        }
-
-        p_sys->p_index =
-            hls_io_New( p_sys->psz_indexPath, O_WRONLY | O_CREAT | O_TRUNC );
-        if ( unlikely( p_sys->p_index == NULL ) )
-        {
-            // TODO proper error handling
+            free( psz_current_uri );
+            // free( psz_idxTmp );
+            // fclose( fp );
             return -1;
         }
-
-        p_sys->p_index->ops.open( p_sys->p_index );
-        p_sys->p_index->ops.consume_block( p_sys->p_index, clone );
-        p_sys->p_index->ops.close( p_sys->p_index );
-
-        const struct hls_sout_callbacks *callbacks =
-            var_GetAddress( p_access, HLS_SOUT_CALLBACKS_VAR );
-        if ( callbacks )
-            callbacks->index_updated( callbacks->sys, p_access, p_sys->p_index );
-
-        // val = vlc_rename( psz_idxTmp, p_sys->psz_indexPath );
-
-        // if ( val < 0 )
-        // {
-        //     vlc_unlink( psz_idxTmp );
-        //     msg_Err( p_access, "Error moving LiveHttp index file" );
-        // }
-        // else
-        //     msg_Dbg( p_access, "LiveHttpIndexComplete: %s",
-        //              p_sys->psz_indexPath );
-
-        // free( psz_idxTmp );
     }
+    free( psz_current_uri );
+
+    if ( b_isend )
+    {
+        if ( vlc_memstream_write( &ms, STR_ENDLIST, sizeof( STR_ENDLIST ) - 1 ) < 0 )
+        {
+            //                free( psz_idxTmp );
+            //                fclose( fp );
+            return -1;
+        }
+    }
+    // fclose( fp );
+
+    status = vlc_memstream_close( &ms );
+    assert( status == VLC_SUCCESS );
+
+    block_t *clone = block_Alloc( ms.length );
+    memcpy( clone->p_buffer, ms.ptr, ms.length );
+    free( ms.ptr );
+
+    if ( p_sys->p_index != NULL )
+    {
+        p_sys->p_index->ops.unlink( p_sys->p_index );
+        p_sys->p_index->ops.release( p_sys->p_index );
+        free( p_sys->p_index );
+    }
+
+    p_sys->p_index = hls_io_New( p_sys->psz_indexPath, O_WRONLY | O_CREAT | O_TRUNC );
+    if ( unlikely( p_sys->p_index == NULL ) )
+    {
+        // TODO proper error handling
+        return -1;
+    }
+
+    p_sys->p_index->ops.open( p_sys->p_index );
+    p_sys->p_index->ops.consume_block( p_sys->p_index, clone );
+    p_sys->p_index->ops.close( p_sys->p_index );
+
+    const struct hls_sout_callbacks *callbacks = var_GetAddress( p_access, HLS_SOUT_CALLBACKS_VAR );
+    if ( callbacks )
+        callbacks->index_updated( callbacks->sys, p_access, p_sys->p_index );
 
     // Then take care of deletion
     // Try to follow pantos draft 11 section 6.2.2
     while ( p_sys->b_delsegs && p_sys->i_numsegs &&
             isFirstItemRemovable( p_sys, i_firstseg, i_index_offset ) )
     {
-        hls_segment *segment =
-            vlc_array_item_at_index( &p_sys->segments_t, 0 );
-        msg_Dbg( p_access, "Removing segment number %d",
-                 segment->i_segment_number );
+        hls_segment *segment = vlc_array_item_at_index( &p_sys->segments_t, 0 );
+        msg_Dbg( p_access, "Removing segment number %d", segment->i_segment_number );
         vlc_array_remove( &p_sys->segments_t, 0 );
 
         destroySegment( segment, p_access );
@@ -761,8 +727,8 @@ static void closeCurrentSegment( sout_access_out_t *p_access,
                  p_sys->psz_cursegPath, p_sys->i_segment );
         free( p_sys->psz_cursegPath );
         p_sys->psz_cursegPath = 0;
-        updateIndexAndDel( p_access, p_sys, b_isend );
     }
+        updateIndexAndDel( p_access, p_sys, b_isend );
 }
 
 static void write_last_segment(sout_access_out_t* p_access, hls_segment *last_segment)
@@ -1146,6 +1112,13 @@ static ssize_t Write( sout_access_out_t *p_access, block_t *p_buffer )
             return ret;
         }
         i_write += ret;
+
+        if ( p_sys->b_add_id3 && p_sys->ongoing_segment == NULL )
+        {
+            p_buffer = Add_ID3( p_buffer );
+            if ( unlikely( p_buffer == NULL ) )
+                return -1;
+        }
 
         block_t *p_temp = p_buffer->p_next;
         p_buffer->p_next = NULL;
