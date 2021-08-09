@@ -74,24 +74,24 @@ static block_t *Add_ADTS( block_t *data, const es_format_t *fmt );
 
 static int Mux( sout_mux_t *mux )
 {
-    sout_mux_sys_t *sys = mux->p_sys;
-
-    if ( is_stream_added( sys ) )
+    if ( !is_stream_added( mux->p_sys ) )
         return VLC_EGENERIC;
 
     sout_input_t *input = mux->pp_inputs[0];
 
     vlc_fifo_Lock( input->p_fifo );
-    for ( size_t i = vlc_fifo_GetCount( input->p_fifo ); i > 0; --i )
+    const size_t block_count = vlc_fifo_GetCount( input->p_fifo );
+    vlc_fifo_Unlock( input->p_fifo );
+
+    for ( size_t i = 0; i < block_count; ++i )
     {
-        block_t *data = vlc_fifo_DequeueAllUnlocked( input->p_fifo );
+        block_t *data = block_FifoGet( input->p_fifo );
 
         if ( input->fmt.i_codec == VLC_CODEC_MP4A )
             data = Add_ADTS( data, input->p_fmt );
 
         sout_AccessOutWrite( mux->p_access, data );
     }
-    vlc_fifo_Unlock( input->p_fifo );
 
     return VLC_SUCCESS;
 }

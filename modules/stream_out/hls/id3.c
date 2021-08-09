@@ -2,6 +2,8 @@
 
 #include <vlc_block.h>
 
+#include "demux/mpeg/timestamps.h"
+
 static uint32_t id3_SyncIntegerEncode( uint32_t in )
 {
     uint32_t out, mask = 0x7F;
@@ -58,7 +60,7 @@ static void fill_tag( uint8_t *buffer, vlc_fourcc_t id, const uint8_t *tag, uint
     memcpy( buffer, tag, tag_size );
 }
 
-block_t *Add_ID3( block_t *data )
+block_t *Add_ID3( block_t *data)
 {
 #define ID3_HLS_TAG "com.apple.streaming.transportStreamTimestamp"
 #define ID3_HLS_TAG_SIZE ( sizeof( ID3_HLS_TAG ) + sizeof( uint64_t ) )
@@ -72,8 +74,9 @@ block_t *Add_ID3( block_t *data )
     fill_hdr( ret->p_buffer, id3_total_size - ID3_HDR_SIZE );
 
     uint8_t tag[ID3_HLS_TAG_SIZE] = ID3_HLS_TAG;
-    const uint64_t timestamp = NS_FROM_VLC_TICK(data->i_pts);
-    SetQWBE( tag + sizeof( ID3_HLS_TAG ), id3_SyncIntegerEncode( timestamp ) );
+    const uint64_t timestamp = TO_SCALE_NZ(data->i_pts) & 0x1FFFFFFFFull;;
+    printf("TIMESTAMP: %ld\n", timestamp);
+    SetQWBE( tag + sizeof( ID3_HLS_TAG ), timestamp );
 
     uint8_t *const id3_tag = ret->p_buffer + ID3_HDR_SIZE;
     fill_tag( id3_tag, id, tag, ID3_HLS_TAG_SIZE );
