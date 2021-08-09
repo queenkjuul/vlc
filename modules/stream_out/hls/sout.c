@@ -155,16 +155,16 @@ static httpd_url_t *hls_media_InitIndexUrl( httpd_host_t *host, unsigned id )
 }
 
 static sout_access_out_t *
-hls_media_InitAco( sout_stream_t *sout, unsigned object_index, const char *aco )
+hls_media_InitAco( sout_stream_t *sout, unsigned object_index, const char *aco, const char *ext )
 {
     char *url;
-    if ( unlikely( asprintf( &url, "/track-%u/########.ts", object_index ) ) == -1 )
+    if ( unlikely( asprintf( &url, "/track-%u/########.%s", object_index, ext ) ) == -1 )
         return NULL;
 
     char *cfg;
     if ( unlikely( asprintf(
              &cfg,
-             "%s{seglen=4,delsegs=true,pace=true,numsegs=5,segment-url=http://192.168.1.57:8080%s}",
+             "%s{seglen=10,delsegs=true,pace=true,numsegs=4,segment-url=http://192.168.0.23:8080%s}",
              aco, url ) ) == -1 )
     {
         free( url );
@@ -206,14 +206,15 @@ static struct hls_media *hls_media_New( sout_stream_t *sout, const es_format_t *
                                                       .index_updated = IndexUpdated };
 
     const char *aco = fmt->i_cat == AUDIO_ES ? "pkd-audio-hls" : "hls" ;
-    sout_access_out_t *access = hls_media_InitAco( sout, fmt->i_id, aco );
+    const char *ext = fmt->i_cat == AUDIO_ES ? "aac" : "ts" ;
+    sout_access_out_t *access = hls_media_InitAco( sout, fmt->i_id, aco, ext );
     if ( unlikely( access == NULL ) )
         goto err;
 
     var_Create( access, HLS_SOUT_CALLBACKS_VAR, VLC_VAR_ADDRESS );
     var_SetAddress( access, HLS_SOUT_CALLBACKS_VAR, &media->callbacks );
 
-    const char *mux = fmt->i_cat == AUDIO_ES ? "hlspack" : "ts";
+    const char *mux = fmt->i_cat == AUDIO_ES ? "hlspack" : "ts{use-key-frames}";
     media->mux = sout_MuxNew( access, mux );
     if ( unlikely( media->mux == NULL ) )
     {
@@ -251,14 +252,12 @@ static void hls_media_Release( struct hls_media *media )
     free( media );
 }
 
-static struct vlc_memstream new_index_file(const sout_stream_sys_t *sys)
+static bool fill_index_file(const sout_stream_sys_t *sys, struct vlc_memstream*stream)
 {
-    struct vlc_memstream stream;
-
-    vlc_memstream_open( &stream );
+    vlc_memstream_open( stream );
 
     static const char hls_hdr[] = "#EXTM3U\n";
-    vlc_memstream_write( &stream, hls_hdr, sizeof( hls_hdr ) - 1 );
+    vlc_memstream_write( stream, hls_hdr, sizeof( hls_hdr ) - 1 );
 
     const struct hls_media *highest_media_priorities[] = {
         [VIDEO_ES] = NULL,
@@ -303,39 +302,49 @@ static struct vlc_memstream new_index_file(const sout_stream_sys_t *sys)
         sprintf( media_name, "%d", fmt->i_id );
 
         const char *is_default_media = highest_media_priorities[fmt->i_cat] == media ? "YES" : "NO";
-        vlc_memstream_printf( &stream,
+        vlc_memstream_printf( stream,
                               "#EXT-X-MEDIA:TYPE=%s,GROUP-ID=\"%s\",NAME=\"%s\",DEFAULT=%s,",
                               media_type, media_type, media_name, is_default_media );
 
         if ( fmt->psz_language )
-            vlc_memstream_printf( &stream, "LANGUAGE=\"%s\",", fmt->psz_language );
+            vlc_memstream_printf( stream, "LANGUAGE=\"%s\",", fmt->psz_language );
 
         char *uri = hls_media_FormatURI( fmt->i_id );
         if ( likely( uri != NULL ) )
         {
-            vlc_memstream_printf( &stream, "URI=\"%s\"\n", uri );
+            vlc_memstream_printf( stream, "URI=\"%s\"\n", uri );
             free( uri );
         }
     }
 
-    assert(stream_inf); // TODO real check
+    if (!stream_inf)
+    {
+        // The stream selected by the user isn't available.
+        vlc_memstream_close(stream);
+        free(stream->ptr);
+        return false;
+    }
 
-    vlc_memstream_printf( &stream, "#EXT-X-STREAM-INF:BANDWIDTH=%d,CODECS=\"avc1.42c01e,mp4a.40.2\"", /*stream_inf->fmt.i_bitrate */ 0);
+    char avc_id[12];
+    const uint8_t *extra = stream_inf->fmt.p_extra;
+    sprintf(avc_id,"avc1.%02x%02x%02x", extra[5], extra[6], extra[7]);
+
+    vlc_memstream_printf( stream, "#EXT-X-STREAM-INF:BANDWIDTH=%d,CODECS=\"avc1.42c01e,mp4a.40.2\"", /*stream_inf->fmt.i_bitrate */ 0);
 
     if ( highest_media_priorities[VIDEO_ES] )
-        vlc_memstream_printf( &stream, ",VIDEO=\"VIDEO\"" );
+        vlc_memstream_printf( stream, ",VIDEO=\"VIDEO\"" );
     if ( highest_media_priorities[AUDIO_ES] )
-        vlc_memstream_printf( &stream, ",AUDIO=\"AUDIO\"" );
+        vlc_memstream_printf( stream, ",AUDIO=\"AUDIO\"" );
     if ( highest_media_priorities[SPU_ES] )
-        vlc_memstream_printf( &stream, ",SUBTITLES=\"SUBTITLES\"" );
+        vlc_memstream_printf( stream, ",SUBTITLES=\"SUBTITLES\"" );
 
     char *uri = hls_media_FormatURI( stream_inf->fmt.i_id );
-    vlc_memstream_printf( &stream, "\n%s\n", uri );
+    vlc_memstream_printf( stream, "\n%s\n", uri );
     free( uri );
 
-    vlc_memstream_close(&stream);
+    vlc_memstream_close(stream);
 
-    return stream;
+    return true;
 }
 
 /*****************************************************************************
@@ -366,13 +375,14 @@ static void *Add( sout_stream_t *sout, const es_format_t *fmt )
 
     free( sys->main_index_buffer.ptr );
 
-    struct vlc_memstream stream = new_index_file( sys );
+    struct vlc_memstream stream;
+    if ( !fill_index_file( sys, &stream ) )
+        return media;
 
     printf ("INDEX: %s\n", stream.ptr);
     hls_io *io = hls_io_New( NULL, 0 );
     if ( unlikely( io == NULL ) )
     {
-        vlc_memstream_close( &stream );
         free( stream.ptr );
         hls_media_Release( media );
         return NULL;
