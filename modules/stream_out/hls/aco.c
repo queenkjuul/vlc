@@ -962,6 +962,12 @@ static int CheckSegmentChange( sout_access_out_t *p_access, block_t *p_buffer )
            p_sys->segment_max_length ) )
     {
 
+        if ( p_sys->b_add_id3 )
+        {
+            p_sys->full_segments = Add_ID3( p_sys->full_segments );
+            if ( unlikely( p_buffer == NULL ) )
+                return -1;
+        }
         hls_io *handle = segment->io_handle;
         writevalue = writeSegment( handle, p_access );
         if ( unlikely( writevalue < 0 ) )
@@ -1113,12 +1119,6 @@ static ssize_t Write( sout_access_out_t *p_access, block_t *p_buffer )
         }
         i_write += ret;
 
-        if ( p_sys->b_add_id3 && p_sys->ongoing_segment == NULL )
-        {
-            p_buffer = Add_ID3( p_buffer );
-            if ( unlikely( p_buffer == NULL ) )
-                return -1;
-        }
 
         block_t *p_temp = p_buffer->p_next;
         p_buffer->p_next = NULL;
