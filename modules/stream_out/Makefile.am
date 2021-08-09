@@ -41,9 +41,10 @@ libstream_out_hls_plugin_la_SOURCES = stream_out/hls/hls.c \
 libstream_out_hls_plugin_la_CFLAGS = $(AM_CFLAGS) $(GCRYPT_CFLAGS)
 libstream_out_hls_plugin_la_LIBADD = $(GCRYPT_LIBS) -lgpg-error $(LIBM)
 
-hls_test_SOURCES = stream_out/hls/tests/id3.c stream_out/hls/id3.c
-check_PROGRAMS += hls_test
-TESTS += hls_test
+hls_test_id3_SOURCES = stream_out/hls/tests/id3.cpp stream_out/hls/id3.c stream_out/hls/tests/cxx_test_helper.hpp
+hls_test_io_SOURCES = stream_out/hls/tests/io.cpp stream_out/hls/io.c stream_out/hls/tests/cxx_test_helper.hpp
+check_PROGRAMS += hls_test_id3 hls_test_io
+TESTS += hls_test_id3 hls_test_io
 
 sout_LTLIBRARIES = \
 	libstream_out_dummy_plugin.la \

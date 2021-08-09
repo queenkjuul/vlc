@@ -31,7 +31,7 @@ typedef struct hls_io hls_io;
  * Create a new io descriptor.
  * if path is NULL flags is ignored and a memory-only io is returned.
  */
-hls_io *hls_io_New( const char *path, int flags );
+VLC_EXTERN hls_io *hls_io_New( const char *path, int flags );
 
 typedef struct
 {
