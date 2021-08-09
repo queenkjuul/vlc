@@ -36,7 +36,8 @@ err:
 
 static inline void set_http_headers( httpd_message_t *answer )
 {
-    httpd_MsgAdd( answer, "Content-type", "application/vnd.apple.mpegurl" );
+    httpd_MsgAdd( answer, "Content-Length", "%d", answer->i_body );
+    httpd_MsgAdd( answer, "Content-Type", "application/vnd.apple.mpegurl" );
     httpd_MsgAdd( answer, "Cache-Control", "no-cache" );
     httpd_MsgAdd( answer, "Connection", "close" );
     httpd_MsgAdd( answer, "Access-Control-Allow-Origin", "*" );
