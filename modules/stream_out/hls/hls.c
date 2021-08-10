@@ -114,28 +114,28 @@ vlc_module_begin()
         set_category( CAT_SOUT )
         set_subcategory( SUBCAT_SOUT_ACO )
 
-        add_integer( ACO_CFG_PREFIX "seglen", 10, SEGLEN_TEXT, SEGLEN_LONGTEXT, false )
-        add_integer( ACO_CFG_PREFIX "numsegs", 0, NUMSEGS_TEXT, NUMSEGS_LONGTEXT, false )
-        add_integer( ACO_CFG_PREFIX "initial-segment-number", 1, INTITIAL_SEG_TEXT, INITIAL_SEG_LONGTEXT, false )
+        add_integer( ACO_CFG_PREFIX "seglen", 10, SEGLEN_TEXT, SEGLEN_LONGTEXT )
+        add_integer( ACO_CFG_PREFIX "numsegs", 0, NUMSEGS_TEXT, NUMSEGS_LONGTEXT )
+        add_integer( ACO_CFG_PREFIX "initial-segment-number", 1, INTITIAL_SEG_TEXT, INITIAL_SEG_LONGTEXT )
 
         add_bool( ACO_CFG_PREFIX "splitanywhere", true,
-                  SPLITANYWHERE_TEXT, SPLITANYWHERE_LONGTEXT, true )
+                  SPLITANYWHERE_TEXT, SPLITANYWHERE_LONGTEXT )
         add_bool( ACO_CFG_PREFIX "delsegs", true,
-                  DELSEGS_TEXT, DELSEGS_LONGTEXT, true )
+                  DELSEGS_TEXT, DELSEGS_LONGTEXT )
         add_bool( ACO_CFG_PREFIX "pace", false,
-                  PACE_TEXT, PACE_LONGTEXT, true )
+                  PACE_TEXT, PACE_LONGTEXT )
         add_bool( ACO_CFG_PREFIX "caching", false,
-                  NOCACHE_TEXT, NOCACHE_LONGTEXT, true )
+                  NOCACHE_TEXT, NOCACHE_LONGTEXT )
         add_bool( ACO_CFG_PREFIX "generate-iv", false,
-                  RANDOMIV_TEXT, RANDOMIV_LONGTEXT, true )
+                  RANDOMIV_TEXT, RANDOMIV_LONGTEXT )
         add_string( ACO_CFG_PREFIX "index-path", NULL,
-                    INDEX_TEXT, INDEX_LONGTEXT, false )
+                    INDEX_TEXT, INDEX_LONGTEXT )
         add_string( ACO_CFG_PREFIX "segment-url", NULL,
-                    INDEXURL_TEXT, INDEXURL_LONGTEXT, false )
+                    INDEXURL_TEXT, INDEXURL_LONGTEXT )
         add_string( ACO_CFG_PREFIX "segment-path", NULL,
-                    INDEXURL_TEXT, INDEXURL_LONGTEXT, false )
+                    INDEXURL_TEXT, INDEXURL_LONGTEXT )
         add_string( ACO_CFG_PREFIX "key-uri", NULL,
-                    KEYURI_TEXT, KEYURI_TEXT, true )
+                    KEYURI_TEXT, KEYURI_TEXT )
         add_loadfile(ACO_CFG_PREFIX "key-file", NULL,
                      KEYFILE_TEXT, KEYFILE_LONGTEXT)
         add_loadfile(ACO_CFG_PREFIX "key-loadfile", NULL,
