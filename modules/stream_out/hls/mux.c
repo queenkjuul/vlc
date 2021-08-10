@@ -6,6 +6,9 @@
 typedef struct
 {
     const char *mime;
+
+    vlc_tick_t dts_delay;
+    vlc_tick_t first_dts;
 } sout_mux_sys_t;
 
 static inline bool is_stream_added( const sout_mux_sys_t *sys ) { return sys->mime != NULL; }
@@ -74,6 +77,8 @@ static block_t *Add_ADTS( block_t *data, const es_format_t *fmt );
 
 static int Mux( sout_mux_t *mux )
 {
+    sout_mux_sys_t *sys = mux->p_sys;
+
     if ( !is_stream_added( mux->p_sys ) )
         return VLC_EGENERIC;
 
@@ -86,6 +91,12 @@ static int Mux( sout_mux_t *mux )
     for ( size_t i = 0; i < block_count; ++i )
     {
         block_t *data = block_FifoGet( input->p_fifo );
+
+        if (sys->first_dts == VLC_TICK_INVALID ||  sys->first_dts > data->i_dts)
+            sys->first_dts = data->i_dts;
+
+        data->i_pts -= sys->first_dts - sys->dts_delay;
+        data->i_dts -= sys->first_dts - sys->dts_delay;
 
         if ( input->fmt.i_codec == VLC_CODEC_MP4A )
             data = Add_ADTS( data, input->p_fmt );
@@ -103,6 +114,11 @@ int MuxOpen( vlc_object_t *this )
     sout_mux_sys_t *sys = calloc( 1, sizeof( *sys ) );
     if ( unlikely( sys == NULL ) )
         return VLC_ENOMEM;
+
+    static const char *const mux_options[] = { "dts-delay", NULL };
+    config_ChainParse( mux, MUX_CFG_PREFIX, mux_options, mux->p_cfg );
+
+    sys->dts_delay = VLC_TICK_FROM_MS( var_GetInteger( mux, MUX_CFG_PREFIX "dts-delay" ) );
 
     mux->p_sys = sys;
 

@@ -89,6 +89,12 @@
 #define IO_TYPE_LONGTEXT                                                       \
     N_( "Specify the segment IO method. Choose `file' to output segments on "  \
         "the filesystem or `memory' to output segments to memory chunks." )
+
+#define DTS_TEXT N_("DTS delay (ms)")
+#define DTS_LONGTEXT N_("Delay the DTS (decoding time " \
+  "stamps) and PTS (presentation timestamps) of the data in the " \
+  "stream, compared to the PCRs. This allows for some buffering inside " \
+  "the client decoder.")
 /* clang-format off */
 vlc_module_begin()
     set_shortname( "HLS" )
@@ -141,6 +147,7 @@ vlc_module_begin()
         set_shortname( N_("HLS Packed") )
         add_shortcut( "hlspack" )
         set_capability( "sout mux", 0 )
+        add_integer( MUX_CFG_PREFIX "dts-delay", 400, DTS_TEXT, DTS_LONGTEXT )
         set_callbacks( MuxOpen, MuxClose )
 
 vlc_module_end();

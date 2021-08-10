@@ -75,7 +75,6 @@ block_t *Add_ID3( block_t *data)
 
     uint8_t tag[ID3_HLS_TAG_SIZE] = ID3_HLS_TAG;
     const uint64_t timestamp = TO_SCALE_NZ(data->i_pts) & 0x1FFFFFFFFull;;
-    printf("TIMESTAMP: %ld\n", timestamp);
     SetQWBE( tag + sizeof( ID3_HLS_TAG ), timestamp );
 
     uint8_t *const id3_tag = ret->p_buffer + ID3_HDR_SIZE;

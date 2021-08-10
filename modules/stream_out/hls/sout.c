@@ -214,7 +214,8 @@ static struct hls_media *hls_media_New( sout_stream_t *sout, const es_format_t *
     var_Create( access, HLS_SOUT_CALLBACKS_VAR, VLC_VAR_ADDRESS );
     var_SetAddress( access, HLS_SOUT_CALLBACKS_VAR, &media->callbacks );
 
-    const char *mux = fmt->i_cat == AUDIO_ES ? "hlspack" : "ts{use-key-frames}";
+    const char *mux =
+        fmt->i_cat == AUDIO_ES ? "hlspack{dts-delay=400}" : "ts{use-key-frames,dts-delay=400}";
     media->mux = sout_MuxNew( access, mux );
     if ( unlikely( media->mux == NULL ) )
     {
