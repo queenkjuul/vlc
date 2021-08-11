@@ -164,7 +164,7 @@ hls_media_InitAco( sout_stream_t *sout, unsigned object_index, const char *aco, 
     char *cfg;
     if ( unlikely( asprintf(
              &cfg,
-             "%s{seglen=10,delsegs=true,pace=true,numsegs=4,segment-url=http://192.168.0.23:8080%s}",
+             "%s{seglen=6,delsegs=true,pace=true,numsegs=4,segment-url=http://192.168.1.57:8080%s}",
              aco, url ) ) == -1 )
     {
         free( url );
