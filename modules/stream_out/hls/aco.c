@@ -117,7 +117,7 @@ typedef struct
 
 static int LoadCryptFile( sout_access_out_t *p_access );
 static int CryptSetup( sout_access_out_t *p_access, char *keyfile );
-static int CheckSegmentChange( sout_access_out_t *p_access, block_t *p_buffer );
+static ssize_t CheckSegmentChange( sout_access_out_t *p_access, block_t *p_buffer );
 static ssize_t writeSegment( hls_io *handle, sout_access_out_t *p_access );
 static ssize_t openNextFile( sout_access_out_t *p_access,
                              sout_access_out_sys_t *p_sys );
@@ -943,7 +943,7 @@ static ssize_t openNextFile( sout_access_out_t *p_access,
 /*****************************************************************************
  * CheckSegmentChange: Check if segment needs to be closed and new opened
  *****************************************************************************/
-static int CheckSegmentChange( sout_access_out_t *p_access, block_t *p_buffer )
+static ssize_t CheckSegmentChange( sout_access_out_t *p_access, block_t *p_buffer )
 {
     sout_access_out_sys_t *p_sys = p_access->p_sys;
     ssize_t writevalue = 0;
@@ -1117,12 +1117,12 @@ static ssize_t Write( sout_access_out_t *p_access, block_t *p_buffer )
             msg_Err( p_access, "Error in write loop" );
             return ret;
         }
-        i_write += ret;
 
 
         block_t *p_temp = p_buffer->p_next;
         p_buffer->p_next = NULL;
         block_ChainLastAppend( &p_sys->ongoing_segment_end, p_buffer );
+        i_write += p_buffer->i_buffer;
         p_buffer = p_temp;
     }
 
