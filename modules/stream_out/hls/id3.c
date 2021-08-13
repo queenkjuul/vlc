@@ -65,20 +65,20 @@ block_t *Add_ID3( block_t *data)
 #define ID3_HLS_TAG "com.apple.streaming.transportStreamTimestamp"
 #define ID3_HLS_TAG_SIZE ( sizeof( ID3_HLS_TAG ) + sizeof( uint64_t ) )
     static const vlc_fourcc_t id = VLC_FOURCC( 'P', 'R', 'I', 'V' );
-
     static const size_t id3_total_size = ID3_HDR_SIZE + ID3_FRAMEHDR_SIZE + ID3_HLS_TAG_SIZE;
-    block_t *ret = block_Realloc( data, id3_total_size, data->i_buffer );
-    if ( unlikely( ret == NULL ) )
+
+    data = block_Realloc( data, id3_total_size, data->i_buffer );
+    if ( unlikely( data == NULL ) )
         return NULL;
 
-    fill_hdr( ret->p_buffer, id3_total_size - ID3_HDR_SIZE );
+    fill_hdr( data->p_buffer, id3_total_size - ID3_HDR_SIZE );
 
     uint8_t tag[ID3_HLS_TAG_SIZE] = ID3_HLS_TAG;
     const uint64_t timestamp = TO_SCALE_NZ(data->i_pts) & 0x1FFFFFFFFull;;
     SetQWBE( tag + sizeof( ID3_HLS_TAG ), timestamp );
 
-    uint8_t *const id3_tag = ret->p_buffer + ID3_HDR_SIZE;
+    uint8_t *const id3_tag = data->p_buffer + ID3_HDR_SIZE;
     fill_tag( id3_tag, id, tag, ID3_HLS_TAG_SIZE );
 
-    return ret;
+    return data;
 }

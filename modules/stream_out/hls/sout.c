@@ -26,18 +26,17 @@
 
 #include "common.h"
 
+#include <vlc_block.h>
+#include <vlc_memstream.h>
 #include <vlc_plugin.h>
 #include <vlc_queue.h>
 #include <vlc_sout.h>
-#include <vlc_memstream.h>
-#include <vlc_block.h>
 #include <vlc_url.h>
 
 #include <assert.h>
 
 // stream-es-ids="1,3"
 static const char *const sout_options[] = { NULL };
-
 
 typedef struct
 {
@@ -77,11 +76,9 @@ typedef struct segment_http_context
     struct segment_http_context *next;
 } segment_http_context;
 
-static int SegmentAdded( void *opaque, const sout_access_out_t *access, const hls_segment *segment )
+static int SegmentAdded( void *opaque, const hls_segment *segment )
 {
-    struct hls_media *obj = opaque;
-
-    assert( obj->mux->p_access == access );
+    struct hls_media *media = opaque;
 
     vlc_url_t url;
     if ( vlc_UrlParse( &url, segment->psz_uri ) != VLC_SUCCESS )
@@ -91,7 +88,7 @@ static int SegmentAdded( void *opaque, const sout_access_out_t *access, const hl
     if ( unlikely( context == NULL ) )
         return VLC_ENOMEM;
 
-    context->url = httpd_UrlNew( obj->httpd_host, url.psz_path, NULL, NULL );
+    context->url = httpd_UrlNew( media->httpd_host, url.psz_path, NULL, NULL );
     if ( unlikely( context->url == NULL ) )
     {
         free( context );
@@ -101,31 +98,36 @@ static int SegmentAdded( void *opaque, const sout_access_out_t *access, const hl
     httpd_UrlCatch( context->url, HTTPD_MSG_GET, (httpd_callback_t)url_segment_cb,
                     (void *)segment );
 
-    vlc_queue_Enqueue( &obj->segments_http_context, context );
+    vlc_queue_Enqueue( &media->segments_http_context, context );
 
     vlc_UrlClean( &url );
     return VLC_SUCCESS;
 }
 
-static void IndexUpdated( void *opaque, const sout_access_out_t *access, const hls_io *index_io )
+static void IndexLock( void *opaque )
 {
     struct hls_media *media = opaque;
-
-    assert( media->mux->p_access == access );
-
     vlc_mutex_lock( &media->index_file.lock );
-    media->index_file.handle = index_io;
+}
+
+static void IndexUnlock( void *opaque )
+{
+    struct hls_media *media = opaque;
     vlc_mutex_unlock( &media->index_file.lock );
 }
 
-static void
-SegmentRemoved( void *opaque, const sout_access_out_t *access, const hls_segment *segment )
+static void IndexUpdatedUnlocked( void *opaque, const hls_io *index_io )
 {
-    struct hls_media *obj = opaque;
+    struct hls_media *media = opaque;
 
-    assert( obj->mux->p_access == access );
+    media->index_file.handle = index_io;
+}
 
-    segment_http_context *context = vlc_queue_Dequeue( &obj->segments_http_context );
+static void SegmentRemoved( void *opaque, const hls_segment *segment )
+{
+    struct hls_media *media = opaque;
+
+    segment_http_context *context = vlc_queue_Dequeue( &media->segments_http_context );
 
     // Should not be called when the queue is empty.
     assert( context );
@@ -146,7 +148,7 @@ static char *hls_media_FormatURI( unsigned id )
 
 static httpd_url_t *hls_media_InitIndexUrl( httpd_host_t *host, unsigned id )
 {
-    char *url = hls_media_FormatURI(id);
+    char *url = hls_media_FormatURI( id );
     if ( unlikely( url == NULL ) )
         return NULL;
     httpd_url_t *ret = httpd_UrlNew( host, url, NULL, NULL );
@@ -177,7 +179,7 @@ hls_media_InitAco( sout_stream_t *sout, unsigned object_index, const char *aco, 
     return ret;
 }
 
-static struct hls_media *hls_media_New( sout_stream_t *sout, const es_format_t *fmt)
+static struct hls_media *hls_media_New( sout_stream_t *sout, const es_format_t *fmt )
 {
     assert( fmt->i_id >= 0 );
 
@@ -185,7 +187,7 @@ static struct hls_media *hls_media_New( sout_stream_t *sout, const es_format_t *
     if ( unlikely( media == NULL ) )
         return NULL;
 
-    media->httpd_host = ((sout_stream_sys_t*)sout->p_sys)->httpd_host;
+    media->httpd_host = ( (sout_stream_sys_t *)sout->p_sys )->httpd_host;
     media->httpd_aco_index_url = hls_media_InitIndexUrl( media->httpd_host, fmt->i_id );
     if ( unlikely( media->httpd_aco_index_url == NULL ) )
     {
@@ -200,13 +202,17 @@ static struct hls_media *hls_media_New( sout_stream_t *sout, const es_format_t *
 
     vlc_mutex_init( &media->index_file.lock );
 
-    media->callbacks = ( struct hls_sout_callbacks ){ .sys = media,
-                                                      .segment_added = SegmentAdded,
-                                                      .segment_removed = SegmentRemoved,
-                                                      .index_updated = IndexUpdated };
+    media->callbacks = ( struct hls_sout_callbacks ){
+        .sys = media,
+        .segment_added = SegmentAdded,
+        .segment_removed = SegmentRemoved,
+        .lock_index = IndexLock,
+        .index_update_unlocked = IndexUpdatedUnlocked,
+        .unlock_index = IndexUnlock,
+    };
 
-    const char *aco = fmt->i_cat == AUDIO_ES ? "pkd-audio-hls" : "hls" ;
-    const char *ext = fmt->i_cat == AUDIO_ES ? "aac" : "ts" ;
+    const char *aco = fmt->i_cat == AUDIO_ES ? "pkd-audio-hls" : "hls";
+    const char *ext = fmt->i_cat == AUDIO_ES ? "aac" : "ts";
     sout_access_out_t *access = hls_media_InitAco( sout, fmt->i_id, aco, ext );
     if ( unlikely( access == NULL ) )
         goto err;
@@ -225,13 +231,12 @@ static struct hls_media *hls_media_New( sout_stream_t *sout, const es_format_t *
 
     media->mux_input = sout_MuxAddStream( media->mux, fmt );
 
-    es_format_Copy(&media->fmt, fmt);
+    es_format_Copy( &media->fmt, fmt );
 
     return media;
 err:
     if ( media->httpd_aco_index_url )
         httpd_UrlDelete( media->httpd_aco_index_url );
-    httpd_HostDelete( media->httpd_host );
     free( media );
     return NULL;
 }
@@ -248,12 +253,13 @@ static void hls_media_Release( struct hls_media *media )
     assert( vlc_queue_IsEmpty( &media->segments_http_context ) );
 
     httpd_UrlDelete( media->httpd_aco_index_url );
-    httpd_HostDelete( media->httpd_host );
+
+    es_format_Clean( &media->fmt );
 
     free( media );
 }
 
-static bool fill_index_file(const sout_stream_sys_t *sys, struct vlc_memstream*stream)
+static bool fill_index_file( const sout_stream_sys_t *sys, struct vlc_memstream *stream )
 {
     vlc_memstream_open( stream );
 
@@ -318,19 +324,20 @@ static bool fill_index_file(const sout_stream_sys_t *sys, struct vlc_memstream*s
         }
     }
 
-    if (!stream_inf)
+    if ( !stream_inf )
     {
         // The stream selected by the user isn't available.
-        vlc_memstream_close(stream);
-        free(stream->ptr);
+        vlc_memstream_close( stream );
+        free( stream->ptr );
         return false;
     }
 
     char avc_id[12];
     const uint8_t *extra = stream_inf->fmt.p_extra;
-    sprintf(avc_id,"avc1.%02x%02x%02x", extra[5], extra[6], extra[7]);
+    sprintf( avc_id, "avc1.%02x%02x%02x", extra[5], extra[6], extra[7] );
 
-    vlc_memstream_printf( stream, "#EXT-X-STREAM-INF:BANDWIDTH=%d,CODECS=\"avc1.42c01e,mp4a.40.2\"", /*stream_inf->fmt.i_bitrate */ 0);
+    vlc_memstream_printf( stream, "#EXT-X-STREAM-INF:BANDWIDTH=%d,CODECS=\"avc1.42c01e,mp4a.40.2\"",
+                          /*stream_inf->fmt.i_bitrate */ 0 );
 
     if ( highest_media_priorities[VIDEO_ES] )
         vlc_memstream_printf( stream, ",VIDEO=\"VIDEO\"" );
@@ -343,9 +350,22 @@ static bool fill_index_file(const sout_stream_sys_t *sys, struct vlc_memstream*s
     vlc_memstream_printf( stream, "\n%s\n", uri );
     free( uri );
 
-    vlc_memstream_close(stream);
+    vlc_memstream_close( stream );
 
     return true;
+}
+
+static void replace_main_index( sout_stream_sys_t *sys, hls_io *io )
+{
+    vlc_mutex_lock( &sys->main_index.lock );
+    hls_io *current_handle = sys->main_index.handle;
+    if ( current_handle )
+    {
+        current_handle->ops.release( current_handle );
+        free( current_handle );
+    }
+    sys->main_index.handle = io;
+    vlc_mutex_unlock( &sys->main_index.lock );
 }
 
 /*****************************************************************************
@@ -380,8 +400,9 @@ static void *Add( sout_stream_t *sout, const es_format_t *fmt )
     if ( !fill_index_file( sys, &stream ) )
         return media;
 
-    printf ("INDEX: %s\n", stream.ptr);
-    hls_io *io = hls_io_New( NULL, 0 );
+    printf( "INDEX: %s\n", stream.ptr );
+
+    hls_io *io = hls_io_NewFromData( stream.ptr, stream.length );
     if ( unlikely( io == NULL ) )
     {
         free( stream.ptr );
@@ -389,26 +410,13 @@ static void *Add( sout_stream_t *sout, const es_format_t *fmt )
         return NULL;
     }
 
-    block_t *clone = block_Alloc( stream.length );
-    memcpy( clone->p_buffer, stream.ptr, stream.length );
+    free(stream.ptr);
 
-    io->ops.open( io );
-    io->ops.consume_block( io, clone );
-    io->ops.close( io );
+    replace_main_index( sys, io );
 
-    vlc_mutex_lock( &sys->main_index.lock );
-    hls_io *current_handle = sys->main_index.handle;
-    if ( current_handle )
-    {
-        current_handle->ops.release( current_handle );
-        free( current_handle );
-    }
-    sys->main_index.handle = io;
-    vlc_mutex_unlock( &sys->main_index.lock );
-
-    // XXX: does that actually work lmao ?
     return media;
 }
+
 
 static void Del( sout_stream_t *sout, void *id )
 {
@@ -420,10 +428,16 @@ static void Del( sout_stream_t *sout, void *id )
 
     hls_media_Release( media );
 
-    vlc_memstream_close( &sys->main_index_buffer );
-    free(sys->main_index_buffer.ptr);
+    struct vlc_memstream stream;
+    if ( !fill_index_file( sys, &stream ) )
+        return ;
 
-    //sys->main_index_buffer = new_index_file(sys);
+    hls_io *io = hls_io_NewFromData( stream.ptr, stream.length );
+    if ( likely( io != NULL ) )
+    {
+        replace_main_index( sys, io );
+        free( stream.ptr );
+    }
 }
 
 static int Send( sout_stream_t *stream, void *id, block_t *buffer )
@@ -453,8 +467,8 @@ static int Control( sout_stream_t *stream, int query, va_list args )
 
 static void Flush( sout_stream_t *stream, void *id )
 {
-    struct hls_media *obj = id;
-    sout_MuxFlush( obj->mux, obj->mux_input );
+    struct hls_media *media = id;
+    sout_MuxFlush( media->mux, media->mux_input );
     (void)stream;
 }
 
@@ -470,6 +484,8 @@ int SoutOpen( vlc_object_t *this )
     if ( unlikely( sys == NULL ) )
         return VLC_ENOMEM;
 
+
+
     config_ChainParse( stream, SOUT_CFG_PREFIX, sout_options, stream->p_cfg );
 
     vlc_array_init( &sys->medias );
@@ -484,7 +500,7 @@ int SoutOpen( vlc_object_t *this )
     if ( unlikely( sys->httpd_main_index_url == NULL ) )
         goto err;
 
-    vlc_mutex_init(&sys->main_index.lock);
+    vlc_mutex_init( &sys->main_index.lock );
 
     httpd_UrlCatch( sys->httpd_main_index_url, HTTPD_MSG_GET, (httpd_callback_t)url_index_cb,
                     (void *)&sys->main_index );
@@ -505,7 +521,13 @@ void SoutClose( vlc_object_t *this )
     sout_stream_sys_t *sys = stream->p_sys;
 
     httpd_UrlDelete( sys->httpd_main_index_url );
+
     httpd_HostDelete( sys->httpd_host );
+
+    vlc_memstream_close( &sys->main_index_buffer );
+    free( sys->main_index_buffer.ptr );
+
+    replace_main_index(sys, NULL);
 
     free( sys );
 }

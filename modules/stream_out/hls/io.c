@@ -16,6 +16,22 @@ hls_io *hls_io_New( const char *path, int flags )
     return hls_io_NewFile( path, flags );
 }
 
+hls_io *hls_io_NewFromData(const uint8_t *data, size_t size)
+{
+    hls_io *io = hls_io_New( NULL, 0 );
+    if ( unlikely( io == NULL ) )
+        return NULL;
+
+    block_t *clone = block_Alloc( size );
+    memcpy( clone->p_buffer, data, size );
+
+    io->ops.open( io );
+    io->ops.consume_block( io, clone );
+    io->ops.close( io );
+
+    return io;
+}
+
 /*****************************************************************************
  * IO: File
  *****************************************************************************/

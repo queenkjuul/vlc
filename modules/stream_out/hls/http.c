@@ -44,7 +44,7 @@ static inline void set_http_headers( httpd_message_t *answer )
     httpd_MsgAdd( answer, "Access-Control-Expose-Headers", "Content-Length" );
 }
 
-int url_segment_cb( const hls_segment *segment,
+int url_segment_cb( hls_segment *segment,
                     httpd_client_t *cl,
                     httpd_message_t *answer,
                     const httpd_message_t *query )
@@ -52,12 +52,16 @@ int url_segment_cb( const hls_segment *segment,
     if ( !answer || !query || !cl )
         return VLC_SUCCESS;
 
+    vlc_mutex_lock(&segment->io_lock);
     const hls_io *io = segment->io_handle;
 
     printf( "fetching %s\n", segment->psz_filename );
 
     answer->i_body = io->size;
     answer->p_body = io_read_all( io );
+
+    vlc_mutex_unlock(&segment->io_lock);
+
     if ( answer->p_body == NULL )
         return VLC_EGENERIC;
 

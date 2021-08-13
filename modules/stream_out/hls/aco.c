@@ -441,12 +441,16 @@ static char *formatSegmentPath( char *psz_path, uint32_t i_seg )
 
 static void destroySegment( hls_segment *segment, sout_access_out_t *p_access )
 {
-    hls_io *handler = segment->io_handle;
-    handler->ops.release( handler );
     const struct hls_sout_callbacks *callbacks = var_GetAddress( p_access, HLS_SOUT_CALLBACKS_VAR );
     if ( callbacks )
-        callbacks->segment_removed( callbacks->sys, p_access, segment );
+        callbacks->segment_removed( callbacks->sys, segment );
+
+    vlc_mutex_lock( &segment->io_lock );
+    hls_io *handler = segment->io_handle;
+    handler->ops.release( handler );
     free( handler );
+    vlc_mutex_unlock( &segment->io_lock );
+
     free( segment->psz_filename );
     free( segment->psz_duration );
     free( segment->psz_uri );
@@ -631,6 +635,11 @@ static int updateIndexAndDel( sout_access_out_t *p_access,
     memcpy( clone->p_buffer, ms.ptr, ms.length );
     free( ms.ptr );
 
+    const struct hls_sout_callbacks *callbacks = var_GetAddress( p_access, HLS_SOUT_CALLBACKS_VAR );
+
+    if ( callbacks )
+        callbacks->lock_index( callbacks->sys );
+
     if ( p_sys->p_index != NULL )
     {
         p_sys->p_index->ops.unlink( p_sys->p_index );
@@ -642,6 +651,8 @@ static int updateIndexAndDel( sout_access_out_t *p_access,
     if ( unlikely( p_sys->p_index == NULL ) )
     {
         // TODO proper error handling
+        if ( callbacks )
+            callbacks->unlock_index( callbacks->sys );
         return -1;
     }
 
@@ -649,9 +660,11 @@ static int updateIndexAndDel( sout_access_out_t *p_access,
     p_sys->p_index->ops.consume_block( p_sys->p_index, clone );
     p_sys->p_index->ops.close( p_sys->p_index );
 
-    const struct hls_sout_callbacks *callbacks = var_GetAddress( p_access, HLS_SOUT_CALLBACKS_VAR );
     if ( callbacks )
-        callbacks->index_updated( callbacks->sys, p_access, p_sys->p_index );
+    {
+        callbacks->index_update_unlocked( callbacks->sys, p_sys->p_index );
+        callbacks->unlock_index( callbacks->sys );
+    }
 
     // Then take care of deletion
     // Try to follow pantos draft 11 section 6.2.2
@@ -747,8 +760,6 @@ static void write_last_segment(sout_access_out_t* p_access, hls_segment *last_se
     }
 
     closeCurrentSegment( p_access, p_sys, true );
-    if ( p_sys->b_pace )
-        vlc_tick_sleep( p_sys->segment_max_length + VLC_TICK_FROM_SEC( 1 ) );
 }
 
 static void destroy_segments( sout_access_out_t *p_access )
@@ -831,6 +842,7 @@ void AccessClose( vlc_object_t *p_this )
         const vlc_tick_t duration =
             last_segment->segment_length +
             ( p_sys->i_numsegs * p_sys->segment_max_length );
+        printf("stalling %ld\n", duration);
         if ( p_sys->b_pace )
             vlc_tick_sleep( duration );
 
@@ -900,6 +912,7 @@ static ssize_t openNextFile( sout_access_out_t *p_access,
         return -1;
     }
 
+    vlc_mutex_init( &segment->io_lock );
     segment->io_handle = hls_io_New(
         segment->psz_path, O_WRONLY | O_CREAT | O_LARGEFILE | O_TRUNC );
 
@@ -929,7 +942,7 @@ static ssize_t openNextFile( sout_access_out_t *p_access,
     printf( "%s\n", segment->psz_filename );
 
     const struct hls_sout_callbacks *callbacks = var_GetAddress( p_access, HLS_SOUT_CALLBACKS_VAR );
-    callbacks->segment_added( callbacks->sys, p_access, segment );
+    callbacks->segment_added( callbacks->sys, segment );
 
     msg_Dbg( p_access, "Successfully opened livehttp file: %s (%" PRIu32 ")",
              segment->psz_uri, i_newseg );

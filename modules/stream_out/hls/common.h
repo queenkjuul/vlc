@@ -32,6 +32,7 @@ typedef struct hls_io hls_io;
  * if path is NULL flags is ignored and a memory-only io is returned.
  */
 VLC_EXTERN hls_io *hls_io_New( const char *path, int flags );
+hls_io *hls_io_NewFromData( const uint8_t *data, size_t size );
 
 typedef struct
 {
@@ -75,12 +76,15 @@ typedef struct
     vlc_tick_t segment_length;
     uint32_t i_segment_number;
     uint8_t aes_ivs[16];
+
+    vlc_mutex_t io_lock;
     hls_io *io_handle;
-    // httpd_url_t *httpd_file;
+
     bool closed;
 } hls_segment;
 
-typedef struct {
+typedef struct
+{
     const hls_io *handle;
     vlc_mutex_t lock;
 } hls_index;
@@ -90,19 +94,16 @@ struct hls_sout_callbacks
 {
     void *sys;
 
-    int ( *segment_added )( void *,
-                            const sout_access_out_t *,
-                            const hls_segment * );
-    void ( *segment_removed )( void *,
-                               const sout_access_out_t *,
-                               const hls_segment * );
+    int ( *segment_added )( void *, const hls_segment * );
+    void ( *segment_removed )( void *, const hls_segment * );
 
-    void ( *index_updated )( void *,
-                             const sout_access_out_t *,
-                             const hls_io * );
+    void ( *lock_index )( void * );
+
+    void ( *index_update_unlocked )( void *, const hls_io * );
+    void ( *unlock_index )( void * );
 };
 
-int url_segment_cb( const hls_segment *segment,
+int url_segment_cb( hls_segment *segment,
                     httpd_client_t *cl,
                     httpd_message_t *answer,
                     const httpd_message_t *query );
