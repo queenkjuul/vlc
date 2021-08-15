@@ -34,6 +34,10 @@ libstream_out_udp_plugin_la_SOURCES = \
 	stream_out/udp.c
 libstream_out_udp_plugin_la_LIBADD = $(SOCKET_LIBS)
 
+libstream_out_hls_plugin_la_SOURCES = stream_out/hls/aco.c
+libstream_out_hls_plugin_la_CFLAGS = $(AM_CFLAGS) $(GCRYPT_CFLAGS)
+libstream_out_hls_plugin_la_LIBADD = $(GCRYPT_LIBS) -lgpg-error $(LIBM)
+
 sout_LTLIBRARIES = \
 	libstream_out_dummy_plugin.la \
 	libstream_out_cycle_plugin.la \
@@ -51,7 +55,8 @@ sout_LTLIBRARIES = \
 	libstream_out_smem_plugin.la \
 	libstream_out_setid_plugin.la \
 	libstream_out_transcode_plugin.la \
-	libstream_out_udp_plugin.la
+	libstream_out_udp_plugin.la \
+	libstream_out_hls_plugin.la
 
 if HAVE_DECKLINK
 libstream_out_sdi_plugin_la_CXXFLAGS = $(AM_CXXFLAGS) $(CPPFLAGS_stream_out_sdi)
