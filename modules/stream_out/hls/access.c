@@ -1,5 +1,5 @@
 /*****************************************************************************
- * livehttp.c: Live HTTP Streaming
+ * access.c: HLS access output
  *****************************************************************************
  * Copyright © 2001, 2002, 2013 VLC authors and VideoLAN
  * Copyright © 2009-2010 by Keary Griffin
