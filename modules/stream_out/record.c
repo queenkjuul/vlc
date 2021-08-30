@@ -73,7 +73,7 @@ static const char *const ppsz_sout_options[] = {
 };
 
 /* */
-static void *Add( sout_stream_t *, const es_format_t * );
+static void *Add( sout_stream_t *, const es_format_t *, const input_source_t * );
 static void  Del( sout_stream_t *, void * );
 static int   Send( sout_stream_t *, void *, block_t * );
 
@@ -81,6 +81,8 @@ typedef struct sout_stream_id_sys_t sout_stream_id_sys_t;
 struct sout_stream_id_sys_t
 {
     es_format_t fmt;
+
+    const input_source_t *source;
 
     block_t *p_first;
     block_t **pp_last;
@@ -179,7 +181,7 @@ static void Close( vlc_object_t * p_this )
 /*****************************************************************************
  *
  *****************************************************************************/
-static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt )
+static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt, const input_source_t *source )
 {
     sout_stream_sys_t *p_sys = p_stream->p_sys;
     sout_stream_id_sys_t *id;
@@ -189,6 +191,7 @@ static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt )
         return NULL;
 
     es_format_Copy( &id->fmt, p_fmt );
+    id->source = source;
     id->p_first = NULL;
     id->pp_last = &id->p_first;
     id->id = NULL;
@@ -358,7 +361,7 @@ static int OutputNew( sout_stream_t *p_stream,
     {
         sout_stream_id_sys_t *id = p_sys->id[i];
 
-        id->id = sout_StreamIdAdd( p_sys->p_out, &id->fmt );
+        id->id = sout_StreamIdAdd( p_sys->p_out, &id->fmt, id->source );
         if( id->id )
             i_count++;
     }

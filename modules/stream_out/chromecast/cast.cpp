@@ -164,6 +164,7 @@ private:
 struct sout_stream_id_sys_t
 {
     es_format_t           fmt;
+    const input_source_t *source;
     sout_stream_id_sys_t  *p_sub_id;
     bool                  flushed;
 };
@@ -240,10 +241,11 @@ vlc_module_begin ()
         set_callbacks(AccessOpen, AccessClose)
 vlc_module_end ()
 
-static void *ProxyAdd(sout_stream_t *p_stream, const es_format_t *p_fmt)
+static void *
+ProxyAdd(sout_stream_t *p_stream, const es_format_t *p_fmt, const input_source_t *source)
 {
     sout_stream_sys_t *p_sys = reinterpret_cast<sout_stream_sys_t *>( p_stream->p_sys );
-    sout_stream_id_sys_t *id = reinterpret_cast<sout_stream_id_sys_t *>( sout_StreamIdAdd(p_stream->p_next, p_fmt) );
+    sout_stream_id_sys_t *id = reinterpret_cast<sout_stream_id_sys_t *>( sout_StreamIdAdd(p_stream->p_next, p_fmt, source) );
     if (id)
     {
         if (p_fmt->i_cat == VIDEO_ES)
@@ -656,7 +658,8 @@ static void AccessClose(vlc_object_t *p_this)
 /*****************************************************************************
  * Sout callbacks
  *****************************************************************************/
-static void *Add(sout_stream_t *p_stream, const es_format_t *p_fmt)
+static void *
+Add(sout_stream_t *p_stream, const es_format_t *p_fmt, const input_source_t *source)
 {
     sout_stream_sys_t *p_sys = reinterpret_cast<sout_stream_sys_t *>( p_stream->p_sys );
     vlc_mutex_locker locker(&p_sys->lock);
@@ -671,6 +674,7 @@ static void *Add(sout_stream_t *p_stream, const es_format_t *p_fmt)
     if (p_sys_id != NULL)
     {
         es_format_Copy( &p_sys_id->fmt, p_fmt );
+        p_sys_id->source = source;
         p_sys_id->p_sub_id = NULL;
         p_sys_id->flushed = false;
 
@@ -834,7 +838,8 @@ bool sout_stream_sys_t::startSoutChain(sout_stream_t *p_stream,
          it != out_streams.end(); )
     {
         sout_stream_id_sys_t *p_sys_id = *it;
-        p_sys_id->p_sub_id = reinterpret_cast<sout_stream_id_sys_t *>( sout_StreamIdAdd( p_out, &p_sys_id->fmt ) );
+        p_sys_id->p_sub_id = reinterpret_cast<sout_stream_id_sys_t *>(
+            sout_StreamIdAdd( p_out, &p_sys_id->fmt, p_sys_id->source ) );
         if ( p_sys_id->p_sub_id == NULL )
         {
             msg_Err( p_stream, "can't handle %4.4s stream", (char *)&p_sys_id->fmt.i_codec );
@@ -1223,7 +1228,7 @@ static void on_input_event_cb(void *data, enum cc_input_event event, union cc_in
 }
 
 static const struct sout_stream_operations ops = {
-    Add, Del, Send, NULL, Flush,
+    Add, Del, Send, NULL, Flush, NULL,
 };
 
 /*****************************************************************************

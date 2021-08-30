@@ -77,7 +77,11 @@ struct sout_stream_id_sys_t
     void *downstream_id;
     void *(*pf_transcode_downstream_add)( sout_stream_t *,
                                           const es_format_t *orig,
-                                          const es_format_t *current );
+                                          const es_format_t *current,
+                                          const input_source_t *source );
+
+    /* id input source */
+    const input_source_t *source;
 
     /* Decoder */
     decoder_t       *p_decoder;

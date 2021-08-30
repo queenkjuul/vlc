@@ -227,7 +227,7 @@ static const char *const ppsz_sout_options[] = {
 /*****************************************************************************
  * Exported prototypes
  *****************************************************************************/
-static void *Add( sout_stream_t *, const es_format_t * );
+static void *Add( sout_stream_t *, const es_format_t *, const input_source_t * );
 static void  Del( sout_stream_t *, void * );
 static int   Send( sout_stream_t *, void *, block_t * );
 
@@ -544,7 +544,8 @@ static int ValidateDrift( void *cbdata, vlc_tick_t i_drift )
 
 static void *transcode_downstream_Add( sout_stream_t *p_stream,
                                        const es_format_t *fmt_orig,
-                                       const es_format_t *fmt)
+                                       const es_format_t *fmt,
+                                       const input_source_t *source )
 {
     sout_stream_sys_t *p_sys = p_stream->p_sys;
 
@@ -565,12 +566,12 @@ static void *transcode_downstream_Add( sout_stream_t *p_stream,
     if( tmp.i_group != fmt_orig->i_group )
         tmp.i_group = fmt_orig->i_group;
 
-    void *downstream = sout_StreamIdAdd( p_stream->p_next, &tmp );
+    void *downstream = sout_StreamIdAdd( p_stream->p_next, &tmp, source );
     es_format_Clean( &tmp );
     return downstream;
 }
 
-static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt )
+static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt, const input_source_t *source )
 {
     sout_stream_sys_t *p_sys = p_stream->p_sys;
     sout_stream_id_sys_t *id;
@@ -581,6 +582,7 @@ static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt )
 
     vlc_mutex_init(&id->fifo.lock);
     id->pf_transcode_downstream_add = transcode_downstream_Add;
+    id->source = source;
 
     /* Create decoder object */
     struct decoder_owner * p_owner = vlc_object_create( p_stream, sizeof( *p_owner ) );
@@ -646,7 +648,7 @@ static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt )
     {
         msg_Dbg( p_stream, "not transcoding a stream (fcc=`%4.4s')",
                  (char*)&p_fmt->i_codec );
-        id->downstream_id = transcode_downstream_Add( p_stream, p_fmt, p_fmt );
+        id->downstream_id = transcode_downstream_Add( p_stream, p_fmt, p_fmt, source );
         id->b_transcode = false;
 
         success = id->downstream_id;

@@ -50,6 +50,7 @@ namespace DLNA
 struct sout_stream_id_sys_t
 {
     es_format_t           fmt;
+    const input_source_t *source;
     sout_stream_id_sys_t  *p_sub_id;
 };
 
@@ -239,7 +240,7 @@ bool sout_stream_sys_t::startSoutChain(sout_stream_t *p_stream,
     {
         sout_stream_id_sys_t *p_sys_id = *it;
         p_sys_id->p_sub_id = static_cast<sout_stream_id_sys_t *>(
-                sout_StreamIdAdd( p_out, &p_sys_id->fmt ) );
+                sout_StreamIdAdd( p_out, &p_sys_id->fmt, p_sys_id->source ) );
         if ( p_sys_id->p_sub_id == nullptr )
         {
             msg_Err( p_stream, "can't handle %4.4s stream",
@@ -811,7 +812,7 @@ int MediaRenderer::SetAVTransportURI(const char* uri, const protocol_info_t& pro
     return VLC_SUCCESS;
 }
 
-static void *Add(sout_stream_t *p_stream, const es_format_t *p_fmt)
+static void *Add(sout_stream_t *p_stream, const es_format_t *p_fmt, const input_source_t *source)
 {
     sout_stream_sys_t *p_sys = static_cast<sout_stream_sys_t *>( p_stream->p_sys );
 
@@ -826,6 +827,7 @@ static void *Add(sout_stream_t *p_stream, const es_format_t *p_fmt)
     {
         es_format_Copy(&p_sys_id->fmt, p_fmt);
         p_sys_id->p_sub_id = nullptr;
+        p_sys_id->source = source;
         p_sys->streams.push_back(p_sys_id);
         p_sys->es_changed = true;
     }

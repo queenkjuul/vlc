@@ -567,7 +567,8 @@ int transcode_video_process( sout_stream_t *p_stream, sout_stream_id_sys_t *id,
                 id->downstream_id =
                     id->pf_transcode_downstream_add( p_stream,
                                                      &id->p_decoder->fmt_in,
-                                                     transcode_encoder_format_out( id->encoder ) );
+                                                     transcode_encoder_format_out( id->encoder ),
+                                                     id->source );
             if( !id->downstream_id )
             {
                 msg_Err( p_stream, "cannot output transcoded stream %4.4s",

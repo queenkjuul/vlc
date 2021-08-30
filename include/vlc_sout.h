@@ -173,7 +173,7 @@ enum sout_stream_query_e {
 };
 
 struct sout_stream_operations {
-    void *(*add)(sout_stream_t *, const es_format_t *);
+    void *(*add)(sout_stream_t *, const es_format_t *, const input_source_t *);
     void (*del)(sout_stream_t *, void *);
     int (*send)(sout_stream_t *, void *, block_t *);
     int (*control)( sout_stream_t *, int, va_list );
@@ -196,7 +196,7 @@ VLC_API void sout_StreamChainDelete(sout_stream_t *first, sout_stream_t *end);
 VLC_API sout_stream_t *sout_StreamChainNew(vlc_object_t *parent,
         const char *psz_chain, sout_stream_t *p_next) VLC_USED;
 
-VLC_API void *sout_StreamIdAdd(sout_stream_t *s, const es_format_t *fmt);
+VLC_API void *sout_StreamIdAdd(sout_stream_t *s, const es_format_t *fmt, const input_source_t *source);
 VLC_API void sout_StreamIdDel(sout_stream_t *s, void *id);
 VLC_API int sout_StreamIdSend( sout_stream_t *s, void *id, block_t *b);
 VLC_API void sout_StreamFlush(sout_stream_t *s, void *id);
