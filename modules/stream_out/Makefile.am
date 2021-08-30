@@ -34,9 +34,23 @@ libstream_out_udp_plugin_la_SOURCES = \
 	stream_out/udp.c
 libstream_out_udp_plugin_la_LIBADD = $(SOCKET_LIBS)
 
-libstream_out_hls_plugin_la_SOURCES = stream_out/hls/aco.c
+libstream_out_hls_plugin_la_SOURCES = stream_out/hls/hls.c \
+	stream_out/hls/sout.c \
+	stream_out/hls/aco.c \
+	stream_out/hls/io.c \
+	stream_out/hls/http.c \
+	stream_out/hls/packed_audio.c \
+	stream_out/hls/webvtt.c \
+	stream_out/hls/id3.c \
+	stream_out/hls/common.h
 libstream_out_hls_plugin_la_CFLAGS = $(AM_CFLAGS) $(GCRYPT_CFLAGS)
 libstream_out_hls_plugin_la_LIBADD = $(GCRYPT_LIBS) -lgpg-error $(LIBM)
+
+hls_test_id3_SOURCES = stream_out/hls/tests/id3.cpp stream_out/hls/id3.c stream_out/hls/tests/cxx_test_helper.hpp
+hls_test_io_SOURCES = stream_out/hls/tests/io.cpp stream_out/hls/io.c stream_out/hls/tests/cxx_test_helper.hpp
+hls_test_webvtt_SOURCES = stream_out/hls/tests/webvtt.cpp stream_out/hls/webvtt.c stream_out/hls/webvtt.h ../src/misc/block.c stream_out/hls/tests/cxx_test_helper.hpp
+check_PROGRAMS += hls_test_id3 hls_test_io hls_test_webvtt
+TESTS += hls_test_id3 hls_test_io hls_test_webvtt
 
 sout_LTLIBRARIES = \
 	libstream_out_dummy_plugin.la \
