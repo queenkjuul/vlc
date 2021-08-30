@@ -425,6 +425,20 @@ static inline void vlc_frame_ChainLastAppend( vlc_frame_t ***ppp_last, vlc_frame
 }
 
 /**
+ * Prepend a @ref vlc_frame_t to the chain
+ *
+ * The given frame is prepended to the first frame of the given chain.
+ *
+ * @param pp_list   Pointer to the vlc_frame_t chain
+ * @param frame   The vlc_frame_t to append (can be NULL)
+ */
+static inline void vlc_frame_ChainPrepend( vlc_frame_t **pp_list, vlc_frame_t *frame )
+{
+    frame->p_next = *pp_list;
+    *pp_list = frame;
+}
+
+/**
  * Releases a chain of blocks
  *
  * The frame pointed to by frame and all following frames in the

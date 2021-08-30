@@ -95,6 +95,7 @@
 #define block_cleanup_push vlc_frame_cleanup_push
 #define block_ChainAppend vlc_frame_ChainAppend
 #define block_ChainLastAppend vlc_frame_ChainLastAppend
+#define block_ChainPrepend vlc_frame_ChainPrepend
 #define block_ChainRelease vlc_frame_ChainRelease
 #define block_ChainExtract vlc_frame_ChainExtract
 #define block_ChainProperties vlc_frame_ChainProperties
