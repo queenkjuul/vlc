@@ -59,6 +59,9 @@
 #define SERVER_FORCE_TRANSCODE_TEXT N_( "Force media transcoding" )
 #define SERVER_FORCE_TRANSCODE_LONGTEXT N_( "Only expose transcoded media profiles to clients" )
 
+#define SERVER_EXTRA_VERBOSE_TEXT N_( "Extra UPNP debug logs" )
+#define SERVER_EXTRA_VERBOSE_LONGTEXT N_( "Show full UPNP requests and response in the debug log level" )
+
 struct intf_sys_t
 {
 
@@ -110,6 +113,9 @@ struct intf_sys_t
 
     // `--upnp-server-accept-risk` option
     bool accept_risk;
+
+    // `--upnp-server-extra-verbose` option
+    bool extra_verbose;
 
     // We need to create a separate threaded context to properly display the privacy warning dialog
     // at server initialization without blocking the `Open` callback.

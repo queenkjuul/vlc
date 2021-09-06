@@ -163,7 +163,8 @@ static bool cds_browse( UpnpActionRequest* p_request, intf_thread_t* p_intf )
     UpnpAddToActionResponse( &p_answer, action_name, service_type, "UpdateID", str_update_id.c_str() );
 
     UpnpActionRequest_set_ActionResult( p_request, p_answer );
-    msg_Dbg( p_intf, "server: sending response to client: \n%s", up_reponse_str.get() );
+    if ( p_sys->extra_verbose )
+        msg_Dbg( p_intf, "server: sending response to client: \n%s", up_reponse_str.get() );
 
     return true;
 }
@@ -466,7 +467,10 @@ static bool init_upnp( intf_thread_t* intf )
     assert( server_name );
     const auto presentation_doc = make_server_identity( sys->uuid.get(), server_name.get() );
     const auto up_presentation_str = presentation_doc.to_wrapped_cstr();
-    msg_Dbg( intf, "%s", up_presentation_str.get() );
+
+    if ( sys->extra_verbose )
+        msg_Dbg( intf, "%s", up_presentation_str.get() );
+
     res = UpnpRegisterRootDevice2( UPNPREG_BUF_DESC, up_presentation_str.get(),
                                    strlen( up_presentation_str.get() ), 1, Callback, intf,
                                    &sys->p_device_handle );
@@ -570,7 +574,8 @@ int open( vlc_object_t* p_this )
                                   []( UpnpInstanceWrapper* p_upnp ) { p_upnp->release(); } );
 
     p_sys->accept_risk = var_InheritBool( p_this, SERVER_PREFIX "accept-risk" );
-    const bool force_transcode = var_InheritBool( p_this, SERVER_PREFIX "only-transcode" );
+    p_sys->extra_verbose = var_InheritBool( p_this, SERVER_PREFIX "extra-verbose" );
+    const bool force_transcode = var_InheritBool( p_this, SERVER_PREFIX "force-transcode" );
 
     p_sys->obj_hierarchy = cds::init_hierarchy( *p_ml, force_transcode );
 
