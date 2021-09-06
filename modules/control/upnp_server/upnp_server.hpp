@@ -56,6 +56,9 @@
     N_( "Accept to enable the upnp server, it will expose your device's media on the current "     \
         "network. Please make sure you are in a trusted network" )
 
+#define SERVER_FORCE_TRANSCODE_TEXT N_( "Force media transcoding" )
+#define SERVER_FORCE_TRANSCODE_LONGTEXT N_( "Only expose transcoded media profiles to clients" )
+
 struct intf_sys_t
 {
 

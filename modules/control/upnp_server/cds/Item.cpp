@@ -36,11 +36,13 @@
 namespace cds
 {
 
-Item::Item( const int64_t id, vlc_medialibrary_t& ml ) noexcept
-    : Object( id, -1, nullptr, Object::Type::Item )
-    , m_medialib( ml )
-{
-}
+ bool Item::s_force_transcoding = false;
+
+ Item::Item( const int64_t id, vlc_medialibrary_t& ml ) noexcept
+     : Object( id, -1, nullptr, Object::Type::Item )
+     , m_medialib( ml )
+ {
+ }
 
 static bool should_propose_transcode( const vlc_ml_media_t& media,
                               const TranscodeProfile& profile,
@@ -139,7 +141,8 @@ static xml::Element make_resource( xml::Document& doc,
 static void dump_resources( xml::Element& dest,
                             const vlc_ml_media_t& media,
                             const ClientProfile& client_profile,
-                            const std::string& file_extension )
+                            const std::string& file_extension,
+                            bool force_transcode )
 {
     xml::Document& doc = dest.owner;
 
@@ -147,7 +150,7 @@ static void dump_resources( xml::Element& dest,
     const auto main_files = utils::get_media_files(media, VLC_ML_FILE_TYPE_MAIN);
 
     // Native resource (no transcode) first
-    if ( client_profile.native_resource_first )
+    if ( client_profile.native_resource_first && !force_transcode )
         dest.add_child(
             make_resource( doc, media, nullptr, v_tracks, main_files, file_extension ) );
 
@@ -160,7 +163,7 @@ static void dump_resources( xml::Element& dest,
     }
 
     // Native resource (no transcode) last
-    if ( !client_profile.native_resource_first )
+    if ( !client_profile.native_resource_first && !force_transcode )
         dest.add_child(
             make_resource( doc, media, nullptr, v_tracks, main_files, file_extension ) );
 
@@ -251,7 +254,7 @@ void Item::dump_mlobject_metadata( xml::Element& dest,
         break;
     }
 
-    dump_resources( dest, media, profile, file_extension );
+    dump_resources( dest, media, profile, file_extension, s_force_transcoding );
 }
 
 void Item::dump_metadata( xml::Element& dest,

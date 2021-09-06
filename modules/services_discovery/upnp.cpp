@@ -191,6 +191,7 @@ vlc_module_begin()
 
         add_string(SERVER_PREFIX "name", SERVER_DEFAULT_NAME, SERVER_NAME_DESC, SERVER_NAME_LONGTEXT)
         add_bool(SERVER_PREFIX "accept-risk", false, SERVER_ACCEPT_RISK_TEXT, SERVER_ACCEPT_RISK_LONGTEXT)
+        add_bool(SERVER_PREFIX "force-transcode", false, SERVER_FORCE_TRANSCODE_TEXT, SERVER_FORCE_TRANSCODE_LONGTEXT)
           change_volatile()
 
     add_submodule()

@@ -70,8 +70,7 @@ std::tuple<unsigned, Object::ExtraId> parse_id( const std::string& id )
     return { parsed_id.value(), opt::nullopt };
 }
 
-std::vector<std::unique_ptr<Object>>
-init_hierarchy( vlc_medialibrary_t& ml )
+std::vector<std::unique_ptr<Object>> init_hierarchy( vlc_medialibrary_t& ml, bool only_transcode )
 {
     std::vector<std::unique_ptr<Object>> hierarchy;
 
@@ -94,7 +93,11 @@ init_hierarchy( vlc_medialibrary_t& ml )
     };
 
     hierarchy.push_back( std::make_unique<FixedContainer>( 0, -1, "Home" ) );
+
     hierarchy.push_back( std::make_unique<Item>( 1, ml ) );
+
+    if ( only_transcode )
+        Item::force_transcoding();
 
     const auto& item = static_cast<const Item&>( *hierarchy[1] );
 

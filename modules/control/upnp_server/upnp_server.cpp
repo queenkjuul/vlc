@@ -569,8 +569,10 @@ int open( vlc_object_t* p_this )
     p_sys->upnp = vlc::wrap_cptr( UpnpInstanceWrapper::get( p_this ),
                                   []( UpnpInstanceWrapper* p_upnp ) { p_upnp->release(); } );
 
-    p_sys->obj_hierarchy = cds::init_hierarchy( *p_ml );
     p_sys->accept_risk = var_InheritBool( p_this, SERVER_PREFIX "accept-risk" );
+    const bool force_transcode = var_InheritBool( p_this, SERVER_PREFIX "only-transcode" );
+
+    p_sys->obj_hierarchy = cds::init_hierarchy( *p_ml, force_transcode );
 
     // In the case the accept risk option is passed, we know the user does not need privacy warnings
     // and basically should know what he's doing. Calling the module with this option initiate the
