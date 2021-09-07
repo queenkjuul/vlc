@@ -1,0 +1,16 @@
+﻿---
+AccessModifierOffset: '0'
+AllowAllConstructorInitializersOnNextLine: 'false'
+AlwaysBreakTemplateDeclarations: 'Yes'
+BinPackParameters: 'false'
+BreakBeforeBraces: Allman
+BreakConstructorInitializers: BeforeComma
+ColumnLimit: '100'
+ConstructorInitializerAllOnOneLineOrOnePerLine: 'true'
+ConstructorInitializerIndentWidth: '4'
+IndentWidth: '4'
+PointerAlignment: Left
+SpaceBeforeParens: ControlStatements
+SpacesInParentheses: 'true'
+
+...
