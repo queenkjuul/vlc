@@ -24,17 +24,39 @@ EXTRA_LTLIBRARIES += libmtp_plugin.la
 sd_LTLIBRARIES += $(LTLIBmtp)
 
 libupnp_plugin_la_SOURCES = services_discovery/upnp.cpp services_discovery/upnp.hpp \
-			    services_discovery/upnp-wrapper.hpp \
-			    services_discovery/upnp-wrapper.cpp \
-			    stream_out/renderer_common.hpp \
-			    stream_out/renderer_common.cpp \
-			    stream_out/dlna/profile_names.hpp \
-			    stream_out/dlna/dlna_common.hpp \
-			    stream_out/dlna/dlna.hpp \
-			    stream_out/dlna/dlna.cpp
+	services_discovery/upnp-wrapper.hpp \
+	services_discovery/upnp-wrapper.cpp \
+	stream_out/renderer_common.hpp \
+	stream_out/renderer_common.cpp \
+	stream_out/dlna/profile_names.hpp \
+	stream_out/dlna/dlna_common.hpp \
+	stream_out/dlna/dlna.hpp \
+	stream_out/dlna/dlna.cpp \
+	control/upnp_server/cds/Container.hpp \
+	control/upnp_server/cds/FixedContainer.cpp \
+	control/upnp_server/cds/FixedContainer.hpp \
+	control/upnp_server/cds/Item.cpp \
+	control/upnp_server/cds/Item.hpp \
+	control/upnp_server/cds/MLContainer.hpp \
+	control/upnp_server/cds/MLFolderContainer.hpp \
+	control/upnp_server/cds/Object.hpp \
+	control/upnp_server/cds/Object.hpp \
+	control/upnp_server/cds/cds.cpp \
+	control/upnp_server/cds/cds.hpp \
+	control/upnp_server/ml.hpp \
+	control/upnp_server/upnp_server.hpp \
+	control/upnp_server/utils.cpp \
+	control/upnp_server/utils.hpp \
+	control/upnp_server/FileHandler.cpp \
+	control/upnp_server/FileHandler.hpp \
+	control/upnp_server/upnp_server.cpp
 libupnp_plugin_la_CXXFLAGS = $(AM_CXXFLAGS) $(UPNP_CFLAGS)
 libupnp_plugin_la_LDFLAGS = $(AM_LDFLAGS) -rpath '$(sddir)'
 libupnp_plugin_la_LIBADD = $(UPNP_LIBS)
+libupnp_plugin_la_RES = ../share/upnp_server/ContentDirectory.xml \
+	../share/upnp_server/ConnectionManager.xml
+dist_libupnp_plugin_la_DATA = $(libupnp_plugin_la_RES)
+libupnp_plugin_ladir = $(prefix)/share/vlc/upnp_server
 EXTRA_LTLIBRARIES += libupnp_plugin.la
 sd_LTLIBRARIES += $(LTLIBupnp)
 if HAVE_OSX

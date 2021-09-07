@@ -60,6 +60,15 @@ std::vector<MediaFileRef> get_media_files(const vlc_ml_media_t &media, vlc_ml_fi
 std::string get_dlna_extra_protocol_info(const std::string &dlna_profile);
 std::string infer_dlna_profile_name(const std::string &extension);
 
+time_t parse_dlna_npt_range(const char *value);
+
+namespace http
+{
+UpnpExtraHeaders *get_hdr(UpnpListHead *list, const std::string name);
+void add_response_hdr(UpnpListHead *list, const std::pair<std::string, std::string> resp);
+const char *get_extra_header(UpnpListHead *list, const char *name);
+} // namespace http
+
 } // namespace utils
 
 #endif /* UTILS_HPP */
