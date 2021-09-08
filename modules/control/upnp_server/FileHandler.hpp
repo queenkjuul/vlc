@@ -46,7 +46,7 @@ struct FileHandler
 
 /// Parses the url and return the needed FileHandler implementation
 /// All the informations about what FileHandler implementation is to be chosen is locatied either in
-/// the url
-std::unique_ptr<FileHandler> parse_url( const char* url, const intf_sys_t& );
+/// the url or the client's profile
+std::unique_ptr<FileHandler> parse_url( const char* url, const ClientProfile&, const intf_sys_t& );
 
 #endif /* FILEHANDLER_HPP */
