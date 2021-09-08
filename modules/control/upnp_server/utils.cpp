@@ -44,6 +44,30 @@ std::string file_extension( const std::string& file )
     return file.substr( pos + 1 );
 }
 
+std::string thumbnail_url( const vlc_ml_media_t& media,
+                           vlc_ml_thumbnail_size_t size )
+{
+  std::stringstream ss;
+  const std::string s_size = size == VLC_ML_THUMBNAIL_SMALL ? "small" : "banner";
+  const auto & thumbnail = media.thumbnails[size];
+
+  const auto thumbnail_extension = file_extension( std::string( thumbnail.psz_mrl ) );
+  ss << get_server_url() << "thumbnail/" << s_size << "/media/" << media.i_id << '.'
+     << thumbnail_extension;
+
+  return ss.str();
+}
+
+std::string album_thumbnail_url( const vlc_ml_album_t& album )
+{
+    const auto& thumbnail = album.thumbnails[VLC_ML_THUMBNAIL_SMALL];
+    if ( thumbnail.i_status != VLC_ML_THUMBNAIL_STATUS_AVAILABLE )
+        return "";
+    const auto thumbnail_extension = file_extension( std::string( thumbnail.psz_mrl ) );
+    return get_server_url() + "thumbnail/small/album/" + std::to_string( album.i_id ) + "." +
+           thumbnail_extension;
+}
+
 std::vector<MediaTrackRef> get_media_tracks(const vlc_ml_media_t& media, vlc_ml_track_type_t type) noexcept
 {
   std::vector<MediaTrackRef> ret;
