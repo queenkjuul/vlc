@@ -422,6 +422,46 @@ parse_media_url( std::stringstream& ss, const intf_sys_t& intf_sys, const Client
     return ret;
 }
 
+static std::unique_ptr<FileHandler> parse_thumbnail_url( std::stringstream& ss,
+                                                         const intf_sys_t& intf_sys )
+{
+    std::string token;
+    std::getline( ss, token, '/' );
+    vlc_ml_thumbnail_size_t size;
+    if ( token == "small" )
+        size = VLC_ML_THUMBNAIL_SMALL;
+    else if ( token == "banner" )
+        size = VLC_ML_THUMBNAIL_BANNER;
+    else
+        return nullptr;
+
+    std::getline( ss, token, '/' );
+    std::string extension;
+    std::string mrl;
+    if ( token == "media" )
+    {
+        std::getline( ss, token );
+        const auto media = get_ml_object<ml::Media>( token, extension, *intf_sys.p_ml );
+        if ( media && media->thumbnails[size].i_status == VLC_ML_THUMBNAIL_STATUS_AVAILABLE )
+            mrl = media->thumbnails[size].psz_mrl;
+    }
+    else if ( token == "album" )
+    {
+        std::getline( ss, token );
+        const auto album = get_ml_object<ml::Album>( token, extension, *intf_sys.p_ml );
+        if ( album && album->thumbnails[size].i_status == VLC_ML_THUMBNAIL_STATUS_AVAILABLE )
+            mrl = album->thumbnails[size].psz_mrl;
+    }
+
+    if ( mrl.empty() )
+    {
+        return nullptr;
+    }
+
+    return std::make_unique<MLFileHandler>( MLFile{ mrl, -1, 0 },
+                                            utils::MimeType{ "image", extension } );
+}
+
 std::unique_ptr<FileHandler>
 parse_url( const char* url, const ClientProfile& client, const intf_sys_t& intf_sys )
 {
@@ -435,5 +475,7 @@ parse_url( const char* url, const ClientProfile& client, const intf_sys_t& intf_
     std::getline( ss, token, '/' );
     if ( token == "media" )
         return parse_media_url( ss, intf_sys, client );
+    else if ( token == "thumbnail" )
+        return parse_thumbnail_url( ss, intf_sys );
     return nullptr;
 }
