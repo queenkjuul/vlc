@@ -67,6 +67,7 @@ endif
 
 upnp_server_test_SOURCES = control/upnp_server/test/main.cpp \
 	control/upnp_server/test/cds.cpp \
+	control/upnp_server/test/utils.cpp \
 	$(libupnp_plugin_la_SOURCES)
 upnp_server_test_CXXFLAGS = $(UPNP_CFLAGS)
 upnp_server_test_LDFLAGS = $(AM_LDFLAGS) -rpath '$(sddir)'
