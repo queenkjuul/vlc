@@ -42,7 +42,8 @@ struct FixedContainer : public Container
 
     BrowseStats browse_direct_children( xml::Element&,
                                         BrowseParams,
-                                        const Object::ExtraId& ) const final;
+                                        const Object::ExtraId&,
+                                        const ClientProfile& ) const final;
 
     void add_children(std::initializer_list<ObjRef> l);
     private:

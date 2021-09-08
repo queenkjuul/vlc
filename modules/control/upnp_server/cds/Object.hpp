@@ -25,6 +25,8 @@
 #include "../Option.hpp"
 #include "../xml_wrapper.hpp"
 
+#include "../Profiles.hpp"
+
 namespace cds
 {
 /// Opaque CDS object type
@@ -62,11 +64,12 @@ struct Object
 
     /// Create an xml element describing the object.
     xml::Element browse_metadata( xml::Document& doc,
-                                  const ExtraId& extra_id ) const
+                                  const ExtraId& extra_id,
+                                  const ClientProfile& profile ) const
     {
         auto ret = create_object_element( doc, extra_id );
 
-        dump_metadata( ret, extra_id );
+        dump_metadata( ret, extra_id, profile );
 
         return ret;
     }
@@ -111,7 +114,8 @@ struct Object
     }
     /// Dump Object specialization specific informations in the fiven xml element
     virtual void dump_metadata( xml::Element& dest,
-                                const ExtraId& extra_id ) const = 0;
+                                const ExtraId& extra_id,
+                                const ClientProfile& profile ) const = 0;
 };
 } // namespace cds
 

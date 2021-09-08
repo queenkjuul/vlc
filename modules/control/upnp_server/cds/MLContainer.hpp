@@ -60,22 +60,22 @@ class MLContainer : public Container
     {
     }
 
-    void dump_metadata( xml::Element& dest, const Object::ExtraId& extra ) const final
+    void dump_metadata( xml::Element& dest, const Object::ExtraId& extra, const ClientProfile& profile ) const final
     {
         if ( extra.has_value() )
         {
             const auto& ml_object = MLHelper::get( ml, extra.value().ml_id );
-            dump_mlobject_metadata( dest, *ml_object.get() );
+            dump_mlobject_metadata( dest, *ml_object.get(), profile);
         }
         else
         {
-            Container::dump_metadata( dest, opt::nullopt );
+            Container::dump_metadata( dest, opt::nullopt, profile );
         }
     }
 
     BrowseStats browse_direct_children( xml::Element& dest,
                                         const BrowseParams params,
-                                        const Object::ExtraId& extra ) const final
+                                        const Object::ExtraId& extra, const ClientProfile& profile ) const final
     {
         const vlc_ml_query_params_t query_params = { nullptr, params.requested, params.offset,
                                                      VLC_ML_SORTING_DEFAULT, true };
@@ -91,19 +91,23 @@ class MLContainer : public Container
 
             auto elem = child.create_object_element(
                 doc, ExtraIdData{ item.i_id, get_dynamic_id( extra ) } );
-            dump_mlobject_metadata( elem, item );
+            dump_mlobject_metadata( elem, item, profile );
             dest.add_child( std::move( elem ) );
         }
         return { list->i_nb_items, MLHelper::count( ml, ml_id ) };
     }
 
     private:
-    void dump_mlobject_metadata( xml::Element& dest, const vlc_ml_media_t& media ) const
+    void dump_mlobject_metadata( xml::Element& dest,
+                                 const vlc_ml_media_t& media,
+                                 const ClientProfile& profile ) const
     {
-        Item::dump_mlobject_metadata( dest, media, ml );
+        Item::dump_mlobject_metadata( dest, media, ml, profile );
     }
 
-    void dump_mlobject_metadata( xml::Element& dest, const vlc_ml_playlist_t& playlist ) const
+    void dump_mlobject_metadata( xml::Element& dest,
+                                 const vlc_ml_playlist_t& playlist,
+                                 const ClientProfile& ) const
     {
         xml::Document& doc = dest.owner;
 
@@ -116,7 +120,9 @@ class MLContainer : public Container
             doc.create_element( "dc:title", doc.create_text_node( playlist.psz_name ) ) );
     }
 
-    void dump_mlobject_metadata( xml::Element& dest, const vlc_ml_album_t& album ) const
+    void dump_mlobject_metadata( xml::Element& dest,
+                                 const vlc_ml_album_t& album,
+                                 const ClientProfile& ) const
     {
         xml::Document& doc = dest.owner;
 
@@ -130,7 +136,9 @@ class MLContainer : public Container
             doc.create_element( "dc:description", doc.create_text_node( album.psz_summary ) ) );
     }
 
-    void dump_mlobject_metadata( xml::Element& dest, const vlc_ml_artist_t& artist ) const
+    void dump_mlobject_metadata( xml::Element& dest,
+                                 const vlc_ml_artist_t& artist,
+                                 const ClientProfile& ) const
     {
         xml::Document& doc = dest.owner;
 
@@ -142,7 +150,9 @@ class MLContainer : public Container
             doc.create_element( "dc:title", doc.create_text_node( artist.psz_name ) ) );
     }
 
-    void dump_mlobject_metadata( xml::Element& dest, const vlc_ml_genre_t& genre ) const
+    void dump_mlobject_metadata( xml::Element& dest,
+                                 const vlc_ml_genre_t& genre,
+                                 const ClientProfile& ) const
     {
         xml::Document& doc = dest.owner;
 
@@ -154,7 +164,9 @@ class MLContainer : public Container
             doc.create_element( "dc:title", doc.create_text_node( genre.psz_name ) ) );
     }
 
-    void dump_mlobject_metadata( xml::Element& dest, const vlc_ml_show_t& show ) const
+    void dump_mlobject_metadata( xml::Element& dest,
+                                 const vlc_ml_show_t& show,
+                                 const ClientProfile& ) const
     {
         xml::Document& doc = dest.owner;
 
@@ -167,7 +179,9 @@ class MLContainer : public Container
             doc.create_element( "upnp:episodeCount",
                                 doc.create_text_node( nb_episodes.c_str() ) ) );
     }
-    void dump_mlobject_metadata( xml::Element& dest, const vlc_ml_folder_t& folder ) const
+    void dump_mlobject_metadata( xml::Element& dest,
+                                 const vlc_ml_folder_t& folder,
+                                 const ClientProfile& ) const
     {
         xml::Document& doc = dest.owner;
 
