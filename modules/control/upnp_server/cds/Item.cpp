@@ -181,6 +181,20 @@ static void dump_resources( xml::Element& dest,
 
         dest.add_child( std::move( elem ) );
     }
+
+    // Subtitles, for now we only share the first available subtitle file.
+    const auto subtitles = utils::get_media_files(media, VLC_ML_FILE_TYPE_SUBTITLE);
+    if (!subtitles.empty())
+    {
+      const vlc_ml_file_t& sub = subtitles.front();
+      const auto file_extension = utils::file_extension( sub.psz_mrl );
+      const std::string url = utils::get_server_url() + "subtitle/" + std::to_string( media.i_id ) +
+                              "." + file_extension;
+
+      auto res = doc.create_element( "res", doc.create_text_node( url.c_str() ) );
+      res.set_attribute( "protocolInfo", ( "http-get:*:text/" + file_extension + ":*" ).c_str() );
+      dest.add_child( std::move( res ) );
+    }
 }
 
 void Item::dump_mlobject_metadata( xml::Element& dest,
@@ -216,6 +230,26 @@ void Item::dump_mlobject_metadata( xml::Element& dest,
     dest.add_children( doc.create_element( "upnp:class", doc.create_text_node( object_class ) ),
                        doc.create_element( "dc:title", doc.create_text_node( media.psz_title ) ),
                        doc.create_element( "dc:date", doc.create_text_node( date.c_str() ) ) );
+
+    switch ( media.i_subtype )
+    {
+    case VLC_ML_MEDIA_SUBTYPE_ALBUMTRACK:
+    {
+        const auto album = ml::Album::get( ml, media.album_track.i_album_id );
+        if ( album != nullptr )
+        {
+            const auto album_thumbnail_url = utils::album_thumbnail_url( *album );
+            dest.add_children(
+                doc.create_element( "upnp:album", doc.create_text_node( album->psz_title ) ),
+                doc.create_element( "upnp:artist", doc.create_text_node( album->psz_artist ) ),
+                doc.create_element( "upnp:albumArtURI",
+                                    doc.create_text_node( album_thumbnail_url.c_str() ) ) );
+        }
+        break;
+    }
+    default:
+        break;
+    }
 
     dump_resources( dest, media, profile, file_extension );
 }
