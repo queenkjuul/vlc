@@ -63,6 +63,15 @@ if HAVE_OSX
 libupnp_plugin_la_LDFLAGS += -Wl,-framework,CoreFoundation,-framework,SystemConfiguration
 endif
 
+upnp_server_test_SOURCES = control/upnp_server/test/main.cpp \
+	control/upnp_server/test/cds.cpp \
+	$(libupnp_plugin_la_SOURCES)
+upnp_server_test_CXXFLAGS = $(UPNP_CFLAGS)
+upnp_server_test_LDFLAGS = $(AM_LDFLAGS) -rpath '$(sddir)'
+upnp_server_test_LDADD = $(UPNP_LIBS)
+check_PROGRAMS += upnp_server_test
+TESTS += upnp_server_test
+
 libpulselist_plugin_la_SOURCES = services_discovery/pulse.c
 libpulselist_plugin_la_CFLAGS = $(AM_CFLAGS) $(PULSE_CFLAGS)
 libpulselist_plugin_la_LIBADD = libvlc_pulse.la $(PULSE_LIBS)
