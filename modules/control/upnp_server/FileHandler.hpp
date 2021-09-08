@@ -24,13 +24,15 @@
 
 #include "upnp_server.hpp"
 
+#include <vlc_interface.h>
+
 /// This interface reflects the common behaviour of upnp's file handlers.
 /// The FileHandler is used to serve the content of a named file to the http server.
 /// The file can be whatever: present on the fs, live streamed, etc.
 struct FileHandler
 {
     virtual bool get_info( UpnpFileInfo& info ) = 0;
-    virtual bool open(intf_thread_t *) = 0;
+    virtual bool open( intf_thread_t* ) = 0;
     virtual size_t read( uint8_t[], size_t ) noexcept = 0;
 
     enum class SeekType : int
@@ -46,7 +48,7 @@ struct FileHandler
 
 /// Parses the url and return the needed FileHandler implementation
 /// All the informations about what FileHandler implementation is to be chosen is locatied either in
-/// the url
-std::unique_ptr<FileHandler> parse_url( const char* url, const intf_sys_t& );
+/// the url or the client's profile
+std::unique_ptr<FileHandler> parse_url( const char* url, const ClientProfile&, const intf_sys_t& );
 
 #endif /* FILEHANDLER_HPP */

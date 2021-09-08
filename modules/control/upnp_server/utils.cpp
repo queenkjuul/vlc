@@ -142,11 +142,11 @@ std::string infer_dlna_profile_name( const std::string& extension )
     return profile;
 }
 
-std::string get_dlna_extra_protocol_info( const std::string& file_type )
+std::string get_dlna_extra_protocol_info( const std::string& file_type, const TranscodeProfile* profile )
 {
     std::ostringstream ret;
 
-    const auto dlna_profile = infer_dlna_profile_name(file_type);
+    const auto dlna_profile = profile ? profile->mux.dlna_profile_name : infer_dlna_profile_name(file_type);
 
     if ( !dlna_profile.empty() )
         ret << "DLNA.ORG_PN=" << dlna_profile << ";";
@@ -156,15 +156,79 @@ std::string get_dlna_extra_protocol_info( const std::string& file_type )
                              DLNA_ORG_FLAG_CONNECTION_STALL | DLNA_ORG_FLAG_DLNA_V15;
     dlna_org_operation_t op;
     dlna_org_conversion_t conv;
-
-    op = DLNA_ORG_OPERATION_RANGE;
-    conv = DLNA_ORG_CONVERSION_NONE;
+    if ( profile )
+    {
+        flags = flags | DLNA_ORG_FLAG_TIME_BASED_SEEK;
+        op = DLNA_ORG_OPERATION_TIMESEEK;
+        conv = DLNA_ORG_CONVERSION_TRANSCODED;
+    }
+    else
+    {
+        op = DLNA_ORG_OPERATION_RANGE;
+        conv = DLNA_ORG_CONVERSION_NONE;
+    }
 
     char dlna_info[448];
     sprintf( dlna_info, "%s=%.2x;%s=%d;%s=%.8x%.24x", "DLNA.ORG_OP", op, "DLNA.ORG_CI", conv,
              "DLNA.ORG_FLAGS", flags, 0 );
     ret << dlna_info;
     return ret.str();
+}
+
+// See RFC 2326 3.6 normal play time
+// We only support the first part of the range as the starting point of the player.
+time_t parse_dlna_npt_range( const char* value )
+{
+    using namespace std::chrono;
+    if ( strncmp( value, "npt", 3 ) != 0 )
+        return 0;
+
+    const auto next_token = [](const char *line, const char token) {
+      const char* ret = strchr(line, token);
+      if (!ret) throw std::invalid_argument("");
+      ret += 1;
+      if (!*ret || *ret == '-') throw std::invalid_argument("");
+      return ret;
+    };
+
+    const char *equal_idx;
+    try
+    {
+        equal_idx = next_token( value, '=' );
+    }
+    catch ( std::invalid_argument& )
+    {
+        return 0;
+    }
+
+    const char* token = equal_idx;
+    auto ret = 0ms;
+    try
+    {
+        ret += hours( std::stoll( token ) );
+        token = next_token( token, ':' );
+        ret += minutes( std::stoll( token ) );
+        token = next_token( token, ':' );
+    }
+    catch ( const std::invalid_argument& )
+    {
+        // If date pattern is not valid, fall back to seconds only parsing
+        ret = 0ms;
+        token = equal_idx;
+    }
+
+    try
+    {
+        size_t pos;
+        ret += milliseconds( static_cast<unsigned>( std::stod( token, &pos ) * 1000. ) );
+        if (token[pos] != '-')
+          return 0;
+        return ret.count();
+    }
+    catch ( const std::invalid_argument& )
+    {
+        return 0;
+    }
 }
 
 namespace http {

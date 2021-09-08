@@ -189,6 +189,15 @@ vlc_module_begin()
 
         add_string(SERVER_PREFIX "name", SERVER_DEFAULT_NAME, SERVER_NAME_DESC, SERVER_NAME_LONGTEXT)
 
+    add_submodule()
+        add_shortcut("upnp-out")
+        set_capability("sout access", 0);
+        set_callbacks(Server::AccessOut::open, Server::AccessOut::close);
+    add_submodule()
+        add_shortcut("upnp-sout-proxy")
+        set_capability("sout filter", 0)
+        set_callbacks(Server::StreamOutProxy::open, Server::StreamOutProxy::close)
+
 vlc_module_end()
 
 /*
