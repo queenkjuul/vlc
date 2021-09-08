@@ -40,6 +40,30 @@ Item::Item(const int64_t id, vlc_medialibrary_t &ml) noexcept :
     m_medialib(ml)
 {}
 
+static bool should_propose_transcode(const vlc_ml_media_t &media,
+                                     const TranscodeProfile &profile,
+                                     const std::vector<utils::MediaTrackRef> &v_tracks)
+{
+    if (media.i_type == VLC_ML_MEDIA_TYPE_VIDEO)
+    {
+        if (profile.media_type != VLC_ML_MEDIA_TYPE_VIDEO)
+            return false;
+        assert(!profile.vcodecs_fallbacks.empty());
+        for (const vlc_ml_media_track_t &vtrack : v_tracks)
+        {
+            switch (profile.conversion_quality)
+            {
+                case CONVERSION_QUALITY_HIGH:
+                case CONVERSION_QUALITY_MEDIUM:
+                    return vtrack.v.i_width >= 1920;
+                default:
+                    return vtrack.v.i_width >= 1280;
+            }
+        }
+    }
+    return profile.media_type == VLC_ML_MEDIA_TYPE_AUDIO;
+}
+
 template <typename Rep, typename Pediod = std::ratio<1>>
 static std::string duration_to_string(const char *fmt, std::chrono::duration<Rep, Pediod> duration)
 {
@@ -53,12 +77,13 @@ static std::string duration_to_string(const char *fmt, std::chrono::duration<Rep
 
 static xml::Element make_resource(xml::Document &doc,
                                   const vlc_ml_media_t &media,
+                                  const TranscodeProfile *profile,
                                   const std::vector<utils::MediaTrackRef> v_tracks,
                                   const std::vector<utils::MediaFileRef> main_files,
                                   const std::string &file_extension)
 {
-    const auto &profile_name = "native";
-    const char *mux = file_extension.c_str();
+    const auto &profile_name = profile ? profile->name : "native";
+    const char *mux = profile ? profile->mux.file_extension : file_extension.c_str();
 
     const std::string url_base = utils::get_server_url();
     const std::string url =
@@ -72,7 +97,20 @@ static xml::Element make_resource(xml::Document &doc,
     if (media.i_type == VLC_ML_MEDIA_TYPE_VIDEO)
     {
         std::stringstream resolution;
-        if (v_tracks.size() >= 1)
+        if (profile)
+        {
+            switch (profile->conversion_quality)
+            {
+                case CONVERSION_QUALITY_HIGH:
+                case CONVERSION_QUALITY_MEDIUM:
+                    resolution << "1920x1080";
+                    break;
+                default:
+                    resolution << "1280x720";
+                    break;
+            }
+        }
+        else if (v_tracks.size() >= 1)
         {
             const vlc_ml_media_track_t &vtrack = v_tracks[0];
 
@@ -83,11 +121,11 @@ static xml::Element make_resource(xml::Document &doc,
 
     const auto mime_type = utils::get_mimetype(media.i_type, mux);
     const auto protocol_info = std::string("http-get:*:") + mime_type.combine() + ":" +
-                               utils::get_dlna_extra_protocol_info(mime_type.file_type);
+                               utils::get_dlna_extra_protocol_info(mime_type.file_type, profile);
 
     elem.set_attribute("protocolInfo", protocol_info.c_str());
 
-    if (main_files.size() >= 1)
+    if (!profile && main_files.size() >= 1)
     {
         elem.set_attribute("size", std::to_string(main_files[0].get().i_size).c_str());
     }
@@ -95,20 +133,37 @@ static xml::Element make_resource(xml::Document &doc,
     return elem;
 };
 
-static void
-dump_resources(xml::Element &dest, const vlc_ml_media_t &media, const std::string &file_extension)
+static void dump_resources(xml::Element &dest,
+                           const vlc_ml_media_t &media,
+                           const ClientProfile &client_profile,
+                           const std::string &file_extension)
 {
     xml::Document &doc = dest.owner;
 
     const auto v_tracks = utils::get_media_tracks(media, VLC_ML_TRACK_TYPE_VIDEO);
     const auto main_files = utils::get_media_files(media, VLC_ML_FILE_TYPE_MAIN);
 
-    dest.add_child(make_resource(doc, media, v_tracks, main_files, file_extension));
+    // Native resource (no transcode) first
+    if (client_profile.native_resource_first)
+        dest.add_child(make_resource(doc, media, nullptr, v_tracks, main_files, file_extension));
+
+    // Transcoded resources
+    for (const auto &profile : client_profile.transcode_profiles)
+    {
+        if (should_propose_transcode(media, profile, v_tracks))
+            dest.add_child(
+                make_resource(doc, media, &profile, v_tracks, main_files, file_extension));
+    }
+
+    // Native resource (no transcode) last
+    if (!client_profile.native_resource_first)
+        dest.add_child(make_resource(doc, media, nullptr, v_tracks, main_files, file_extension));
 }
 
 void Item::dump_mlobject_metadata(xml::Element &dest,
                                   const vlc_ml_media_t &media,
-                                  vlc_medialibrary_t &ml)
+                                  vlc_medialibrary_t &ml,
+                                  const ClientProfile &profile)
 {
 
     if (media.p_files->i_nb_items == 0)
@@ -139,15 +194,17 @@ void Item::dump_mlobject_metadata(xml::Element &dest,
                       doc.create_element("dc:title", doc.create_text_node(media.psz_title)),
                       doc.create_element("dc:date", doc.create_text_node(date.c_str())));
 
-    dump_resources(dest, media, file_extension);
+    dump_resources(dest, media, profile, file_extension);
 }
 
-void Item::dump_metadata(xml::Element &dest, const Object::ExtraId &extra_id) const
+void Item::dump_metadata(xml::Element &dest,
+                         const Object::ExtraId &extra_id,
+                         const ClientProfile &profile) const
 {
     assert(extra_id.has_value());
     const auto media = ml::Media::get(m_medialib, extra_id->ml_id);
 
-    dump_mlobject_metadata(dest, *media.get(), m_medialib);
+    dump_mlobject_metadata(dest, *media.get(), m_medialib, profile);
 }
 
 } // namespace cds

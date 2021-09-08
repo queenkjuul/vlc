@@ -121,6 +121,22 @@ static bool cds_browse(UpnpActionRequest *p_request, intf_thread_t *p_intf)
         return false;
     }
 
+    // Extra header listing is only avaibale in 1.15, which is not yet released.
+    // The feature can be found in this commit upstream: 508930f56cca885d82b94e6e7abf588d0e46faa4
+    // TODO: Remove the `&& 0` when libupnp is bumped and the feature is available
+#define UPNP_EXTRA_HEADERS_AVAILABLE UPNP_VERSION >= 11500 && 0
+
+#if UPNP_EXTRA_HEADERS_AVAILABLE
+    auto *extra_hdrs = (UpnpListHead *)UpnpActionRequest_get_ExtraHeadersList(p_request);
+    const auto &client_profile =
+        p_sys->profile_from_headers(extra_hdrs, UpnpActionRequest_get_Os_cstr(p_request));
+#else
+#warning                                                                                           \
+    "Upnp version too low to be able to support custom dlna behavior depending on clients user agent"
+    const auto &client_profile = p_sys->default_profile();
+    msg_Warn(p_intf, "Cant't defer client with user agent, libupnp version is too low (<1.15)");
+#endif
+
     std::string str_nb_returned;
     std::string str_total_matches;
     const cds::Object &obj = *p_sys->obj_hierarchy[obj_idx];
@@ -128,13 +144,13 @@ static bool cds_browse(UpnpActionRequest *p_request, intf_thread_t *p_intf)
         obj.type == cds::Object::Type::Container)
     {
         const auto browse_stats = static_cast<const cds::Container &>(obj).browse_direct_children(
-            didl_lite, browse_params, extra_id);
+            didl_lite, browse_params, extra_id, client_profile);
         str_nb_returned = std::to_string(browse_stats.result_count);
         str_total_matches = std::to_string(browse_stats.total_matches);
     }
     else if (strcmp(browse_flag, "BrowseMetadata") == 0)
     {
-        didl_lite.add_child(obj.browse_metadata(result, extra_id));
+        didl_lite.add_child(obj.browse_metadata(result, extra_id, client_profile));
         str_nb_returned = "1";
         str_total_matches = "1";
     }
@@ -271,7 +287,9 @@ getinfo_cb(const char *url, UpnpFileInfo *info, intf_thread_t *intf, FileHandler
     UpnpFileInfo_set_IsReadable(info, true);
     UpnpFileInfo_set_IsDirectory(info, false);
 
-    auto file_handler = parse_url(url, *intf->p_sys);
+    auto *header_list = (UpnpListHead *)UpnpFileInfo_get_ExtraHeadersList(info);
+    const auto &client_profile = intf->p_sys->profile_from_headers(header_list, user_agent);
+    auto file_handler = parse_url(url, client_profile, *intf->p_sys);
 
     if (file_handler == nullptr)
         return UPNP_E_FILE_NOT_FOUND;
@@ -291,7 +309,7 @@ open_cb(const char *url, enum UpnpOpenFileMode, intf_thread_t *intf, FileHandler
 
     FileHandler *ret = file_handler;
     if (!ret)
-        ret = parse_url(url, *intf->p_sys).release();
+        ret = parse_url(url, intf->p_sys->default_profile(), *intf->p_sys).release();
 
     if (ret == nullptr)
         return nullptr;

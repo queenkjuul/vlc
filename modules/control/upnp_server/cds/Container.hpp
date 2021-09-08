@@ -64,7 +64,8 @@ class Container : public Object
         child_count(child_count)
     {}
 
-    virtual void dump_metadata(xml::Element &dest, const Object::ExtraId &) const override
+    virtual void
+    dump_metadata(xml::Element &dest, const Object::ExtraId &, const ClientProfile &) const override
     {
         dest.set_attribute("childCount", std::to_string(child_count).c_str());
 
@@ -73,8 +74,10 @@ class Container : public Object
     }
 
     /// Go through all the container children and dump them to the given xml element
-    virtual BrowseStats
-    browse_direct_children(xml::Element &, BrowseParams, const Object::ExtraId &) const = 0;
+    virtual BrowseStats browse_direct_children(xml::Element &,
+                                               BrowseParams,
+                                               const Object::ExtraId &,
+                                               const ClientProfile &) const = 0;
 };
 } // namespace cds
 

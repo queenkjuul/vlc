@@ -39,8 +39,10 @@ struct FixedContainer : public Container
                    std::initializer_list<ObjRef>) noexcept;
     FixedContainer(const int64_t id, const int64_t parent_id, const char *name) noexcept;
 
-    BrowseStats
-    browse_direct_children(xml::Element &, BrowseParams, const Object::ExtraId &) const final;
+    BrowseStats browse_direct_children(xml::Element &,
+                                       BrowseParams,
+                                       const Object::ExtraId &,
+                                       const ClientProfile &) const final;
 
     void add_children(std::initializer_list<ObjRef> l);
 

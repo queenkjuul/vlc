@@ -27,6 +27,7 @@
 #include "config.h"
 #endif
 
+#include <UpnpExtraHeaders.h>
 #include <atomic>
 #include <functional>
 #include <memory>
@@ -39,6 +40,7 @@
 #include <vlc_media_library.h>
 
 #include "../../services_discovery/upnp-wrapper.hpp"
+#include "Profiles.hpp"
 #include "cds/cds.hpp"
 
 #define SERVER_PREFIX "upnp-server-"
@@ -75,6 +77,12 @@ struct intf_sys_t
         upnp(nullptr, [](UpnpInstanceWrapper *p_upnp) { p_upnp->release(); })
     {}
 
+    // Client profiles describe the way medias should be exposed to certains clients.
+    // While most upnp/dlna clients are easy and flexible, some of them needs custom transcoding
+    // profiles due to their very strict implementation and/or poor codec coverage.
+    static const ClientProfile &profile_from_headers(UpnpListHead *, const char *user_agent);
+    static const ClientProfile &default_profile() noexcept;
+
     // In some case we might disable the upnp server before the module stops.
     // This boolean ensure we don't try to stop the server twice.
     std::atomic_bool upnp_running;
@@ -89,10 +97,43 @@ struct intf_sys_t
     }
 };
 
+/// Transcoded media data blocks are held into that FIFO waiting the http upnp callbacks
+/// to send them. The AccessOut fill the fifo while the http servers empty it.
+struct TranscodeFifo
+{
+    static const char VAR_NAME[];
+    bool eof = false;
+
+    std::unique_ptr<block_fifo_t, decltype(&block_FifoRelease)> queue = {block_FifoNew(),
+                                                                         &block_FifoRelease};
+
+    size_t read(uint8_t buf[], size_t buflen) noexcept;
+};
+
 namespace Server
 {
 int open(vlc_object_t *p_this);
 void close(vlc_object_t *p_this);
+
+/// We use this AccessOut to store the output of the upnp transcode pipeline into a block fifo.
+/// This module simply copy arriving blocks into a fifo and pace the muxer when the fifo is full.
+/// The fifo is emptied by the libupnp http callbacks thread.
+namespace AccessOut
+{
+int open(vlc_object_t *);
+void close(vlc_object_t *);
+} // namespace AccessOut
+
+/// This small sout is the entry point of the transcode chain when the client
+/// request the media with a specific starting time (other than 0).
+/// This simple stream makes sure that nothing is sent before the
+/// flush operation right after the player seek.
+/// This is a hacky way to ensure the client receive no discontinuity caused
+/// by seeking at the beginning of the stream.
+namespace StreamOutProxy
+{
+int open(vlc_object_t *p_this);
+} // namespace StreamOutProxy
 } // namespace Server
 
 #endif /* UPNP_SERVER_HPP */

@@ -22,7 +22,7 @@
 #ifndef OBJECT_HPP
 #define OBJECT_HPP
 
-#include "../Option.hpp"
+#include "../Profiles.hpp"
 #include "../xml_wrapper.hpp"
 
 #include <optional>
@@ -63,11 +63,12 @@ struct Object
     virtual ~Object() = default;
 
     /// Create an xml element describing the object.
-    xml::Element browse_metadata(xml::Document &doc, const ExtraId &extra_id) const
+    xml::Element
+    browse_metadata(xml::Document &doc, const ExtraId &extra_id, const ClientProfile &profile) const
     {
         auto ret = create_object_element(doc, extra_id);
 
-        dump_metadata(ret, extra_id);
+        dump_metadata(ret, extra_id, profile);
 
         return ret;
     }
@@ -112,7 +113,9 @@ struct Object
     }
 
     /// Dump Object specialization specific informations in the fiven xml element
-    virtual void dump_metadata(xml::Element &dest, const ExtraId &extra_id) const = 0;
+    virtual void dump_metadata(xml::Element &dest,
+                               const ExtraId &extra_id,
+                               const ClientProfile &profile) const = 0;
 };
 } // namespace cds
 

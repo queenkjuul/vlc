@@ -29,6 +29,8 @@
 
 #include <vlc_media_library.h>
 
+#include "Profiles.hpp"
+
 namespace utils
 {
 std::string file_extension(const std::string &file);
@@ -57,7 +59,7 @@ std::vector<MediaTrackRef> get_media_tracks(const vlc_ml_media_t &media,
 using MediaFileRef = ConstRef<vlc_ml_file_t>;
 std::vector<MediaFileRef> get_media_files(const vlc_ml_media_t &media, vlc_ml_file_type_t) noexcept;
 
-std::string get_dlna_extra_protocol_info(const std::string &dlna_profile);
+std::string get_dlna_extra_protocol_info(const std::string &dlna_profile, const TranscodeProfile *);
 std::string infer_dlna_profile_name(const std::string &extension);
 
 time_t parse_dlna_npt_range(const char *value);
