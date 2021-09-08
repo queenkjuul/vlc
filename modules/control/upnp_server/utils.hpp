@@ -45,6 +45,9 @@ struct MimeType
 
 MimeType get_mimetype(vlc_ml_media_type_t type, const std::string &file_extension) noexcept;
 
+std::string thumbnail_url(const vlc_ml_media_t &media, vlc_ml_thumbnail_size_t size);
+std::string album_thumbnail_url(const vlc_ml_album_t &);
+
 std::string get_server_url();
 std::string get_root_dir() noexcept;
 
