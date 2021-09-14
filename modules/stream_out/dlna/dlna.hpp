@@ -65,7 +65,7 @@ static inline std::string dlna_write_protocol_info(const protocol_info_t infos,
     if (infos.profile.name != "*")
         protocol << "DLNA.ORG_PN=" << infos.profile.name.c_str() << ";";
 
-    sprintf (dlna_info, "%s=%.2x;%s=%d;%s=%.8x%.24x",
+    snprintf (dlna_info, sizeof(dlna_info), "%s=%.2x;%s=%d;%s=%.8x%.24x",
                "DLNA.ORG_OP", op,
                "DLNA.ORG_CI", infos.ci,
                "DLNA.ORG_FLAGS", flags, 0);
