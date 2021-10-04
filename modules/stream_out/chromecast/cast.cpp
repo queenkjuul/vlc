@@ -314,7 +314,7 @@ static void ProxyFlush(sout_stream_t *p_stream, void *id)
 }
 
 static const struct sout_stream_operations proxy_ops = {
-    ProxyAdd, ProxyDel, ProxySend, NULL, ProxyFlush,
+    ProxyAdd, ProxyDel, ProxySend, NULL, ProxyFlush, NULL,
 };
 
 static int ProxyOpen(vlc_object_t *p_this)
