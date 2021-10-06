@@ -363,7 +363,7 @@ static int Demux( demux_t* p_demux )
         const vlc_tick_t i_playbackendtime =
                 tt_time_Convert( &p_sys->times.p_array[p_sys->times.i_current + 1] ) - 1;
 
-        if ( !p_sys->b_slave && p_sys->b_first_time )
+        if ( p_sys->b_first_time )
         {
             es_out_SetPCR( p_demux->out, VLC_TICK_0 + i_playbacktime );
             p_sys->b_first_time = false;
@@ -393,9 +393,10 @@ static int Demux( demux_t* p_demux )
         p_sys->times.i_current++;
     }
 
+    es_out_SetPCR( p_demux->out, VLC_TICK_0 + p_sys->i_next_demux_time );
+
     if ( !p_sys->b_slave )
     {
-        es_out_SetPCR( p_demux->out, VLC_TICK_0 + p_sys->i_next_demux_time );
         p_sys->i_next_demux_time += VLC_TICK_FROM_MS(125);
     }
 
