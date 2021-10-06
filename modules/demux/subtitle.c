@@ -857,7 +857,7 @@ static int Demux( demux_t *p_demux )
     {
         const subtitle_t *p_subtitle = &p_sys->subtitles.p_array[p_sys->subtitles.i_current];
 
-        if ( !p_sys->b_slave && p_sys->b_first_time )
+        if ( p_sys->b_first_time )
         {
             es_out_SetPCR( p_demux->out, VLC_TICK_0 + i_barrier );
             p_sys->b_first_time = false;
@@ -880,9 +880,10 @@ static int Demux( demux_t *p_demux )
         p_sys->subtitles.i_current++;
     }
 
+    es_out_SetPCR( p_demux->out, VLC_TICK_0 + i_barrier );
+
     if ( !p_sys->b_slave )
     {
-        es_out_SetPCR( p_demux->out, VLC_TICK_0 + i_barrier );
         p_sys->i_next_demux_date += VLC_TICK_FROM_MS(125);
     }
 
