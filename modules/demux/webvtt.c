@@ -573,7 +573,7 @@ static int Demux( demux_t *p_demux )
                 p_sys->i_next_block_flags = 0;
             }
 
-            if ( !p_sys->b_slave && p_sys->b_first_time )
+            if ( p_sys->b_first_time )
             {
                 es_out_SetPCR( p_demux->out, p_block->i_dts );
                 p_sys->b_first_time = false;
@@ -590,9 +590,10 @@ static int Demux( demux_t *p_demux )
         }
     }
 
+    es_out_SetPCR( p_demux->out, VLC_TICK_0 + i_barrier );
+
     if ( !p_sys->b_slave )
     {
-        es_out_SetPCR( p_demux->out, VLC_TICK_0 + i_barrier );
         p_sys->i_next_demux_time += VLC_TICK_FROM_SEC(1);
     }
 
