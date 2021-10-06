@@ -3355,6 +3355,12 @@ static int EsOutVaControlLocked( es_out_t *out, input_source_t *source,
             return VLC_EGENERIC;
         }
 
+        if ( source != p_sys->main_source )
+        {
+            /* Exclude PCR update from slaves */
+            return VLC_SUCCESS;
+        }
+
         p_pgrm->i_last_pcr = i_pcr;
 
         struct vlc_tracer *tracer = vlc_object_get_tracer( &p_sys->p_input->obj );
