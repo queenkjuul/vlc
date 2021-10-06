@@ -343,8 +343,7 @@ static void Ogg_OutputQueues( demux_t *p_demux, bool b_drain )
         if( i_pcr != VLC_TICK_INVALID && i_pcr != p_sys->i_pcr )
         {
             p_sys->i_pcr = i_pcr;
-            if( likely( !p_sys->b_slave ) )
-                es_out_SetPCR( p_demux->out, p_sys->i_pcr );
+            es_out_SetPCR( p_demux->out, p_sys->i_pcr );
         }
     }
 
@@ -367,8 +366,7 @@ static void Ogg_OutputQueues( demux_t *p_demux, bool b_drain )
             if( i_pcr != VLC_TICK_INVALID && i_pcr != p_sys->i_pcr )
             {
                 p_sys->i_pcr = i_pcr;
-                if( likely( !p_sys->b_slave ) )
-                    es_out_SetPCR( p_demux->out, p_sys->i_pcr );
+                es_out_SetPCR( p_demux->out, p_sys->i_pcr );
             }
         } while ( b_continue );
     }
@@ -420,8 +418,7 @@ static int Demux( demux_t * p_demux )
             if( i_lastdts != VLC_TICK_INVALID )
             {
                 p_sys->i_nzpcr_offset = i_lastdts - VLC_TICK_0;
-                if( likely( !p_sys->b_slave ) )
-                    es_out_SetPCR( p_demux->out, i_lastdts );
+                es_out_SetPCR( p_demux->out, i_lastdts );
             }
             p_sys->i_pcr = VLC_TICK_INVALID;
         }
