@@ -190,7 +190,7 @@ static int Demux(demux_t *demux)
     {
         stl_entry_t *s = &sys->index[sys->current];
 
-        if (!sys->b_slave && sys->b_first_time)
+        if (sys->b_first_time)
         {
             es_out_SetPCR(demux->out, VLC_TICK_0 + i_barrier);
             sys->b_first_time = false;
@@ -220,9 +220,10 @@ static int Demux(demux_t *demux)
         sys->current++;
     }
 
+    es_out_SetPCR(demux->out, VLC_TICK_0 + i_barrier);
+
     if (!sys->b_slave)
     {
-        es_out_SetPCR(demux->out, VLC_TICK_0 + i_barrier);
         sys->next_date += VLC_TICK_FROM_MS(125);
     }
 
