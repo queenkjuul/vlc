@@ -37,6 +37,7 @@ sout_packetizer_input_t *sout_InputNew( sout_stream_t *, const es_format_t * );
 int sout_InputDelete( sout_stream_t *, sout_packetizer_input_t * );
 int sout_InputSendBuffer( sout_stream_t *, sout_packetizer_input_t *,
                           block_t * );
+void sout_InputSetPCR( sout_stream_t *, vlc_tick_t );
 
 enum sout_input_query_e
 {
