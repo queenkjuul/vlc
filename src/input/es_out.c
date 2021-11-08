@@ -3355,6 +3355,15 @@ static int EsOutVaControlLocked( es_out_t *out, input_source_t *source,
             return VLC_EGENERIC;
         }
 
+        es_out_id_t *es;
+        foreach_es_then_es_slaves( es )
+        {
+            if ( es->id.source == source && es->p_dec != NULL )
+            {
+                vlc_input_decoder_SignalPCR( es->p_dec, i_pcr );
+            }
+        }
+
         if ( source != p_sys->main_source )
         {
             /* Exclude PCR update from slaves */
