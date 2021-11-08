@@ -204,6 +204,11 @@ int sout_InputSendBuffer( sout_stream_t *p_sout,
     return sout_StreamIdSend( p_sout, p_input->id, p_buffer );
 }
 
+void sout_InputSetPCR( sout_stream_t *sout, sout_packetizer_input_t *input, vlc_tick_t pcr )
+{
+    sout_StreamSetPCR( sout, input->id, pcr );
+}
+
 #undef sout_AccessOutNew
 /*****************************************************************************
  * sout_AccessOutNew: allocate a new access out
