@@ -25,6 +25,7 @@
 /*****************************************************************************
  * Preamble
  *****************************************************************************/
+#include "vlc_queue.h"
 #ifdef HAVE_CONFIG_H
 # include "config.h"
 #endif
@@ -177,7 +178,16 @@ struct vlc_input_decoder_t
     vlc_mutex_t     mouse_lock;
     vlc_mouse_event mouse_event;
     void           *mouse_opaque;
+
+    vlc_queue_t pcr_events;
+    vlc_tick_t latest_dts;
 };
+
+typedef struct pcr_event
+{
+    struct pcr_event *next;
+    vlc_tick_t pcr;
+} pcr_event_t;
 
 /* Pictures which are DECODER_BOGUS_VIDEO_DELAY or more in advance probably have
  * a bogus PTS and won't be displayed */
@@ -840,6 +850,26 @@ static inline void DecoderUpdatePreroll( vlc_tick_t *pi_preroll, const block_t *
 }
 
 #ifdef ENABLE_SOUT
+static void DecoderThread_ProcessPCRRequests( vlc_input_decoder_t *p_owner, vlc_tick_t block_dts )
+{
+    vlc_queue_Lock( &p_owner->pcr_events );
+
+    pcr_event_t *it = vlc_queue_DequeueAllUnlocked( &p_owner->pcr_events );
+
+    /* Send all late pcr's */
+    while ( it != NULL && it->pcr <= block_dts )
+    {
+        sout_InputSetPCR( p_owner->p_sout, p_owner->p_sout_input, it->pcr );
+        pcr_event_t *to_release = it;
+        it = it->next;
+        free( to_release );
+    }
+
+    vlc_queue_EnqueueUnlocked( &p_owner->pcr_events, it );
+
+    vlc_queue_Unlock( &p_owner->pcr_events );
+}
+
 static int DecoderThread_PlaySout( vlc_input_decoder_t *p_owner, block_t *p_sout_block )
 {
     assert( !p_sout_block->p_next );
@@ -849,6 +879,8 @@ static int DecoderThread_PlaySout( vlc_input_decoder_t *p_owner, block_t *p_sout
     DecoderWaitUnblock( p_owner );
 
     vlc_mutex_unlock( &p_owner->lock );
+
+    DecoderThread_ProcessPCRRequests( p_owner, p_sout_block->i_dts );
 
     /* FIXME --VLC_TICK_INVALID inspect stream_output*/
     return sout_InputSendBuffer( p_owner->p_sout, p_owner->p_sout_input,
@@ -1708,8 +1740,19 @@ static void *DecoderThread( void *p_data )
         vlc_cond_signal( &p_owner->wait_fifo );
 
         block_t *p_block = vlc_fifo_DequeueUnlocked( p_owner->p_fifo );
+
         if( p_block == NULL )
         {
+            /* Signal PCR to the sout whenever no block has been queued. */
+            vlc_queue_Lock( &p_owner->pcr_events );
+            if ( p_owner->p_sout_input && !vlc_queue_IsEmpty( &p_owner->pcr_events ) )
+            {
+                pcr_event_t *pcr_event = vlc_queue_DequeueUnlocked( &p_owner->pcr_events );
+                sout_InputSetPCR( p_owner->p_sout, p_owner->p_sout_input, pcr_event->pcr );
+                free( pcr_event );
+            }
+            vlc_queue_Unlock( &p_owner->pcr_events );
+
             if( likely(!p_owner->b_draining) )
             {   /* Wait for a block to decode (or a request to drain) */
                 p_owner->b_idle = true;
@@ -1723,6 +1766,7 @@ static void *DecoderThread( void *p_data )
         }
 
         vlc_fifo_Unlock( p_owner->p_fifo );
+
 
         DecoderThread_ProcessInput( p_owner, p_block );
 
@@ -1869,6 +1913,7 @@ CreateDecoder( vlc_object_t *p_parent, const es_format_t *fmt,
     vlc_cond_init( &p_owner->wait_acknowledge );
     vlc_cond_init( &p_owner->wait_fifo );
 
+    vlc_queue_Init( &p_owner->pcr_events, offsetof( pcr_event_t, next ) );
     /* Load a packetizer module if the input is not already packetized */
     if( p_sout == NULL && !fmt->b_packetized )
     {
@@ -1979,6 +2024,8 @@ static void DeleteDecoder( vlc_input_decoder_t *p_owner )
             sout_InputDelete( p_owner->p_sout, p_owner->cc.p_sout_input );
     }
 #endif
+
+    assert( vlc_queue_IsEmpty( &p_owner->pcr_events ) );
 
     switch( i_cat )
     {
@@ -2229,6 +2276,8 @@ void vlc_input_decoder_Delete( vlc_input_decoder_t *p_owner )
 void vlc_input_decoder_Decode( vlc_input_decoder_t *p_owner, block_t *p_block,
                                bool b_do_pace )
 {
+    p_owner->latest_dts = p_block->i_dts;
+
     vlc_fifo_Lock( p_owner->p_fifo );
     if( !b_do_pace )
     {
@@ -2523,6 +2572,31 @@ void vlc_input_decoder_Wait( vlc_input_decoder_t *p_owner )
         vlc_cond_wait( &p_owner->wait_acknowledge, &p_owner->lock );
     }
     vlc_mutex_unlock( &p_owner->lock );
+}
+
+int vlc_input_decoder_SignalPCR( vlc_input_decoder_t *dec, vlc_tick_t pcr )
+{
+#ifdef ENABLE_SOUT
+    pcr_event_t *req = malloc( sizeof( *req ) );
+    if ( unlikely( req == NULL ) )
+        return VLC_ENOMEM;
+
+    req->next = NULL;
+    req->pcr = pcr;
+
+    /* Signal the decoder thread fifo only if the latest received block dts is lower than the
+     * requested PCR. This handle corner cases where no block is sent for a long time while pcr
+     * requests are still forwarded. */
+    vlc_queue_Lock( &dec->pcr_events );
+    pcr_event_t *rq = vlc_queue_DequeueAllUnlocked( &dec->pcr_events );
+    if ( rq && rq->pcr > dec->latest_dts )
+        vlc_fifo_Signal( dec->p_fifo );
+    vlc_queue_EnqueueUnlocked( &dec->pcr_events, rq );
+    vlc_queue_Unlock( &dec->pcr_events );
+
+    vlc_queue_Enqueue( &dec->pcr_events, req );
+#endif
+    return VLC_SUCCESS;
 }
 
 void vlc_input_decoder_FrameNext( vlc_input_decoder_t *p_owner,

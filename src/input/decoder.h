@@ -27,6 +27,7 @@
 #include <vlc_common.h>
 #include <vlc_codec.h>
 #include <vlc_mouse.h>
+#include <vlc_tick.h>
 
 struct vlc_input_decoder_callbacks {
     /* notifications */
@@ -112,6 +113,8 @@ int vlc_input_decoder_GetCcState( vlc_input_decoder_t *, vlc_fourcc_t, int i_cha
  * This function get cc channels descriptions
  */
 void vlc_input_decoder_GetCcDesc( vlc_input_decoder_t *, decoder_cc_desc_t * );
+
+int vlc_input_decoder_SignalPCR( vlc_input_decoder_t *dec, vlc_tick_t pcr );
 
 /**
  * This function force the display of the next picture and fills the stream
