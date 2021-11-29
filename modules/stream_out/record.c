@@ -74,7 +74,7 @@ static const char *const ppsz_sout_options[] = {
 };
 
 /* */
-static void *Add( sout_stream_t *, const es_format_t * );
+static void *Add( sout_stream_t *, const es_format_t *, const char *str_id );
 static void  Del( sout_stream_t *, void * );
 static int   Send( sout_stream_t *, void *, block_t * );
 
@@ -180,7 +180,7 @@ static void Close( vlc_object_t * p_this )
 /*****************************************************************************
  *
  *****************************************************************************/
-static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt )
+static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt, const char *str_id )
 {
     sout_stream_sys_t *p_sys = p_stream->p_sys;
     sout_stream_id_sys_t *id;
@@ -199,6 +199,7 @@ static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt )
     TAB_APPEND( p_sys->i_id, p_sys->id, id );
 
     return id;
+    (void)str_id;
 }
 
 static void Del( sout_stream_t *p_stream, void *_id )
@@ -359,7 +360,7 @@ static int OutputNew( sout_stream_t *p_stream,
     {
         sout_stream_id_sys_t *id = p_sys->id[i];
 
-        id->id = sout_StreamIdAdd( p_sys->p_out, &id->fmt );
+        id->id = sout_StreamIdAdd( p_sys->p_out, &id->fmt, NULL );
         if( id->id )
             i_count++;
     }

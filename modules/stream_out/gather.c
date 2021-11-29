@@ -50,7 +50,7 @@ vlc_module_end ()
 /*****************************************************************************
  * Exported prototypes
  *****************************************************************************/
-static void *Add( sout_stream_t *, const es_format_t * );
+static void *Add( sout_stream_t *, const es_format_t *, const char * );
 static void  Del( sout_stream_t *, void * );
 static int   Send( sout_stream_t *, void *, block_t * );
 
@@ -112,7 +112,8 @@ static void Close( vlc_object_t * p_this )
 /*****************************************************************************
  * Add:
  *****************************************************************************/
-static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt )
+static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt,
+                  const char *str_id )
 {
     sout_stream_sys_t *p_sys = p_stream->p_sys;
     sout_stream_id_sys_t *id;
@@ -165,7 +166,7 @@ static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt )
     es_format_Copy( &id->fmt, p_fmt );
     id->b_streamswap     = false;
     id->b_used           = true;
-    id->id               = sout_StreamIdAdd( p_stream->p_next, &id->fmt );
+    id->id               = sout_StreamIdAdd( p_stream->p_next, &id->fmt, str_id );
     if( id->id == NULL )
     {
         free( id );

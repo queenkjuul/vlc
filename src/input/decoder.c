@@ -882,7 +882,7 @@ static void DecoderThread_ProcessSout( vlc_input_decoder_t *p_owner, block_t *p_
             vlc_mutex_unlock( &p_owner->lock );
 
             p_owner->p_sout_input =
-                sout_InputNew( p_owner->p_sout, &p_owner->fmt );
+                sout_InputNew( p_owner->p_sout, &p_owner->fmt, p_owner->psz_id );
 
             if( p_owner->p_sout_input == NULL )
             {
@@ -924,7 +924,7 @@ static void DecoderThread_ProcessSout( vlc_input_decoder_t *p_owner, block_t *p_
                             es_format_Init(&ccfmt, SPU_ES, VLC_CODEC_CEA608);
                             ccfmt.i_group = p_owner->fmt.i_group;
                             ccfmt.subs.cc.i_reorder_depth = desc.i_reorder_depth;
-                            p_owner->cc.p_sout_input = sout_InputNew( p_owner->p_sout, &ccfmt );
+                            p_owner->cc.p_sout_input = sout_InputNew( p_owner->p_sout, &ccfmt, NULL );
                             es_format_Clean(&ccfmt);
                             p_owner->cc.b_sout_created = true;
                         }
@@ -2100,7 +2100,7 @@ decoder_New( vlc_object_t *p_parent, const es_format_t *fmt, const char *psz_id,
     if( p_sout && fmt->b_packetized &&
         (fmt->i_cat != VIDEO_ES && fmt->i_cat != AUDIO_ES) )
     {
-        p_owner->p_sout_input = sout_InputNew( p_owner->p_sout, fmt );
+        p_owner->p_sout_input = sout_InputNew( p_owner->p_sout, fmt, p_owner->psz_id );
         if( p_owner->p_sout_input == NULL )
         {
             msg_Err( p_dec, "cannot create sout input (%4.4s)",

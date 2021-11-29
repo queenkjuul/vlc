@@ -174,7 +174,7 @@ typedef struct out_sout_stream_sys_t
     char *psz_name;
 } out_sout_stream_sys_t;
 
-static void *AddOut( sout_stream_t *p_stream, const es_format_t *p_fmt )
+static void *AddOut( sout_stream_t *p_stream, const es_format_t *p_fmt, const char *str_id )
 {
     vlc_object_t *vlc = VLC_OBJECT(vlc_object_instance(p_stream));
     out_sout_stream_sys_t *p_sys = (out_sout_stream_sys_t *)p_stream->p_sys;
@@ -235,6 +235,7 @@ static void *AddOut( sout_stream_t *p_stream, const es_format_t *p_fmt )
     vlc_mutex_unlock( &lock );
 
     return p_sys;
+    (void)str_id;
 }
 
 static void DelOut( sout_stream_t *p_stream, void *id )
@@ -382,14 +383,14 @@ struct sout_stream_id_sys_t
     enum es_format_category_e i_cat; /* es category. Used for placeholder option */
 };
 
-static void* AddIn( sout_stream_t *p_stream, const es_format_t *p_fmt )
+static void* AddIn( sout_stream_t *p_stream, const es_format_t *p_fmt, const char* str_id )
 {
     in_sout_stream_sys_t *p_sys = (in_sout_stream_sys_t *)p_stream->p_sys;
 
     sout_stream_id_sys_t *id = malloc( sizeof( sout_stream_id_sys_t ) );
     if( !id ) return NULL;
 
-    id->id = sout_StreamIdAdd( p_stream->p_next, p_fmt );
+    id->id = sout_StreamIdAdd( p_stream->p_next, p_fmt, str_id );
     if( !id->id )
     {
         free( id );
@@ -494,8 +495,8 @@ static int SendIn( sout_stream_t *p_stream, void *_id, block_t *p_buffer )
                 p_bridge->pp_es[i]->fmt.i_id += p_sys->i_id_offset;
                 if( !p_sys->b_placeholder )
                 {
-                    p_bridge->pp_es[i]->id = sout_StreamIdAdd(
-                                p_stream->p_next, &p_bridge->pp_es[i]->fmt );
+                    p_bridge->pp_es[i]->id =
+                        sout_StreamIdAdd( p_stream->p_next, &p_bridge->pp_es[i]->fmt, NULL );
                     if ( p_bridge->pp_es[i]->id == NULL )
                     {
                         msg_Warn( p_stream, "couldn't create chain for id %d",
