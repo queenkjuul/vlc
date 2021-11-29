@@ -46,6 +46,8 @@
 #include <vlc_block.h>
 #include <vlc_codec.h>
 #include <vlc_modules.h>
+#include <vlc_list.h>
+#include <vlc_tracer.h>
 
 #include "input/input_interface.h"
 
@@ -673,10 +675,19 @@ static void mrl_Clean( mrl_t *p_mrl )
  ****************************************************************************
  ****************************************************************************/
 
+
 struct sout_stream_private {
     sout_stream_t stream;
     vlc_mutex_t lock;
     module_t *module;
+
+    struct vlc_list str_ids;
+};
+
+struct sout_stream_str_id_pair {
+    const char *str_id;
+    void *id; /* ES ID bound to the string ID. */
+    struct vlc_list node;
 };
 
 #define sout_stream_priv(s) \
@@ -692,6 +703,24 @@ static void sout_StreamUnlock(sout_stream_t *s)
     vlc_mutex_unlock(&sout_stream_priv(s)->lock);
 }
 
+/*
+ * Get the ES string ID bound to the opaque sout id.
+ *
+ * @return The matched pair or NULL if not found.
+ */
+static struct sout_stream_str_id_pair *sout_StreamIdGetStrIdPair(sout_stream_t* s, const void* id)
+{
+    struct sout_stream_str_id_pair *node;
+    vlc_list_foreach(node, &sout_stream_priv(s)->str_ids, node)
+    {
+        if (node->id == id)
+        {
+            return node;
+        }
+    }
+    return NULL;
+}
+
 void *sout_StreamIdAdd(sout_stream_t *s, const es_format_t *fmt, const char *str_id)
 {
     void *id;
@@ -700,6 +729,19 @@ void *sout_StreamIdAdd(sout_stream_t *s, const es_format_t *fmt, const char *str
 
     id = s->ops->add(s, fmt, str_id);
 
+    if (id == NULL)
+        goto unlock;
+
+    struct sout_stream_str_id_pair *pair = malloc(sizeof(*pair));
+    if (unlikely(pair == NULL))
+        goto unlock;
+
+    pair->str_id = str_id;
+    pair->id = id;
+
+    vlc_list_append(&pair->node, &sout_stream_priv(s)->str_ids);
+
+unlock:
     sout_StreamUnlock(s);
     return id;
 }
@@ -707,8 +749,34 @@ void *sout_StreamIdAdd(sout_stream_t *s, const es_format_t *fmt, const char *str
 void sout_StreamIdDel(sout_stream_t *s, void *id)
 {
     sout_StreamLock(s);
+
+    struct sout_stream_str_id_pair *pair = sout_StreamIdGetStrIdPair(s, id);
+    if (pair != NULL)
+    {
+        vlc_list_remove(&pair->node);
+        free(pair);
+    }
+
     s->ops->del(s, id);
+
     sout_StreamUnlock(s);
+}
+
+static void sout_StreamIdTraceBlocks(sout_stream_t *s, const void *id, const block_t *b)
+{
+    struct vlc_tracer *tracer = vlc_object_get_tracer(VLC_OBJECT(s));
+    if (tracer == NULL)
+        return;
+
+    const struct sout_stream_str_id_pair *pair = sout_StreamIdGetStrIdPair(s, id);
+    if (pair == NULL || pair->str_id == NULL)
+        return;
+
+    for (const block_t *it = b; it != NULL; it = it->p_next)
+    {
+        vlc_tracer_TraceStreamDTS(tracer, s->psz_name, pair->str_id, "IN", b->i_pts, b->i_dts);
+    }
+
 }
 
 int sout_StreamIdSend(sout_stream_t *s, void *id, block_t *b)
@@ -716,7 +784,11 @@ int sout_StreamIdSend(sout_stream_t *s, void *id, block_t *b)
     int val;
 
     sout_StreamLock(s);
+
+    sout_StreamIdTraceBlocks(s, id, b);
+
     val = s->ops->send(s, id, b);
+
     sout_StreamUnlock(s);
     return val;
 }
@@ -818,6 +890,8 @@ static sout_stream_t *sout_StreamNew( vlc_object_t *parent, char *psz_name,
         sout_StreamDelete( p_stream );
         return NULL;
     }
+
+    vlc_list_init(&priv->str_ids);
 
     return p_stream;
 }
