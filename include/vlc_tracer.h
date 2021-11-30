@@ -131,11 +131,6 @@ static inline struct vlc_tracer_entry VLC_TRACE(const char *key, vlc_tick_t valu
     return vlc_tracer_entry_FromTick(key, value);
 }
 
-static inline struct vlc_tracer_entry VLC_TRACE(const char *key, char *value)
-{
-    return vlc_tracer_entry_FromString(key, value);
-}
-
 static inline struct vlc_tracer_entry VLC_TRACE(const char *key, const char *value)
 {
     return vlc_tracer_entry_FromString(key, value);
