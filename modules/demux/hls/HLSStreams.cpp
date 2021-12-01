@@ -77,6 +77,7 @@ int HLSStream::ParseID3PrivTag(const uint8_t *p_payload, size_t i_payload)
     if(i_payload == 53 &&
        !memcmp( p_payload, "com.apple.streaming.transportStreamTimestamp", 45))
     {
+        printf( "parsed: %ld\n", FROM_SCALE_NZ( GetQWBE( &p_payload[45] ) ) );
         setMetadataTimeOffset(FROM_SCALE_NZ(GetQWBE(&p_payload[45])));
     }
     return VLC_SUCCESS;

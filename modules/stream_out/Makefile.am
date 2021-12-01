@@ -30,6 +30,21 @@ libstream_out_transcode_plugin_la_SOURCES = \
 	stream_out/transcode/audio.c stream_out/transcode/video.c
 libstream_out_transcode_plugin_la_CFLAGS = $(AM_CFLAGS)
 libstream_out_transcode_plugin_la_LIBADD = $(LIBM)
+libstream_out_hls_plugin_la_SOURCES = stream_out/hls/hls.c \
+																			stream_out/hls/sout.c \
+																			stream_out/hls/aco.c \
+																			stream_out/hls/io.c \
+																			stream_out/hls/http.c \
+																			stream_out/hls/mux.c \
+																			stream_out/hls/id3.c \
+																			stream_out/hls/common.h
+libstream_out_hls_plugin_la_CFLAGS = $(AM_CFLAGS) $(GCRYPT_CFLAGS)
+libstream_out_hls_plugin_la_LIBADD = $(GCRYPT_LIBS) -lgpg-error $(LIBM)
+
+hls_test_id3_SOURCES = stream_out/hls/tests/id3.cpp stream_out/hls/id3.c stream_out/hls/tests/cxx_test_helper.hpp
+hls_test_io_SOURCES = stream_out/hls/tests/io.cpp stream_out/hls/io.c stream_out/hls/tests/cxx_test_helper.hpp
+check_PROGRAMS += hls_test_id3 hls_test_io
+TESTS += hls_test_id3 hls_test_io
 
 sout_LTLIBRARIES = \
 	libstream_out_dummy_plugin.la \
@@ -47,7 +62,8 @@ sout_LTLIBRARIES = \
 	libstream_out_record_plugin.la \
 	libstream_out_smem_plugin.la \
 	libstream_out_setid_plugin.la \
-	libstream_out_transcode_plugin.la
+	libstream_out_transcode_plugin.la \
+	libstream_out_hls_plugin.la
 
 if HAVE_DECKLINK
 libstream_out_sdi_plugin_la_CXXFLAGS = $(AM_CXXFLAGS) $(CPPFLAGS_decklinkoutput)
