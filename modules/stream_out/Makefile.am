@@ -15,6 +15,7 @@ libstream_out_gather_plugin_la_SOURCES = stream_out/gather.c
 libstream_out_bridge_plugin_la_SOURCES = stream_out/bridge.c
 libstream_out_mosaic_bridge_plugin_la_SOURCES = stream_out/mosaic_bridge.c
 libstream_out_autodel_plugin_la_SOURCES = stream_out/autodel.c
+libstream_out_pcrsync_plugin_la_SOURCES = stream_out/pcr-sync.c
 libstream_out_record_plugin_la_SOURCES = stream_out/record.c
 libstream_out_smem_plugin_la_SOURCES = stream_out/smem.c
 libstream_out_setid_plugin_la_SOURCES = stream_out/setid.c
@@ -31,6 +32,7 @@ libstream_out_transcode_plugin_la_SOURCES = \
 libstream_out_transcode_plugin_la_CFLAGS = $(AM_CFLAGS)
 libstream_out_transcode_plugin_la_LIBADD = $(LIBM)
 
+
 sout_LTLIBRARIES = \
 	libstream_out_dummy_plugin.la \
 	libstream_out_cycle_plugin.la \
@@ -44,6 +46,7 @@ sout_LTLIBRARIES = \
 	libstream_out_bridge_plugin.la \
 	libstream_out_mosaic_bridge_plugin.la \
 	libstream_out_autodel_plugin.la \
+	libstream_out_pcrsync_plugin.la \
 	libstream_out_record_plugin.la \
 	libstream_out_smem_plugin.la \
 	libstream_out_setid_plugin.la \
