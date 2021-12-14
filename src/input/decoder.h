@@ -119,6 +119,11 @@ void vlc_input_decoder_GetCcDesc( vlc_input_decoder_t *, decoder_cc_desc_t * );
  */
 void vlc_input_decoder_FrameNext( vlc_input_decoder_t *p_dec, vlc_tick_t *pi_duration );
 
+/**
+ * This function signals a PCR event to the decoder.
+ */
+int vlc_input_decoder_SignalPCR( vlc_input_decoder_t *, vlc_tick_t pcr );
+
 struct vlc_input_decoder_status
 {
     struct {
