@@ -845,6 +845,20 @@ static inline void DecoderUpdatePreroll( vlc_tick_t *pi_preroll, const block_t *
 }
 
 #ifdef ENABLE_SOUT
+
+static int DecoderThread_SendBlockCallback( void *opaque, block_t *block )
+{
+    assert( block->p_next == NULL ); // Decoder thread should only send block by blocks.
+    vlc_input_decoder_t *dec = opaque;
+    return sout_InputSendBuffer( dec->p_sout, dec->p_sout_input, block );
+}
+
+static void DecoderThread_SendPCRCallback( void *opaque, vlc_tick_t pcr )
+{
+    vlc_input_decoder_t *dec = opaque;
+    sout_InputSetPCR( dec->p_sout, dec->p_sout_input, pcr );
+}
+
 static int DecoderThread_PlaySout( vlc_input_decoder_t *p_owner, block_t *p_sout_block )
 {
     assert( !p_sout_block->p_next );
@@ -855,27 +869,26 @@ static int DecoderThread_PlaySout( vlc_input_decoder_t *p_owner, block_t *p_sout
 
     vlc_mutex_unlock( &p_owner->lock );
 
-    struct vlc_pcr_delayer_pair delayer_result;
-    while ( p_sout_block != NULL )
-    {
-        p_sout_block =
-            vlc_pcr_delayer_BindPCRToDTS( p_owner->pcr_delayer, &delayer_result, p_sout_block );
-        if ( delayer_result.blocks )
-            sout_InputSendBuffer( p_owner->p_sout, p_owner->p_sout_input, delayer_result.blocks );
-        if ( delayer_result.pcr != VLC_TICK_INVALID )
-            sout_InputSetPCR( p_owner->p_sout, p_owner->p_sout_input, delayer_result.pcr );
-    }
-
     /* FIXME --VLC_TICK_INVALID inspect stream_output*/
-    return sout_InputSendBuffer( p_owner->p_sout, p_owner->p_sout_input,
-                                 p_sout_block );
+    return vlc_pcr_delayer_SendBlocksAndPCR( p_owner->pcr_delayer, &p_sout_block, p_owner,
+                                             DecoderThread_SendBlockCallback,
+                                             DecoderThread_SendPCRCallback );
 }
 
 static inline block_t *DecoderThread_Packetize( vlc_input_decoder_t *owner, block_t **blocks )
 {
-    vlc_pcr_delayer_SignalEnteringBlock( owner->pcr_delayer, *blocks );
+    if ( blocks != NULL && *blocks != NULL )
+    {
+        if ( vlc_pcr_delayer_SignalEnteringBlock( owner->pcr_delayer, *blocks ) ==
+             VLC_PCR_DELAYER_NO_DELAY )
+            vlc_pcr_delayer_SendBlockedPCR( owner->pcr_delayer, owner,
+                                            DecoderThread_SendPCRCallback );
+    }
     block_t *ret = owner->dec.pf_packetize( &owner->dec, blocks );
-    vlc_pcr_delayer_SignalLeavingBlock( owner->pcr_delayer, ret );
+    if ( ret != NULL )
+    {
+        vlc_pcr_delayer_SignalLeavingBlock( owner->pcr_delayer, ret );
+    }
 
     return ret;
 }
@@ -1764,6 +1777,8 @@ static void *DecoderThread( void *p_data )
         {
             p_owner->b_draining = false;
             p_owner->drained = true;
+            vlc_pcr_delayer_Drain( p_owner->pcr_delayer, p_owner,
+                                              DecoderThread_SendPCRCallback );
         }
         vlc_cond_signal( &p_owner->wait_acknowledge );
         vlc_mutex_unlock( &p_owner->lock );
@@ -1877,7 +1892,17 @@ CreateDecoder( vlc_object_t *p_parent, const es_format_t *fmt,
     p_owner->mouse_event = NULL;
     p_owner->mouse_opaque = NULL;
 
-    p_owner->pcr_delayer = vlc_pcr_delayer_New( VLC_TICK_FROM_MS( 2000 ) );
+    if ( p_owner->p_sout != NULL )
+    {
+        p_owner->pcr_delayer = vlc_pcr_delayer_New( VLC_TICK_FROM_MS( 2000 ) );
+        if ( p_owner->pcr_delayer == NULL )
+        {
+            vlc_object_delete( p_dec );
+            return NULL;
+        }
+    }
+    else
+        p_owner->pcr_delayer = NULL;
 
     es_format_Init( &p_owner->fmt, fmt->i_cat, 0 );
 
@@ -1998,6 +2023,7 @@ static void DeleteDecoder( vlc_input_decoder_t *p_owner )
 
     /* Cleanup */
 #ifdef ENABLE_SOUT
+    vlc_pcr_delayer_Delete( p_owner->pcr_delayer );
     if( p_owner->p_sout_input )
     {
         sout_InputDelete( p_owner->p_sout, p_owner->p_sout_input );
@@ -2058,8 +2084,6 @@ static void DeleteDecoder( vlc_input_decoder_t *p_owner )
 
     if( p_owner->p_description )
         vlc_meta_Delete( p_owner->p_description );
-
-    vlc_pcr_delayer_Release(p_owner->pcr_delayer);
 
     decoder_Destroy( p_owner->p_packetizer );
     decoder_Destroy( &p_owner->dec );
@@ -2557,12 +2581,24 @@ void vlc_input_decoder_Wait( vlc_input_decoder_t *p_owner )
 
 int vlc_input_decoder_SignalPCR( vlc_input_decoder_t *dec, vlc_tick_t pcr )
 {
-    if ( vlc_pcr_delayer_SignalPCR( dec->pcr_delayer, pcr, dec->last_dts ) == VLC_EGENERIC )
+    if ( dec->pcr_delayer == NULL )
+        return VLC_SUCCESS;
+
+    // pcr_delayer shouldn't have been created if no sout is available.
+    assert( dec->p_sout != NULL );
+
+    //printf( "RVC PCR %ld  %ld\n", pcr, dec->last_dts );
+    const vlc_pcr_delayer_status_t status =
+        vlc_pcr_delayer_SignalPCR( dec->pcr_delayer, pcr, dec->last_dts );
+    if ( status == VLC_PCR_DELAYER_NO_DELAY )
     {
-        if (dec->p_sout_input != NULL)
-            sout_InputSetPCR( dec->p_sout, dec->p_sout_input, pcr );
+        if ( dec->p_sout_input != NULL )
+        {
+            vlc_pcr_delayer_SendBlockedPCR( dec->pcr_delayer, dec, DecoderThread_SendPCRCallback );
+        }
     }
-    return VLC_SUCCESS;
+
+    return status == VLC_PCR_DELAYER_SUCCESS;
 }
 void vlc_input_decoder_FrameNext( vlc_input_decoder_t *p_owner,
                                   vlc_tick_t *pi_duration )

@@ -610,7 +610,8 @@ check_PROGRAMS = \
 	test_randomizer \
 	test_media_source \
 	test_extensions \
-	test_thread
+	test_thread \
+	test_pcr_delayer
 
 TESTS = $(check_PROGRAMS) check_symbols
 
@@ -658,6 +659,7 @@ test_media_source_SOURCES = media_source/test.c \
 	media_source/media_source.c \
 	media_source/media_tree.c
 test_thread_SOURCES = test/thread.c
+test_pcr_delayer_SOURCES = test/pcr_delayer.c
 
 AM_LDFLAGS = -no-install
 LDADD = libvlccore.la \

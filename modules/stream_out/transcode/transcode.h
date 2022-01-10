@@ -1,6 +1,7 @@
 #include <vlc_picture_fifo.h>
 #include <vlc_filter.h>
 #include <vlc_codec.h>
+#include <vlc_pcr_delayer.h>
 #include "encoder/encoder.h"
 
 /*100ms is around the limit where people are noticing lipsync issues*/
@@ -145,6 +146,9 @@ struct sout_stream_id_sys_t
     /* Sync */
     date_t          next_input_pts; /**< Incoming calculated PTS */
     vlc_tick_t      i_drift; /** how much buffer is ahead of calculated PTS */
+
+    vlc_pcr_delayer_t *pcr_delayer;
+    vlc_tick_t last_dts;
 };
 
 struct decoder_owner

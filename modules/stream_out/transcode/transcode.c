@@ -230,6 +230,22 @@ static void *Add( sout_stream_t *, const es_format_t * );
 static void  Del( sout_stream_t *, void * );
 static int   Send( sout_stream_t *, void *, block_t * );
 
+struct vlc_delayer_sout_pair
+{
+    sout_stream_t *stream;
+    void *id;
+};
+static int transcode_SendBlocks( void *opaque, block_t *blocks )
+{
+    struct vlc_delayer_sout_pair *pair = opaque;
+    return sout_StreamIdSend( pair->stream, pair->id, blocks );
+}
+static void transcode_SendPCR( void *opaque, vlc_tick_t pcr )
+{
+    struct vlc_delayer_sout_pair *pair = opaque;
+    sout_StreamSetPCR( pair->stream, pair->id, pcr );
+}
+
 static void SetAudioEncoderConfig( sout_stream_t *p_stream, transcode_encoder_config_t *p_cfg )
 {
     char *psz_string = var_GetString( p_stream, SOUT_CFG_PREFIX "aenc" );
@@ -373,8 +389,27 @@ static int Control( sout_stream_t *p_stream, int i_query, va_list args )
     return VLC_EGENERIC;
 }
 
+static void SetPCR( sout_stream_t *stream, void *id, vlc_tick_t pcr )
+{
+    sout_stream_id_sys_t *id_sys = id;
+    if ( id_sys->pcr_delayer == NULL && id_sys->downstream_id != NULL )
+    {
+        sout_StreamSetPCR( stream->p_next, id_sys->downstream_id, pcr );
+    }
+    else if ( vlc_pcr_delayer_SignalPCR( id_sys->pcr_delayer, pcr, id_sys->last_dts ) ==
+              VLC_PCR_DELAYER_NO_DELAY )
+    {
+        if ( id_sys->downstream_id != NULL )
+        {
+            struct vlc_delayer_sout_pair pair = { .stream = stream->p_next,
+                                                  .id = id_sys->downstream_id };
+            vlc_pcr_delayer_SendBlockedPCR( id_sys->pcr_delayer, &pair, transcode_SendPCR );
+        }
+    }
+}
+
 static const struct sout_stream_operations ops = {
-    Add, Del, Send, Control, NULL, NULL,
+    Add, Del, Send, Control, NULL, SetPCR,
 };
 
 /*****************************************************************************
@@ -651,6 +686,15 @@ static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt )
         success = id->downstream_id;
     }
 
+    if ( id->b_transcode )
+    {
+        id->pcr_delayer = vlc_pcr_delayer_New( VLC_TICK_FROM_SEC( 20 ) );
+        if ( id->pcr_delayer == NULL )
+            goto error;
+    }
+
+    id->last_dts = VLC_TICK_INVALID;
+
     if(!success)
         goto error;
 
@@ -697,6 +741,10 @@ static void Del( sout_stream_t *p_stream, void *_id )
         default:
             break;
         }
+
+        struct vlc_delayer_sout_pair pair = { .stream = p_stream->p_next, .id = id->downstream_id };
+        vlc_pcr_delayer_Drain( id->pcr_delayer, &pair, transcode_SendPCR );
+        vlc_pcr_delayer_Delete( id->pcr_delayer );
     }
     else decoder_Destroy( id->p_decoder );
 
@@ -721,6 +769,20 @@ static int Send( sout_stream_t *p_stream, void *_id, block_t *p_buffer )
             goto error;
     }
 
+    if ( p_buffer != NULL )
+    {
+        assert( p_buffer->p_next == NULL );
+        printf( "entering %ld\n", p_buffer->i_dts );
+        id->last_dts = p_buffer->i_dts;
+        if ( vlc_pcr_delayer_SignalEnteringBlock( id->pcr_delayer, p_buffer ) ==
+             VLC_PCR_DELAYER_NO_DELAY )
+        {
+            struct vlc_delayer_sout_pair pair = { .stream = p_stream->p_next,
+                                                  .id = id->downstream_id };
+            vlc_pcr_delayer_SendBlockedPCR( id->pcr_delayer, &pair, transcode_SendPCR );
+        }
+    }
+
     int i_ret;
     switch( id->p_decoder->fmt_in.i_cat )
     {
@@ -740,9 +802,20 @@ static int Send( sout_stream_t *p_stream, void *_id, block_t *p_buffer )
         goto error;
     }
 
-    if( p_out &&
-        sout_StreamIdSend( p_stream->p_next, id->downstream_id, p_out ) )
-        i_ret = VLC_EGENERIC;
+    for (const block_t *it = p_out; it != NULL; it = it->p_next)
+    {
+        printf("leaving %ld\n", it->i_dts);
+        vlc_pcr_delayer_SignalLeavingBlock(id->pcr_delayer, it);
+    }
+
+    if (p_out != NULL)
+    {
+        struct vlc_delayer_sout_pair pair = { .stream = p_stream->p_next, .id = id->downstream_id };
+        i_ret = vlc_pcr_delayer_SendBlocksAndPCR( id->pcr_delayer, &p_out, &pair,
+                                                  transcode_SendBlocks, transcode_SendPCR );
+        if ( i_ret != VLC_SUCCESS && p_out != NULL )
+            block_ChainRelease( p_out );
+    }
 
     return i_ret;
 error:
