@@ -2281,6 +2281,7 @@ void vlc_input_decoder_Delete( vlc_input_decoder_t *p_owner )
 void vlc_input_decoder_Decode( vlc_input_decoder_t *p_owner, block_t *p_block,
                                bool b_do_pace )
 {
+    //printf("RVC DTS %ld\n", p_block->i_dts);
     p_owner->last_dts = p_block->i_dts;
 
     vlc_fifo_Lock( p_owner->p_fifo );

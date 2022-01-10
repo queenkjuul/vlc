@@ -466,6 +466,7 @@ int transcode_encoder_video_open( transcode_encoder_t *p_enc,
     p_enc->p_encoder->fmt_out.i_codec =
         vlc_fourcc_GetCodec( VIDEO_ES, p_enc->p_encoder->fmt_out.i_codec );
 
+    printf("pool size: %d\n", p_cfg->video.threads.i_count);
     vlc_sem_init( &p_enc->picture_pool_has_room, p_cfg->video.threads.pool_size );
     vlc_cond_init( &p_enc->cond );
     p_enc->p_buffers = NULL;
