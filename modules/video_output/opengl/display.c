@@ -285,6 +285,7 @@ static void PictureRender (vout_display_t *vd, picture_t *pic,
     VLC_UNUSED(date);
     vout_display_sys_t *sys = vd->sys;
 
+    // TODO: what to do in case of error
     if (vlc_gl_MakeCurrent (sys->gl) == VLC_SUCCESS)
     {
         vout_display_opengl_Prepare (sys->vgl, pic, subpicture);
