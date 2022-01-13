@@ -82,6 +82,11 @@ typedef int (*vlc_gl_activate)(vlc_gl_t *, unsigned width, unsigned height,
     set_callback_opengl_common(activate) \
     set_capability("opengl es2 offscreen", priority)
 
+struct vlc_gl_callbacks {
+    int (*init)(struct vlc_gl_t *gl);
+    void (*render)(struct vlc_gl_t *gl);
+};
+
 /**
  * OpenGL provider implementation callbacks.
  *
@@ -132,6 +137,14 @@ struct vlc_gl_operations
      * Destroy the OpenGL provider resources.
      */
     void (*close)(vlc_gl_t *gl);
+
+    int (*init_renderer)(vlc_gl_t *gl);
+
+    /* TODO: it might have been better to have an argument there, but it
+     * is not symmetric with (*init). Maybe a wait init function instead?
+     * Otherwise, having (*init) in callbacks might provide handling for
+     * context lost and such. */
+    void (*render_next)(vlc_gl_t *gl);
 };
 
 struct vlc_gl_t
@@ -160,6 +173,11 @@ struct vlc_gl_t
     enum vlc_gl_api_type api_type;
 
     const struct vlc_gl_operations *ops;
+
+    struct {
+        const struct vlc_gl_callbacks *cbs;
+        void *sys;
+    } owner;
 };
 
 /**
@@ -208,6 +226,22 @@ static inline void vlc_gl_Swap(vlc_gl_t *gl)
 static inline picture_t *vlc_gl_SwapOffscreen(vlc_gl_t *gl)
 {
     return gl->ops->swap_offscreen(gl);
+}
+
+static inline int vlc_gl_InitRenderer(vlc_gl_t *gl)
+{
+    if (gl->ops->init_renderer != NULL)
+        return gl->ops->init_renderer(gl);
+
+    if (gl->owner.cbs != NULL && gl->owner.cbs->init != NULL)
+    {
+        vlc_gl_MakeCurrent(gl);
+        int ret = gl->owner.cbs->init(gl);
+        vlc_gl_ReleaseCurrent(gl);
+        return ret;
+    }
+
+    return VLC_SUCCESS;
 }
 
 /**
