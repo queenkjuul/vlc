@@ -38,6 +38,11 @@ extern "C"
 {
 #endif
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
 /**
  * The purpose of a sampler is to provide pixel values of a VLC input picture,
  * stored in any format.
@@ -194,6 +199,10 @@ vlc_gl_sampler_Update(struct vlc_gl_sampler *sampler,
  */
 void
 vlc_gl_sampler_SelectPlane(struct vlc_gl_sampler *sampler, unsigned plane);
+
+#ifdef __cplusplus
+}
+#endif
 
 #ifdef __cplusplus
 }
