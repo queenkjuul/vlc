@@ -59,7 +59,8 @@ static int vlc_gl_start(void *func, bool forced, va_list ap)
 
 vlc_gl_t *vlc_gl_Create(const struct vout_display_cfg *restrict cfg,
                         unsigned flags, const char *name,
-                        const struct vlc_gl_cfg * gl_cfg)
+                        const struct vlc_gl_cfg * gl_cfg,
+                        const struct vlc_gl_callbacks *cbs, void *owner)
 {
     vlc_window_t *wnd = cfg->window;
     struct vlc_gl_priv_t *glpriv;
@@ -92,6 +93,8 @@ vlc_gl_t *vlc_gl_Create(const struct vout_display_cfg *restrict cfg,
     gl->orientation = ORIENT_NORMAL;
     gl->surface = wnd;
     gl->device = NULL;
+    gl->owner.cbs = cbs;
+    gl->owner.sys = owner;
 
     gl->module = vlc_module_load(vlc_object_logger(gl), type, name, true,
                                  vlc_gl_start, gl,
@@ -213,7 +216,8 @@ static void vlc_gl_surface_ResizeNotify(vlc_window_t *surface,
 vlc_gl_t *vlc_gl_surface_Create(vlc_object_t *obj,
                                 const vlc_window_cfg_t *cfg,
                                 struct vlc_window **restrict wp,
-                                const struct vlc_gl_cfg *gl_cfg)
+                                const struct vlc_gl_cfg *gl_cfg,
+                                const struct vlc_gl_callbacks *gl_cbs, void *gl_owner)
 {
     vlc_gl_surface_t *sys = malloc(sizeof (*sys));
     if (unlikely(sys == NULL))
@@ -258,7 +262,7 @@ vlc_gl_t *vlc_gl_surface_Create(vlc_object_t *obj,
     }
     vlc_mutex_unlock(&sys->lock);
 
-    vlc_gl_t *gl = vlc_gl_Create(&dcfg, VLC_OPENGL, NULL, gl_cfg);
+    vlc_gl_t *gl = vlc_gl_Create(&dcfg, VLC_OPENGL, NULL, gl_cfg, gl_cbs, gl_owner);
     if (gl == NULL) {
         vlc_window_Disable(surface);
         vlc_window_Delete(surface);

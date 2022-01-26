@@ -193,7 +193,9 @@ struct vlc_gl_t
  */
 VLC_API vlc_gl_t *vlc_gl_Create(const struct vout_display_cfg *cfg,
                                 unsigned flags, const char *name,
-                                const struct vlc_gl_cfg *gl_cfg) VLC_USED;
+                                const struct vlc_gl_cfg *gl_cfg,
+                                const struct vlc_gl_callbacks *cbs,
+                                void *owner) VLC_USED;
 VLC_API vlc_gl_t *vlc_gl_CreateOffscreen(vlc_object_t *parent,
                                          struct vlc_decoder_device *device,
                                          unsigned width, unsigned height,
@@ -270,7 +272,9 @@ static inline void *vlc_gl_GetProcAddress(vlc_gl_t *gl, const char *name)
 VLC_API vlc_gl_t *vlc_gl_surface_Create(vlc_object_t *,
                                         const struct vlc_window_cfg *,
                                         struct vlc_window **,
-                                        const struct vlc_gl_cfg *) VLC_USED;
+                                        const struct vlc_gl_cfg *,
+                                        const struct vlc_gl_callbacks *cbs,
+                                        void *owner) VLC_USED;
 
 VLC_API bool vlc_gl_surface_CheckSize(vlc_gl_t *, unsigned *w, unsigned *h);
 VLC_API void vlc_gl_surface_Destroy(vlc_gl_t *);

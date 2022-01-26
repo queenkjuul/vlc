@@ -296,7 +296,7 @@ static int Open(vout_display_t *vd,
     }
 #endif
 
-    sys->gl = vlc_gl_Create(vd->cfg, API, gl_name, NULL);
+    sys->gl = vlc_gl_Create(vd->cfg, API, gl_name, NULL, NULL, NULL);
     free(gl_name);
     if (sys->gl == NULL)
         goto error;
