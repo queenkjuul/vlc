@@ -40,6 +40,9 @@ static const struct vlc_gl_cfg gl_cfg_default = {
 struct vlc_gl_priv_t
 {
     vlc_gl_t gl;
+
+    vlc_sem_t sem_client;
+    atomic_bool dirty;
 };
 
 static int vlc_gl_start(void *func, bool forced, va_list ap)
@@ -95,6 +98,8 @@ vlc_gl_t *vlc_gl_Create(const struct vout_display_cfg *restrict cfg,
     gl->device = NULL;
     gl->owner.cbs = cbs;
     gl->owner.sys = owner;
+    vlc_sem_init(&glpriv->sem_client, 0);
+    atomic_init(&glpriv->dirty, false);
 
     gl->module = vlc_module_load(vlc_object_logger(gl), type, name, true,
                                  vlc_gl_start, gl,
@@ -145,6 +150,9 @@ vlc_gl_t *vlc_gl_CreateOffscreen(vlc_object_t *parent,
     if (unlikely(glpriv == NULL))
         return NULL;
 
+    vlc_sem_init(&glpriv->sem_client, 0);
+    atomic_init(&glpriv->dirty, false);
+
     vlc_gl_t *gl = &glpriv->gl;
 
     gl->api_type = api_type;
@@ -188,6 +196,29 @@ void vlc_gl_Delete(vlc_gl_t *gl)
 }
 
 #include <vlc_window.h>
+
+void vlc_gl_RenderNext(vlc_gl_t *gl)
+{
+    struct vlc_gl_priv_t *glpriv = (struct vlc_gl_priv_t *)gl;
+
+    atomic_store_explicit(&glpriv->dirty, true, memory_order_release);
+    if (gl->ops && gl->ops->render_next)
+        gl->ops->render_next(gl);
+    vlc_sem_wait(&glpriv->sem_client);
+}
+
+void vlc_gl_ReportRender(vlc_gl_t *gl)
+{
+    struct vlc_gl_priv_t *glpriv = (struct vlc_gl_priv_t *)gl;
+
+    bool dirty = atomic_exchange_explicit(&glpriv->dirty, false, memory_order_acquire);
+    if (!dirty)
+        return;
+
+    if (gl->owner.cbs && gl->owner.cbs->render)
+        gl->owner.cbs->render(gl);
+    vlc_sem_post(&glpriv->sem_client);
+}
 
 typedef struct vlc_gl_surface
 {
