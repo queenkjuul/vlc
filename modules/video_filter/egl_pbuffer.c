@@ -347,6 +347,13 @@ error:
     return NULL;
 }
 
+static void RenderNext(vlc_gl_t *gl)
+{
+    MakeCurrent(gl);
+    vlc_gl_ReportRender(gl);
+    ReleaseCurrent(gl);
+}
+
 static void Close( vlc_gl_t *gl )
 {
     struct vlc_gl_pbuffer *sys = gl->sys;
@@ -402,6 +409,7 @@ static int Open(vlc_gl_t *gl, unsigned width, unsigned height,
 
     static const struct vlc_gl_operations gl_ops =
     {
+        .render_next = RenderNext,
         .make_current = MakeCurrent,
         .release_current = ReleaseCurrent,
         .swap_offscreen = Swap,
