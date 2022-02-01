@@ -65,6 +65,8 @@ enum es_out_query_e
     ES_OUT_SET_GROUP_PCR,       /* arg1= int i_group, arg2=vlc_tick_t i_pcr(microsecond!)*/
     ES_OUT_RESET_PCR,           /* no arg */
 
+    ES_OUT_GET_EXTERNAL_CLOCK_REF,
+
     /* This will update the fmt, drain and restart the decoder (if any).
      * The new fmt must have the same i_cat and i_id. */
     ES_OUT_SET_ES_FMT,         /* arg1= es_out_id_t* arg2=es_format_t* res=can fail */

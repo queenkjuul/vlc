@@ -74,7 +74,10 @@ typedef struct
     bool b_scrambled;
 
     /* Clock for this program */
-    input_clock_t    *p_input_clock;
+    union {
+        input_clock_t *p_input_clock;
+        vlc_clock_t *external_clock;
+    };
     vlc_clock_main_t *p_main_clock;
     /* Weak reference to the master ES clock */
     const vlc_clock_t *p_master_es_clock;
@@ -289,6 +292,7 @@ clock_source_Inherit(vlc_object_t *obj)
         { "audio", VLC_CLOCK_MASTER_AUDIO },
         { "auto", VLC_CLOCK_MASTER_AUTO },
         { "input", VLC_CLOCK_MASTER_INPUT },
+        { "external", VLC_CLOCK_MASTER_EXTERNAL },
         { "monotonic", VLC_CLOCK_MASTER_MONOTONIC },
     };
 
@@ -1339,6 +1343,11 @@ static void EsOutProgramHandleClockSource( es_out_t *out, es_out_pgrm_t *p_pgrm 
             p_pgrm->active_clock_source = VLC_CLOCK_MASTER_INPUT;
             break;
         }
+        case VLC_CLOCK_MASTER_EXTERNAL:
+        {
+            p_pgrm->external_clock =
+                vlc_clock_main_CreateMaster( p_pgrm->p_main_clock, "external", NULL, NULL );
+        }
         default:
             p_pgrm->active_clock_source = p_sys->user_clock_source;
             break;
@@ -1349,6 +1358,7 @@ static void EsOutProgramHandleClockSource( es_out_t *out, es_out_pgrm_t *p_pgrm 
     {
         case VLC_CLOCK_MASTER_AUDIO:    clock_source_str = "audio"; break;
         case VLC_CLOCK_MASTER_INPUT:    clock_source_str = "input"; break;
+        case VLC_CLOCK_MASTER_EXTERNAL:    clock_source_str = "external"; break;
         case VLC_CLOCK_MASTER_MONOTONIC:clock_source_str = "monotonic"; break;
 
         case VLC_CLOCK_MASTER_AUTO:
@@ -2282,6 +2292,7 @@ static void ClockUpdate(vlc_tick_t system_ts, vlc_tick_t ts, double rate,
                                ts, rate, frame_rate, frame_rate_base);
 }
 
+
 static void EsOutCreateDecoder( es_out_t *out, es_out_id_t *p_es )
 {
     es_out_sys_t *p_sys = container_of(out, es_out_sys_t, out);
@@ -2303,6 +2314,7 @@ static void EsOutCreateDecoder( es_out_t *out, es_out_id_t *p_es )
             break;
         case VLC_CLOCK_MASTER_MONOTONIC:
         case VLC_CLOCK_MASTER_INPUT:
+        case VLC_CLOCK_MASTER_EXTERNAL:
             clock_source_cat = UNKNOWN_ES;
             break;
         default:
@@ -3446,6 +3458,18 @@ static int EsOutVaControlLocked( es_out_t *out, input_source_t *source,
         msg_Dbg( p_sys->p_input, "ES_OUT_RESET_PCR called" );
         EsOutChangePosition( out, true );
         return VLC_SUCCESS;
+
+    case ES_OUT_GET_EXTERNAL_CLOCK_REF:
+    {
+        vlc_clock_t **external_clock = va_arg( args, vlc_clock_t ** );
+        if ( p_sys->p_pgrm != NULL &&
+             p_sys->p_pgrm->active_clock_source == VLC_CLOCK_MASTER_EXTERNAL )
+        {
+            *external_clock = p_sys->p_pgrm->external_clock;
+            return *external_clock == NULL ? VLC_EGENERIC : VLC_SUCCESS;
+        }
+        return VLC_EGENERIC;
+    }
 
     case ES_OUT_SET_GROUP:
     {
