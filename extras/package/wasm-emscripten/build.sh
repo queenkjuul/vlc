@@ -168,6 +168,7 @@ if [ $BUILD_MODE -eq 1 ]; then
                         ac_cv_func_accept4=no \
                         ac_cv_func_pipe2=no \
                         --enable-gles2 \
+                        --disable-nvdec \
                         --with-contrib="$VLC_SRCPATH"/contrib/wasm32-unknown-emscripten
 fi
 
