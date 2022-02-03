@@ -166,6 +166,7 @@ if [ $BUILD_MODE -eq 1 ]; then
                         --enable-gles2 \
                         ac_cv_func_if_nameindex=yes ac_cv_header_sys_shm_h=no \
                         ac_cv_func_accept4=no \
+                        ac_cv_func_pipe2=no \
                         --enable-gles2 \
                         --with-contrib="$VLC_SRCPATH"/contrib/wasm32-unknown-emscripten
 fi
