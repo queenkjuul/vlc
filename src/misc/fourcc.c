@@ -838,6 +838,8 @@ static const vlc_chroma_description_t p_list_chroma_description[] = {
 
     { VLC_CODEC_VAAPI_420,             FAKE_FMT() },
     { VLC_CODEC_VAAPI_420_10BPP,       FAKE_FMT() },
+
+    { VLC_CODEC_WEBCODEC_OPAQUE,       FAKE_FMT() },
 };
 
 #undef PACKED_FMT
