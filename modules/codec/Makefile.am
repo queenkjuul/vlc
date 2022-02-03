@@ -686,3 +686,9 @@ noinst_LTLIBRARIES += libhxxxhelper_testdec_plugin.la
 libvlc_vtutils_la_SOURCES = codec/vt_utils.c codec/vt_utils.h codec/vt_utils_native.m
 libvlc_vtutils_la_LDFLAGS = -static -no-undefined
 EXTRA_LTLIBRARIES += libvlc_vtutils.la
+
+libwebcodec_plugin_la_SOURCES = codec/webcodec.cpp
+libwebcodec_plugin_la_LDFLAGS = $(AM_LDFLAGS)
+if HAVE_EMSCRIPTEN
+codec_LTLIBRARIES += libwebcodec_plugin.la
+endif
