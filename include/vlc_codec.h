@@ -583,6 +583,7 @@ enum vlc_decoder_device_type
     VLC_DECODER_DEVICE_AWINDOW,
     VLC_DECODER_DEVICE_NVDEC,
     VLC_DECODER_DEVICE_MMAL,
+    VLC_DECODER_DEVICE_WEBCODEC,
 };
 
 struct vlc_decoder_device_operations
