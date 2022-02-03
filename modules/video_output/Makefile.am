@@ -352,6 +352,13 @@ vout_LTLIBRARIES += libegl_android_plugin.la libglinterop_android_plugin.la
 endif
 endif
 
+### Emscripten
+libglinterop_emscripten_plugin_la_SOURCES = video_output/opengl/interop_emscripten.cpp \
+	video_output/opengl/interop.h
+libglinterop_emscripten_plugin_la_CXXFLAGS = $(AM_CXXFLAGS) -DUSE_OPENGL_ES2
+if HAVE_EMSCRIPTEN
+vout_LTLIBRARIES += libglinterop_emscripten_plugin.la
+endif
 
 ### Direct Rendering Manager (DRM) ###
 
