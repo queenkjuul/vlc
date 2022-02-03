@@ -488,6 +488,9 @@
 /* GStreamer Memory opaque buffer type */
 #define VLC_CODEC_GST_MEM_OPAQUE  VLC_FOURCC('G','S','T','M')
 
+/* Webcodec opaque VideoFrame types */
+#define VLC_CODEC_WEBCODEC_OPAQUE VLC_FOURCC('W','C','O','P')
+
 /* Image codec (video) */
 #define VLC_CODEC_PNG             VLC_FOURCC('p','n','g',' ')
 #define VLC_CODEC_PPM             VLC_FOURCC('p','p','m',' ')
