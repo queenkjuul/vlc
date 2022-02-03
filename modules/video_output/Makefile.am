@@ -346,7 +346,7 @@ EXTRA_LTLIBRARIES += libcaca_plugin.la
 vout_LTLIBRARIES += $(LTLIBcaca)
 
 ### Emscripten ###
-libemscripten_window_plugin_la_SOURCES = video_output/emscripten.c
+libemscripten_window_plugin_la_SOURCES = video_output/emscripten.cpp
 
 if HAVE_EMSCRIPTEN
 vout_LTLIBRARIES += libemscripten_window_plugin.la
