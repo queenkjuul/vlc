@@ -440,6 +440,9 @@
 #define VLC_CODEC_CVPX_BGRA       VLC_FOURCC('C','V','P','B')
 #define VLC_CODEC_CVPX_P010       VLC_FOURCC('C','V','P','P')
 
+/* Webcodec opaque VideoFrame types */
+#define VLC_CODEC_WEBCODEC_OPAQUE VLC_FOURCC('W','C','O','P')
+
 /* Image codec (video) */
 #define VLC_CODEC_PNG             VLC_FOURCC('p','n','g',' ')
 #define VLC_CODEC_PPM             VLC_FOURCC('p','p','m',' ')
