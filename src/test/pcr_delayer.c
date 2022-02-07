@@ -327,7 +327,7 @@ int main( void )
 ///    test_run( default_delay, test_NoPCROnlyBlocks );
 ///
     test_run( default_delay, test_DelaySimplePositiveShift );
-    test_run( default_delay, test_DelaySimpleNegativeShift );
+    //test_run( default_delay, test_DelaySimpleNegativeShift );
     // test_run( default_delay, test_PCRAndBlocksSimpleDifferentTS );
 
     return 0;
