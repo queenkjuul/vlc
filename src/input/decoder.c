@@ -859,10 +859,8 @@ static void DecoderThread_SendPCRCallback( void *opaque, vlc_tick_t pcr )
     sout_InputSetPCR( dec->p_sout, dec->p_sout_input, pcr );
 }
 
-static int DecoderThread_PlaySout( vlc_input_decoder_t *p_owner, block_t *p_sout_block )
+static int DecoderThread_PlaySout( vlc_input_decoder_t *p_owner )
 {
-    assert( !p_sout_block->p_next );
-
     vlc_mutex_lock( &p_owner->lock );
 
     DecoderWaitUnblock( p_owner );
@@ -870,9 +868,7 @@ static int DecoderThread_PlaySout( vlc_input_decoder_t *p_owner, block_t *p_sout
     vlc_mutex_unlock( &p_owner->lock );
 
     /* FIXME --VLC_TICK_INVALID inspect stream_output*/
-    return vlc_pcr_delayer_SendBlocksAndPCR( p_owner->pcr_delayer, &p_sout_block, p_owner,
-                                             DecoderThread_SendBlockCallback,
-                                             DecoderThread_SendPCRCallback );
+    return vlc_pcr_delayer_SendBlocksAndPCR( p_owner->pcr_delayer, p_owner );
 }
 
 static inline block_t *DecoderThread_Packetize( vlc_input_decoder_t *owner, block_t **blocks )
@@ -881,14 +877,9 @@ static inline block_t *DecoderThread_Packetize( vlc_input_decoder_t *owner, bloc
     {
         if ( vlc_pcr_delayer_SignalEnteringBlock( owner->pcr_delayer, *blocks ) ==
              VLC_PCR_DELAYER_NO_DELAY )
-            vlc_pcr_delayer_SendBlockedPCR( owner->pcr_delayer, owner,
-                                            DecoderThread_SendPCRCallback );
+            vlc_pcr_delayer_SendFrontPCRs( owner->pcr_delayer, owner );
     }
     block_t *ret = owner->dec.pf_packetize( &owner->dec, blocks );
-    if ( ret != NULL )
-    {
-        vlc_pcr_delayer_SignalLeavingBlock( owner->pcr_delayer, ret );
-    }
 
     return ret;
 }
@@ -975,7 +966,8 @@ static void DecoderThread_ProcessSout( vlc_input_decoder_t *p_owner, block_t *p_
                 }
             }
 
-            if( DecoderThread_PlaySout( p_owner, p_sout_block ) == VLC_EGENERIC )
+            vlc_pcr_delayer_SignalLeavingBlock( p_owner->pcr_delayer, p_sout_block );
+            if( DecoderThread_PlaySout( p_owner ) == VLC_EGENERIC )
             {
                 msg_Err( p_dec, "cannot continue streaming due to errors with codec %4.4s",
                                 (char *)&p_owner->fmt.i_codec );
@@ -1777,8 +1769,7 @@ static void *DecoderThread( void *p_data )
         {
             p_owner->b_draining = false;
             p_owner->drained = true;
-            vlc_pcr_delayer_Drain( p_owner->pcr_delayer, p_owner,
-                                              DecoderThread_SendPCRCallback );
+            vlc_pcr_delayer_Drain( p_owner->pcr_delayer, p_owner );
         }
         vlc_cond_signal( &p_owner->wait_acknowledge );
         vlc_mutex_unlock( &p_owner->lock );
@@ -1894,7 +1885,9 @@ CreateDecoder( vlc_object_t *p_parent, const es_format_t *fmt,
 
     if ( p_owner->p_sout != NULL )
     {
-        p_owner->pcr_delayer = vlc_pcr_delayer_New( VLC_TICK_FROM_MS( 2000 ) );
+        p_owner->pcr_delayer =
+            vlc_pcr_delayer_New( VLC_TICK_FROM_MS( 2000 ), DecoderThread_SendBlockCallback,
+                                 DecoderThread_SendPCRCallback );
         if ( p_owner->pcr_delayer == NULL )
         {
             vlc_object_delete( p_dec );
@@ -2595,7 +2588,7 @@ int vlc_input_decoder_SignalPCR( vlc_input_decoder_t *dec, vlc_tick_t pcr )
     {
         if ( dec->p_sout_input != NULL )
         {
-            vlc_pcr_delayer_SendBlockedPCR( dec->pcr_delayer, dec, DecoderThread_SendPCRCallback );
+            vlc_pcr_delayer_SendFrontPCRs( dec->pcr_delayer, dec );
         }
     }
 

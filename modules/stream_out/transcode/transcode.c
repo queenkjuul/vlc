@@ -403,7 +403,7 @@ static void SetPCR( sout_stream_t *stream, void *id, vlc_tick_t pcr )
         {
             struct vlc_delayer_sout_pair pair = { .stream = stream->p_next,
                                                   .id = id_sys->downstream_id };
-            vlc_pcr_delayer_SendBlockedPCR( id_sys->pcr_delayer, &pair, transcode_SendPCR );
+            vlc_pcr_delayer_SendFrontPCRs( id_sys->pcr_delayer, &pair );
         }
     }
 }
@@ -688,7 +688,8 @@ static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt )
 
     if ( id->b_transcode )
     {
-        id->pcr_delayer = vlc_pcr_delayer_New( VLC_TICK_FROM_SEC( 20 ) );
+        id->pcr_delayer =
+            vlc_pcr_delayer_New( VLC_TICK_FROM_SEC( 20 ), transcode_SendBlocks, transcode_SendPCR );
         if ( id->pcr_delayer == NULL )
             goto error;
     }
@@ -743,7 +744,7 @@ static void Del( sout_stream_t *p_stream, void *_id )
         }
 
         struct vlc_delayer_sout_pair pair = { .stream = p_stream->p_next, .id = id->downstream_id };
-        vlc_pcr_delayer_Drain( id->pcr_delayer, &pair, transcode_SendPCR );
+        vlc_pcr_delayer_Drain( id->pcr_delayer, &pair );
         vlc_pcr_delayer_Delete( id->pcr_delayer );
     }
     else decoder_Destroy( id->p_decoder );
@@ -779,7 +780,7 @@ static int Send( sout_stream_t *p_stream, void *_id, block_t *p_buffer )
         {
             struct vlc_delayer_sout_pair pair = { .stream = p_stream->p_next,
                                                   .id = id->downstream_id };
-            vlc_pcr_delayer_SendBlockedPCR( id->pcr_delayer, &pair, transcode_SendPCR );
+            vlc_pcr_delayer_SendFrontPCRs( id->pcr_delayer, &pair );
         }
     }
 
@@ -802,7 +803,7 @@ static int Send( sout_stream_t *p_stream, void *_id, block_t *p_buffer )
         goto error;
     }
 
-    for (const block_t *it = p_out; it != NULL; it = it->p_next)
+    for (block_t *it = p_out; it != NULL; it = it->p_next)
     {
         printf("leaving %ld\n", it->i_dts);
         vlc_pcr_delayer_SignalLeavingBlock(id->pcr_delayer, it);
@@ -811,8 +812,7 @@ static int Send( sout_stream_t *p_stream, void *_id, block_t *p_buffer )
     if (p_out != NULL)
     {
         struct vlc_delayer_sout_pair pair = { .stream = p_stream->p_next, .id = id->downstream_id };
-        i_ret = vlc_pcr_delayer_SendBlocksAndPCR( id->pcr_delayer, &p_out, &pair,
-                                                  transcode_SendBlocks, transcode_SendPCR );
+        i_ret = vlc_pcr_delayer_SendBlocksAndPCR( id->pcr_delayer, &pair );
         if ( i_ret != VLC_SUCCESS && p_out != NULL )
             block_ChainRelease( p_out );
     }

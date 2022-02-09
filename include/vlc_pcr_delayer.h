@@ -38,12 +38,15 @@ typedef struct vlc_pcr_delayer vlc_pcr_delayer_t;
 /**
  * Allocate and initialize a new pcr_delayer.
  *
- * \param max_delay The media time delay in which the tool user is supposed to process data.
- * TODO better explanation
+ * \param max_delay The media time delay taken by the processing unit guarded by the delayer.
+ * \param send_blocks Will be called by the delayer when sending blocks is appropriate.
+ * \param send_pcr Will be called by the delayer when sending pcr is appropriate.
  *
  * \return An heap allocated pcr_delayer or NULL if the allocation failed.
  */
-VLC_API vlc_pcr_delayer_t *vlc_pcr_delayer_New( vlc_tick_t max_delay ) VLC_USED;
+VLC_API vlc_pcr_delayer_t *vlc_pcr_delayer_New( vlc_tick_t max_delay,
+                                                int ( *send_blocks )( void *, block_t * ),
+                                                void ( *send_pcr )( void *, vlc_tick_t ) ) VLC_USED;
 
 /**
  * Delete a pcr_delayer and discard its internal state.
@@ -79,7 +82,7 @@ VLC_API vlc_pcr_delayer_status_t vlc_pcr_delayer_SignalPCR( vlc_pcr_delayer_t *,
  * \return TODO
  */
 VLC_API vlc_pcr_delayer_status_t vlc_pcr_delayer_SignalEnteringBlock( vlc_pcr_delayer_t *,
-                                                                      const block_t * );
+                                                                      const block_t * ) ;
 
 /**
  * Signal that a block left the asynchronous delaying unit.
@@ -89,24 +92,34 @@ VLC_API vlc_pcr_delayer_status_t vlc_pcr_delayer_SignalEnteringBlock( vlc_pcr_de
  * \return TODO
  */
 VLC_API vlc_pcr_delayer_status_t vlc_pcr_delayer_SignalLeavingBlock( vlc_pcr_delayer_t *,
-                                                                     const block_t * );
-
-VLC_API int vlc_pcr_delayer_SendBlocksAndPCR( vlc_pcr_delayer_t *,
-                                              block_t **chain,
-                                              void *cb_sys,
-                                              int ( *send_blocks_cb )( void *, block_t * ),
-                                              void ( *send_pcr_cb )( void *, vlc_tick_t ) );
-
-VLC_API void vlc_pcr_delayer_SendBlockedPCR( vlc_pcr_delayer_t *,
-                                             void *cb_sys,
-                                             void ( *send_pcr_cb )( void *, vlc_tick_t ) );
+                                                                     block_t * );
 
 /**
- *                                      
+ * Send the blocks and PCR that where cached by \ref vlc_pcr_delayer_SignalLeavingBlock
+ * in the right order.
+ *
+ * This will use the callbacks passed to \ref vlc_pcr_delayer_New.
+ * \param cb_data User defined data to be passed to the send callbacks.
+ *
+ * \return send_blocks_cb return status
  */
-VLC_API void vlc_pcr_delayer_Drain( vlc_pcr_delayer_t *delayer,
-                                    void *cb_sys,
-                                    void ( *send_pcr_cb )( void *, vlc_tick_t ) );
+VLC_API int vlc_pcr_delayer_SendBlocksAndPCR( vlc_pcr_delayer_t *, void *cb_data );
+
+/**
+ * Send all cached PCR that doesn't have any prepending blocks attached to them.
+ *
+ * \param cb_data User defined data to be passed to the send callbacks.
+ */
+VLC_API void vlc_pcr_delayer_SendFrontPCRs( vlc_pcr_delayer_t *, void *cb_data );
+
+/**
+ * To be called when the delaying unit drains its internal state.
+ *
+ * This will discard currently tracked blocks and send the potentially delayed PCRs.
+ *
+ * \param cb_data User defined data to be passed to the send callbacks.
+ */
+VLC_API void vlc_pcr_delayer_Drain( vlc_pcr_delayer_t *, void *cb_data );
 
 #if defined(__cplusplus)
 }

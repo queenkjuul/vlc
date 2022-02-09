@@ -41,13 +41,17 @@ struct vlc_pcr_delayer
     vlc_tick_t last_block_end;
     vlc_tick_t last_dts;
 
-    vlc_tick_t output_dts_difference;
-
     // The last DTS output by `vlc_pcr_delayer_BindPCRToDTS`
     vlc_tick_t last_bound_dts;
 
     struct vlc_list delayed_blocks_data;
     struct vlc_list pcr_events;
+
+    block_t *output;
+    block_t **output_end;
+
+    int ( *send_blocks )( void *, block_t * );
+    void ( *send_pcr )( void *, vlc_tick_t );
 
     vlc_mutex_t lock;
 };
@@ -56,6 +60,9 @@ typedef struct
 {
     vlc_tick_t pcr;
     vlc_tick_t max_dts;
+
+    const block_t *last_block;
+
     struct vlc_list node;
 } pcr_event_t;
 
@@ -67,34 +74,40 @@ typedef struct
     struct vlc_list node;
 } delayed_block_data_t;
 
-static inline void vlc_pcr_delayer_Lock( vlc_pcr_delayer_t *delayer )
+static inline void pcr_delayer_Lock( vlc_pcr_delayer_t *delayer )
 {
     vlc_mutex_lock( &delayer->lock );
 }
-static inline void vlc_pcr_delayer_Unlock( vlc_pcr_delayer_t *delayer )
+static inline void pcr_delayer_Unlock( vlc_pcr_delayer_t *delayer )
 {
     vlc_mutex_unlock( &delayer->lock );
+}
+
+static inline void pcr_delayer_ResetOutput( vlc_pcr_delayer_t *delayer )
+{
+    delayer->output = NULL;
+    delayer->output_end = &delayer->output;
 }
 
 // B1 B2 P3
 // B200 B202 P3
 //
 
-//static delayed_block_data_t *delayed_block_data_FindWithDTS( struct vlc_list *delayed_block_data,
-//                                                             vlc_tick_t dts )
+// static delayed_block_data_t *delayed_block_data_FindWithDTS( struct vlc_list *delayed_block_data,
+//                                                              vlc_tick_t dts )
 //{
-//    delayed_block_data_t *ret;
-//    vlc_list_foreach( ret, delayed_block_data, node )
-//    {
-//        if ( ret->dts == dts )
-//            return ret;
-//    }
-//    return NULL;
-//}
+//     delayed_block_data_t *ret;
+//     vlc_list_foreach( ret, delayed_block_data, node )
+//     {
+//         if ( ret->dts == dts )
+//             return ret;
+//     }
+//     return NULL;
+// }
 vlc_pcr_delayer_status_t
 vlc_pcr_delayer_SignalPCR( vlc_pcr_delayer_t *delayer, vlc_tick_t pcr, vlc_tick_t block_dts )
 {
-    vlc_pcr_delayer_Lock( delayer );
+    pcr_delayer_Lock( delayer );
 
     // Some streams with unpredictable data flow can have big "data holes" between pcr events
     // (typically SPU streams). In the case the latest block DTS didn't change since last call, we
@@ -110,6 +123,7 @@ vlc_pcr_delayer_SignalPCR( vlc_pcr_delayer_t *delayer, vlc_tick_t pcr, vlc_tick_
 
     event->max_dts = block_dts;
     event->pcr = pcr;
+    event->last_block = NULL;
     event->node = ( struct vlc_list ){ 0 };
 
     vlc_list_append( &event->node, &delayer->pcr_events );
@@ -121,33 +135,30 @@ vlc_pcr_delayer_SignalPCR( vlc_pcr_delayer_t *delayer, vlc_tick_t pcr, vlc_tick_
         block_data->attached_following_pcr = event;
     }
 
-    vlc_pcr_delayer_Unlock( delayer );
+    pcr_delayer_Unlock( delayer );
 
     return is_pcr_delayed ? VLC_PCR_DELAYER_SUCCESS : VLC_PCR_DELAYER_NO_DELAY;
 }
 
-static vlc_pcr_delayer_status_t
-vlc_pcr_delayer_SignalLeavingBlockUnlocked( vlc_pcr_delayer_t *delayer, const block_t *block )
+static vlc_pcr_delayer_status_t pcr_delayer_SignalLeavingBlockUnlocked( vlc_pcr_delayer_t *delayer,
+                                                                        block_t *block )
 {
     delayed_block_data_t *block_data =
         vlc_list_first_entry_or_null( &delayer->delayed_blocks_data, delayed_block_data_t, node );
 
     assert( block_data != NULL );
 
-    pcr_event_t *next_pcr =
-        vlc_list_first_entry_or_null( &delayer->pcr_events, pcr_event_t, node );
-    if ( next_pcr != NULL )
+    if ( block_data->attached_following_pcr != NULL )
     {
+        pcr_event_t *next_pcr =
+            vlc_list_first_entry_or_null( &delayer->pcr_events, pcr_event_t, node );
         // If the delayed block changed the timestamp to be higher than the former PCR, fix the pcr
         // value accordingly.
-        if ( block_data->attached_following_pcr == next_pcr )
+        if ( next_pcr != NULL )
         {
-            next_pcr->pcr = __MAX( block->i_dts, next_pcr->pcr );
-            next_pcr->max_dts = __MAX( block->i_dts, block_data->dts );
-        }
-        else
-        {
-
+            next_pcr->pcr = block->i_dts;
+            next_pcr->max_dts = block->i_dts;
+            next_pcr->last_block = block;
         }
     }
 
@@ -155,16 +166,18 @@ vlc_pcr_delayer_SignalLeavingBlockUnlocked( vlc_pcr_delayer_t *delayer, const bl
 
     vlc_list_remove( &block_data->node );
     free( block_data );
+
+    block_ChainLastAppend( &delayer->output_end, block );
+
     return VLC_PCR_DELAYER_SUCCESS;
 }
 
 vlc_pcr_delayer_status_t vlc_pcr_delayer_SignalLeavingBlock( vlc_pcr_delayer_t *delayer,
-                                                             const block_t *block )
+                                                             block_t *block )
 {
-    vlc_pcr_delayer_Lock( delayer );
-    const vlc_pcr_delayer_status_t ret =
-        vlc_pcr_delayer_SignalLeavingBlockUnlocked( delayer, block );
-    vlc_pcr_delayer_Unlock( delayer );
+    pcr_delayer_Lock( delayer );
+    const vlc_pcr_delayer_status_t ret = pcr_delayer_SignalLeavingBlockUnlocked( delayer, block );
+    pcr_delayer_Unlock( delayer );
     return ret;
 }
 
@@ -179,8 +192,8 @@ static pcr_event_t *pcr_event_FindWithDTS( struct vlc_list *pcr_events, vlc_tick
     return NULL;
 }
 
-static vlc_pcr_delayer_status_t
-vlc_pcr_delayer_SignalEnteringBlockUnlocked( vlc_pcr_delayer_t *delayer, const block_t *block )
+static vlc_pcr_delayer_status_t pcr_delayer_SignalEnteringBlockUnlocked( vlc_pcr_delayer_t *delayer,
+                                                                         const block_t *block )
 {
     delayed_block_data_t *bdata = malloc( sizeof( *bdata ) );
     if ( unlikely( bdata == NULL ) )
@@ -195,10 +208,11 @@ vlc_pcr_delayer_SignalEnteringBlockUnlocked( vlc_pcr_delayer_t *delayer, const b
 
     vlc_list_append( &bdata->node, &delayer->delayed_blocks_data );
 
-    // Something went wrong in the delayed block processing unit.
+    vlc_pcr_delayer_status_t status = VLC_PCR_DELAYER_SUCCESS;
+    // Something went wrong in the delaying unit.
     // Exceeding this limit usually means the block was dropped. So in our case, act like it went
     // through.
-    vlc_pcr_delayer_status_t status = VLC_PCR_DELAYER_SUCCESS;
+    // TODO needs to be properly unit-tested.
     if ( delayer->media_time_elapsed > delayer->max_delay )
     {
         delayed_block_data_t *first_bdata = vlc_list_first_entry_or_null(
@@ -221,10 +235,9 @@ vlc_pcr_delayer_status_t vlc_pcr_delayer_SignalEnteringBlock( vlc_pcr_delayer_t 
                                                               const block_t *block )
 {
 
-    vlc_pcr_delayer_Lock( delayer );
-    const vlc_pcr_delayer_status_t ret =
-        vlc_pcr_delayer_SignalEnteringBlockUnlocked( delayer, block );
-    vlc_pcr_delayer_Unlock( delayer );
+    pcr_delayer_Lock( delayer );
+    const vlc_pcr_delayer_status_t ret = pcr_delayer_SignalEnteringBlockUnlocked( delayer, block );
+    pcr_delayer_Unlock( delayer );
     return ret;
 }
 
@@ -237,7 +250,7 @@ struct vlc_pcr_delayer_pair
     vlc_tick_t pcr;  /**< PCR value if any. VLC_TICK_INVALID if none. */
 };
 
-static inline bool vlc_pcr_delayer_pair_IsEmpty( const struct vlc_pcr_delayer_pair *pair )
+static inline bool pcr_delayer_pair_IsEmpty( const struct vlc_pcr_delayer_pair *pair )
 {
     return pair->blocks == NULL && pair->pcr == VLC_TICK_INVALID;
 }
@@ -245,128 +258,111 @@ static inline bool vlc_pcr_delayer_pair_IsEmpty( const struct vlc_pcr_delayer_pa
 /**
  * Extract blocks before the next recorded pcr event.
  *
- * \param _ Self pointer
  * \param out Block chain extract with pcr value bound to it.
  * \param blocks Block chain input
  *
- * \return The blockchain leftover. NULL if the chain was entirely consumed.
  */
-static block_t *vlc_pcr_delayer_BindPCRToDTS( vlc_pcr_delayer_t *delayer,
-                                              block_t *blocks,
-                                              struct vlc_pcr_delayer_pair *out )
+static struct vlc_pcr_delayer_pair pcr_delayer_BindPCRToDTS( vlc_pcr_delayer_t *delayer, bool treat_blocks )
 {
+    block_t *out = treat_blocks ? delayer->output : NULL;
 
     pcr_event_t *pcr_event =
         vlc_list_first_entry_or_null( &delayer->pcr_events, pcr_event_t, node );
     if ( pcr_event == NULL )
     {
-        out->blocks = blocks;
-        goto no_pcr_matched;
+        pcr_delayer_ResetOutput( delayer );
+        return ( struct vlc_pcr_delayer_pair ){ .blocks = out, .pcr = VLC_TICK_INVALID };
     }
 
     if ( pcr_event->max_dts == delayer->last_bound_dts )
     {
-        out->blocks = NULL;
-        out->pcr = pcr_event->pcr;
+        struct vlc_pcr_delayer_pair ret = { .blocks = NULL, .pcr = pcr_event->pcr };
         vlc_list_remove( &pcr_event->node );
         free( pcr_event );
-        return blocks;
+        return ret;
     }
-    out->blocks = blocks;
 
+    struct vlc_pcr_delayer_pair ret = {.blocks = out, .pcr = VLC_TICK_INVALID};
     block_t *prev = NULL;
-    for ( block_t *it = blocks; it != NULL; it = it->p_next )
+    for ( block_t *it = out; it != NULL; it = it->p_next )
     {
-        if ( it->i_dts >= pcr_event->max_dts + delayer->output_dts_difference )
+        if ( it == pcr_event->last_block )
         {
-            out->pcr = pcr_event->pcr;
+            ret.pcr = pcr_event->pcr;
 
-            block_t *ret;
+            block_t *new_output;
             if ( prev != NULL )
             {
                 prev->p_next = NULL;
-                ret = it;
+                new_output = it;
             }
             else
             {
-                ret = it->p_next;
+                new_output = it->p_next;
                 it->p_next = NULL;
             }
 
             delayer->last_bound_dts = pcr_event->max_dts;
             vlc_list_remove( &pcr_event->node );
             free( pcr_event );
+            delayer->output = new_output;
             return ret;
         }
         prev = it;
     }
-
-no_pcr_matched:
-    out->pcr = VLC_TICK_INVALID;
-    return NULL;
+    pcr_delayer_ResetOutput( delayer );
+    return ret;
 }
 
-int vlc_pcr_delayer_SendBlocksAndPCR( vlc_pcr_delayer_t *delayer,
-                                      block_t **chain,
-                                      void *cb_sys,
-                                      int ( *send_blocks_cb )( void *, block_t * ),
-                                      void ( *send_pcr_cb )( void *, vlc_tick_t ) )
+int vlc_pcr_delayer_SendBlocksAndPCR( vlc_pcr_delayer_t *delayer, void *cb_data )
 {
-    assert( chain );
-
-    vlc_pcr_delayer_Lock( delayer );
+    pcr_delayer_Lock( delayer );
     bool is_empty = false;
     while ( !is_empty )
     {
-        struct vlc_pcr_delayer_pair out;
-        *chain = vlc_pcr_delayer_BindPCRToDTS( delayer, *chain, &out );
-        is_empty = vlc_pcr_delayer_pair_IsEmpty( &out );
+        struct vlc_pcr_delayer_pair out = pcr_delayer_BindPCRToDTS( delayer, true );
+        is_empty = pcr_delayer_pair_IsEmpty( &out );
 
         if ( out.blocks != NULL )
         {
-            const int status = send_blocks_cb( cb_sys, out.blocks );
+            const int status = delayer->send_blocks( cb_data, out.blocks );
             if ( status != VLC_SUCCESS )
             {
-                vlc_pcr_delayer_Unlock( delayer );
+                pcr_delayer_Unlock( delayer );
                 return status;
             }
         }
 
         if ( out.pcr != VLC_TICK_INVALID )
         {
-            send_pcr_cb( cb_sys, out.pcr );
+            delayer->send_pcr( cb_data, out.pcr );
         }
     }
-    vlc_pcr_delayer_Unlock( delayer );
+    pcr_delayer_Unlock( delayer );
 
     return VLC_SUCCESS;
 }
 
-void vlc_pcr_delayer_SendBlockedPCR( vlc_pcr_delayer_t *delayer,
-                                     void *cb_sys,
-                                     void ( *send_pcr_cb )( void *, vlc_tick_t ) )
+void vlc_pcr_delayer_SendFrontPCRs( vlc_pcr_delayer_t *delayer, void *cb_data )
 {
-
-    vlc_pcr_delayer_Lock( delayer );
+    pcr_delayer_Lock( delayer );
     bool is_empty = false;
     while ( !is_empty )
     {
-        struct vlc_pcr_delayer_pair out;
-        const block_t *b = vlc_pcr_delayer_BindPCRToDTS( delayer, NULL, &out );
-        is_empty = vlc_pcr_delayer_pair_IsEmpty( &out );
+        struct vlc_pcr_delayer_pair out = pcr_delayer_BindPCRToDTS( delayer, false );
+        is_empty = pcr_delayer_pair_IsEmpty( &out );
 
-        assert( b == NULL );
+        assert( out.blocks == NULL );
 
         if ( out.pcr != VLC_TICK_INVALID )
         {
-            send_pcr_cb( cb_sys, out.pcr );
+            delayer->send_pcr( cb_data, out.pcr );
         }
     }
-    vlc_pcr_delayer_Unlock( delayer );
+    pcr_delayer_Unlock( delayer );
 }
-void vlc_pcr_delayer_Drain( vlc_pcr_delayer_t *delayer,
-                            void *cb_sys,
-                            void ( *send_pcr_cb )( void *, vlc_tick_t ) )
+
+void vlc_pcr_delayer_Drain( vlc_pcr_delayer_t *delayer, void *cb_data )
 {
     delayed_block_data_t *bdata;
     while ( ( bdata = vlc_list_first_entry_or_null( &delayer->delayed_blocks_data,
@@ -374,8 +370,8 @@ void vlc_pcr_delayer_Drain( vlc_pcr_delayer_t *delayer,
     {
         if ( bdata->attached_following_pcr )
         {
-            send_pcr_cb( cb_sys,
-                         __MAX( bdata->attached_following_pcr->pcr, delayer->last_bound_dts ) );
+            delayer->send_pcr(
+                cb_data, __MAX( bdata->attached_following_pcr->pcr, delayer->last_bound_dts ) );
         }
 
         vlc_list_remove( &bdata->node );
@@ -383,7 +379,9 @@ void vlc_pcr_delayer_Drain( vlc_pcr_delayer_t *delayer,
     }
 }
 
-vlc_pcr_delayer_t *vlc_pcr_delayer_New( vlc_tick_t max_delay )
+vlc_pcr_delayer_t *vlc_pcr_delayer_New( vlc_tick_t max_delay,
+                                        int ( *send_blocks )( void *, block_t * ),
+                                        void ( *send_pcr )( void *, vlc_tick_t ) )
 {
     vlc_pcr_delayer_t *delayer = malloc( sizeof( *delayer ) );
     if ( unlikely( delayer == NULL ) )
@@ -394,9 +392,12 @@ vlc_pcr_delayer_t *vlc_pcr_delayer_New( vlc_tick_t max_delay )
     delayer->last_block_end = VLC_TICK_INVALID;
     delayer->last_dts = VLC_TICK_INVALID;
     delayer->last_bound_dts = VLC_TICK_INVALID;
-    delayer->output_dts_difference = 0;
+    delayer->output = NULL;
+    delayer->output_end = &delayer->output;
     vlc_list_init( &delayer->pcr_events );
     vlc_list_init( &delayer->delayed_blocks_data );
+    delayer->send_blocks = send_blocks;
+    delayer->send_pcr = send_pcr;
     vlc_mutex_init( &delayer->lock );
 
     return delayer;

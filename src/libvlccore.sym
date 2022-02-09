@@ -998,5 +998,5 @@ vlc_pcr_delayer_SignalPCR
 vlc_pcr_delayer_SignalEnteringBlock
 vlc_pcr_delayer_SignalLeavingBlock
 vlc_pcr_delayer_SendBlocksAndPCR
-vlc_pcr_delayer_SendBlockedPCR
+vlc_pcr_delayer_SendFrontPCRs
 vlc_pcr_delayer_Drain
