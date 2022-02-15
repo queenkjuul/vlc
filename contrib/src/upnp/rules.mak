@@ -16,7 +16,7 @@ $(TARBALLS)/pupnp-release-$(UPNP_VERSION).tar.gz:
 
 UPNP_CFLAGS := $(CFLAGS) -DUPNP_STATIC_LIB
 UPNP_CXXFLAGS := $(CXXFLAGS) -DUPNP_STATIC_LIB
-CONFIGURE_ARGS := --disable-samples
+CONFIGURE_ARGS := --disable-samples --without-documentation
 
 ifdef HAVE_WIN32
 DEPS_upnp += pthreads $(DEPS_pthreads)
@@ -53,7 +53,7 @@ endif
 
 .upnp: upnp
 	$(RECONF)
-	cd $< && $(HOSTVARS) CFLAGS="$(UPNP_CFLAGS)" CXXFLAGS="$(UPNP_CXXFLAGS)" ./configure --disable-samples --without-documentation $(CONFIGURE_ARGS) $(HOSTCONF)
+	cd $< && $(HOSTVARS) CFLAGS="$(UPNP_CFLAGS)" CXXFLAGS="$(UPNP_CXXFLAGS)" ./configure $(CONFIGURE_ARGS) $(HOSTCONF)
 ifdef HAVE_LINUX
 ifndef HAVE_ANDROID
 	sed -e 's,^Libs\(.*\)-pthread,Libs\1-pthread -lpthread,' \
