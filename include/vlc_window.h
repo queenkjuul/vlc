@@ -402,6 +402,7 @@ typedef struct vlc_window {
         uint32_t crtc;           /**< KMS CRTC identifier */
         int      display_id;     /**< MMAL display ID */
         uint32_t em_context;     /* Emscripten webgl context */
+        const char *canvas;
     } handle;
 
     /** Display server (mandatory)
