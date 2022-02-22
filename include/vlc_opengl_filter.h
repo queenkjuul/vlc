@@ -85,6 +85,7 @@ struct vlc_gl_filter {
     vlc_object_t obj;
     module_t *module;
 
+    vlc_gl_t *gl;
     const struct vlc_gl_api *api;
 
     struct {
