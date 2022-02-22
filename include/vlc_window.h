@@ -400,6 +400,7 @@ typedef struct vlc_window {
         void     *dcomp_visual;  /**<  Win32 direct composition visual */
         uint32_t crtc;           /**< KMS CRTC identifier */
         uint32_t em_context;     /* Emscripten webgl context */
+        const char *canvas;
     } handle;
 
     /** Display server (mandatory)
