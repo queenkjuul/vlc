@@ -103,6 +103,7 @@ struct sys {
 
     float rotation_matrix[16];
     float ar;
+    struct vlc_gl_api api;
 };
 
 static void
@@ -564,6 +565,9 @@ Open(struct vlc_gl_filter *filter, const config_chain_t *config,
         return VLC_EGENERIC;
 
     sys->sampler = NULL;
+
+    vlc_gl_api_Init(&sys->api, filter->gl);
+    filter->api = &sys->api;
 
     int ret;
     if (plane)
