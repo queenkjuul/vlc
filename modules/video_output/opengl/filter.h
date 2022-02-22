@@ -24,9 +24,9 @@
 
 #include <vlc_tick.h>
 
-#include "picture.h"
-
 struct vlc_gl_filter;
+struct vlc_gl_picture;
+struct vlc_gl_format;
 
 #ifdef __cplusplus
 extern "C"
