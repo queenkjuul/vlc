@@ -406,6 +406,8 @@ vout_display_t *vout_display_New(vlc_object_t *,
     const video_format_t *, vlc_video_context *,
     const vout_display_cfg_t *, const char *module,
     const vout_display_owner_t *);
+#define vout_display_New(O, ...) \
+    (vout_display_New)(VLC_OBJECT(O), __VA_ARGS__)
 
 /**
  * Destroys a video output display.
