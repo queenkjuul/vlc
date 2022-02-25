@@ -615,7 +615,7 @@ void vout_SetDisplayViewpoint(vout_display_t *vd,
     }
 }
 
-vout_display_t *vout_display_New(vlc_object_t *parent,
+vout_display_t *(vout_display_New)(vlc_object_t *parent,
                                  const video_format_t *source,
                                  vlc_video_context *vctx,
                                  const vout_display_cfg_t *cfg,
