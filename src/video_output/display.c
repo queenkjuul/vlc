@@ -699,7 +699,7 @@ int vout_SetDisplayFormat(vout_display_t *vd, const video_format_t *fmt,
     return VLC_SUCCESS;
 }
 
-vout_display_t *vout_display_New(vlc_object_t *parent,
+vout_display_t *(vout_display_New)(vlc_object_t *parent,
                                  const video_format_t *source,
                                  vlc_video_context *vctx,
                                  const vout_display_cfg_t *cfg,
