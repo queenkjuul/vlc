@@ -230,6 +230,7 @@ static const char *const ppsz_sout_options[] = {
 static void *Add( sout_stream_t *, const es_format_t * );
 static void  Del( sout_stream_t *, void * );
 static int   Send( sout_stream_t *, void *, block_t * );
+static void  SetPCR(sout_stream_t *, vlc_tick_t );
 
 static void SetAudioEncoderConfig( sout_stream_t *p_stream, transcode_encoder_config_t *p_cfg )
 {
@@ -375,7 +376,7 @@ static int Control( sout_stream_t *p_stream, int i_query, va_list args )
 }
 
 static const struct sout_stream_operations ops = {
-    Add, Del, Send, Control, NULL, NULL,
+    Add, Del, Send, Control, NULL, SetPCR,
 };
 
 /*****************************************************************************
@@ -391,6 +392,13 @@ static int Open( vlc_object_t *p_this )
 
     config_ChainParse( p_stream, SOUT_CFG_PREFIX, ppsz_sout_options,
                    p_stream->p_cfg );
+
+    p_sys->pcr_sync = vlc_pcr_sync_New();
+    if ( unlikely( p_sys->pcr_sync == NULL ) )
+    {
+        free( p_sys );
+        return VLC_ENOMEM;
+    }
 
     /* Audio transcoding parameters */
     transcode_encoder_config_init( &p_sys->aenc_cfg );
@@ -483,6 +491,8 @@ static void Close( vlc_object_t * p_this )
     sout_filters_config_clean( &p_sys->afilters_cfg );
 
     transcode_encoder_config_clean( &p_sys->senc_cfg );
+
+    vlc_pcr_sync_Delete( p_sys->pcr_sync );
 
     free( p_sys );
 }
@@ -655,6 +665,18 @@ static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt )
     if(!success)
         goto error;
 
+    if ( id->b_transcode )
+    {
+        // TODO properly estimate the delay
+        id->pcr_helper = transcode_track_pcr_helper_New( p_sys->pcr_sync, VLC_TICK_FROM_SEC( 2 ) );
+        if ( unlikely( id->pcr_helper == NULL ) )
+            goto error;
+    }
+    else
+    {
+        id->pcr_helper = NULL;
+    }
+
     return id;
 
 error:
@@ -698,6 +720,7 @@ static void Del( sout_stream_t *p_stream, void *_id )
         default:
             break;
         }
+        transcode_track_pcr_helper_Delete(id->pcr_helper);
     }
     else decoder_Destroy( id->p_decoder );
 
@@ -722,6 +745,18 @@ static int Send( sout_stream_t *p_stream, void *_id, block_t *p_buffer )
             goto error;
     }
 
+    sout_stream_sys_t *sys = p_stream->p_sys;
+    if ( p_buffer != NULL )
+    {
+        assert(p_buffer->p_next == NULL);
+        vlc_tick_t dropped_frame_ts;
+        transcode_track_pcr_helper_SignalEnteringFrame(id->pcr_helper, p_buffer, &dropped_frame_ts);
+        if ( dropped_frame_ts != VLC_TICK_INVALID )
+        {
+            sout_StreamSetPCR( p_stream->p_next, dropped_frame_ts );
+        }
+    }
+
     int i_ret;
     switch( id->p_decoder->fmt_in.i_cat )
     {
@@ -741,13 +776,43 @@ static int Send( sout_stream_t *p_stream, void *_id, block_t *p_buffer )
         goto error;
     }
 
-    if( p_out &&
-        sout_StreamIdSend( p_stream->p_next, id->downstream_id, p_out ) )
-        i_ret = VLC_EGENERIC;
+    if ( p_out )
+    {
+        for ( block_t *it = p_out; it != NULL; )
+        {
+            block_t *next = it->p_next;
+            it->p_next = NULL;
+
+            const vlc_tick_t pcr =
+                transcode_track_pcr_helper_SignalLeavingFrame( id->pcr_helper, it );
+            if ( pcr != VLC_TICK_INVALID )
+            {
+                sout_StreamSetPCR( p_stream->p_next, pcr );
+            }
+
+            if ( sout_StreamIdSend( p_stream->p_next, id->downstream_id, it ) != VLC_SUCCESS )
+            {
+                p_buffer = next;
+                goto error;
+            }
+
+            it = next;
+        }
+    }
 
     return i_ret;
 error:
     if( p_buffer )
         block_Release( p_buffer );
     return VLC_EGENERIC;
+}
+
+static void SetPCR( sout_stream_t *stream, vlc_tick_t pcr )
+{
+    sout_stream_sys_t *sys = stream->p_sys;
+    const int status = vlc_pcr_sync_SignalPCR( sys->pcr_sync, pcr );
+    if ( status == VLC_PCR_SYNC_FORWARD_PCR )
+    {
+        sout_StreamSetPCR( stream->p_next, pcr );
+    }
 }
