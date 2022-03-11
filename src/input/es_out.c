@@ -40,6 +40,7 @@
 #include <vlc_list.h>
 #include <vlc_decoder.h>
 #include <vlc_memstream.h>
+#include <vlc_pcr_sync.h>
 #include <vlc_tracer.h>
 
 #include "input_internal.h"
@@ -154,6 +155,8 @@ struct es_out_id_t
 
     vlc_mouse_event mouse_event_cb;
     void* mouse_event_userdata;
+
+    unsigned int pcr_es_id;
 };
 
 typedef struct
@@ -230,6 +233,8 @@ typedef struct
     int         i_prev_stream_level;
 
     unsigned    cc_decoder;
+
+    vlc_pcr_sync_t *pcr_sync;
 
     es_out_t out;
 } es_out_sys_t;
@@ -463,8 +468,21 @@ static void
 decoder_on_block_sent( const vlc_input_decoder_t *dec, vlc_tick_t block_dts, void *userdata )
 {
     (void)dec;
-    (void)block_dts;
-    (void)userdata;
+
+    es_out_id_t *id = userdata;
+    es_out_t *out = id->out;
+    es_out_sys_t *p_sys = container_of( out, es_out_sys_t, out );
+
+    if ( p_sys->pcr_sync == NULL )
+        return;
+
+    vlc_tick_t pcr;
+    while ( ( pcr = vlc_pcr_sync_SignalFrameOutput( p_sys->pcr_sync, id->pcr_es_id, block_dts ) ) !=
+            VLC_TICK_INVALID )
+    {
+        input_thread_private_t *priv = input_priv( p_sys->p_input );
+        sout_InputSetPCR( priv->p_sout, pcr );
+    }
 }
 
 static const struct vlc_input_decoder_callbacks decoder_cbs = {
@@ -555,6 +573,8 @@ es_out_t *input_EsOutNew( input_thread_t *p_input, input_source_t *main_source, 
 
     p_sys->b_active = false;
     p_sys->i_mode   = ES_OUT_MODE_NONE;
+
+    p_sys->pcr_sync = vlc_pcr_sync_New();
 
     vlc_list_init(&p_sys->programs);
     vlc_list_init(&p_sys->es);
@@ -701,6 +721,8 @@ static void EsOutTerminate( es_out_t *out )
     }
 
     p_sys->p_pgrm = NULL;
+
+    vlc_pcr_sync_Delete( p_sys->pcr_sync );
 
     input_item_SetEpgOffline( input_priv(p_sys->p_input)->p_item );
     input_SendEventMetaEpg( p_sys->p_input );
@@ -2257,6 +2279,10 @@ static es_out_id_t *EsOutAdd( es_out_t *out, input_source_t *source, const es_fo
 
     vlc_mutex_lock( &p_sys->lock );
     es_out_id_t *es = EsOutAddLocked( out, source, fmt, NULL );
+    if ( es != NULL && p_sys->pcr_sync != NULL )
+    {
+        vlc_pcr_sync_NewESID( p_sys->pcr_sync, &es->pcr_es_id );
+    }
     vlc_mutex_unlock( &p_sys->lock );
     return es;
 }
@@ -2919,6 +2945,11 @@ static int EsOutSend( es_out_t *out, es_out_id_t *es, block_t *p_block )
                             p_block->i_pts, p_block->i_dts);
     }
 
+    if ( input_priv(p_input)->p_sout != NULL )
+    {
+        vlc_pcr_sync_SignalFrame( p_sys->pcr_sync, es->pcr_es_id, p_block->i_dts );
+    }
+
     struct input_stats *stats = input_priv(p_input)->stats;
     if( stats != NULL )
     {
@@ -3110,6 +3141,11 @@ static void EsOutDelLocked( es_out_t *out, es_out_id_t *es )
                 else
                     EsOutSelect(out, other, false);
             }
+    }
+
+    if ( input_priv( p_sys->p_input )->p_sout != NULL )
+    {
+        vlc_pcr_sync_DelESID( p_sys->pcr_sync, es->pcr_es_id );
     }
 
     EsRelease(es);
@@ -3364,6 +3400,17 @@ static int EsOutVaControlLocked( es_out_t *out, input_source_t *source,
             return VLC_EGENERIC;
         }
 
+        input_thread_private_t *priv = input_priv( p_sys->p_input );
+
+        if ( priv->p_sout != NULL )
+        {
+            const int status = vlc_pcr_sync_SignalPCR( p_sys->pcr_sync, i_pcr );
+            if ( unlikely( status == VLC_ENOMEM ) )
+                return VLC_ENOMEM;
+            if ( status == VLC_PCR_SYNC_FORWARD_PCR )
+                sout_InputSetPCR( priv->p_sout, i_pcr );
+        }
+
         p_pgrm->i_last_pcr = i_pcr;
 
         struct vlc_tracer *tracer = vlc_object_get_tracer( &p_sys->p_input->obj );
@@ -3371,7 +3418,6 @@ static int EsOutVaControlLocked( es_out_t *out, input_source_t *source,
         {
             vlc_tracer_TracePCR(tracer, "DEMUX", "PCR", i_pcr);
         }
-        input_thread_private_t *priv = input_priv(p_sys->p_input);
 
         /* TODO do not use vlc_tick_now() but proper stream acquisition date */
         const bool b_low_delay = priv->b_low_delay;
