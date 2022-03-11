@@ -860,9 +860,13 @@ static int DecoderThread_PlaySout( vlc_input_decoder_t *p_owner, vlc_frame_t *so
 
     vlc_mutex_unlock( &p_owner->lock );
 
+    const vlc_tick_t dts = sout_frame->i_dts;
     /* FIXME --VLC_TICK_INVALID inspect stream_output*/
-    return sout_InputSendBuffer( p_owner->p_sout, p_owner->p_sout_input,
-                                 sout_frame );
+    const int status = sout_InputSendBuffer( p_owner->p_sout, p_owner->p_sout_input, sout_frame );
+
+    p_owner->cbs->on_block_sent( p_owner, dts, p_owner->cbs_userdata );
+
+    return status;
 }
 
 /* This function process a frame for sout

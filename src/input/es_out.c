@@ -459,6 +459,14 @@ decoder_get_attachments(vlc_input_decoder_t *decoder,
     return input_GetAttachments(p_sys->p_input, ppp_attachment);
 }
 
+static void
+decoder_on_block_sent( const vlc_input_decoder_t *dec, vlc_tick_t block_dts, void *userdata )
+{
+    (void)dec;
+    (void)block_dts;
+    (void)userdata;
+}
+
 static const struct vlc_input_decoder_callbacks decoder_cbs = {
     .on_vout_started = decoder_on_vout_started,
     .on_vout_stopped = decoder_on_vout_stopped,
@@ -466,6 +474,7 @@ static const struct vlc_input_decoder_callbacks decoder_cbs = {
     .on_new_video_stats = decoder_on_new_video_stats,
     .on_new_audio_stats = decoder_on_new_audio_stats,
     .get_attachments = decoder_get_attachments,
+    .on_block_sent = decoder_on_block_sent,
 };
 
 /*****************************************************************************
