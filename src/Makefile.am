@@ -82,6 +82,7 @@ pluginsinclude_HEADERS = \
 	../include/vlc_objects.h \
 	../include/vlc_opengl.h \
 	../include/vlc_opengl_interop.h \
+	../include/vlc_pcr_sync.h \
 	../include/vlc_picture.h \
 	../include/vlc_picture_fifo.h \
 	../include/vlc_picture_pool.h \
@@ -403,6 +404,7 @@ libvlccore_la_SOURCES = \
 	misc/filter_chain.c \
 	misc/httpcookies.c \
 	misc/fingerprinter.c \
+	misc/pcr_sync.c \
 	misc/text_style.c \
 	misc/sort.c \
 	misc/subpicture.c \
