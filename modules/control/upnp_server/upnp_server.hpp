@@ -98,6 +98,7 @@ struct intf_sys_t
         UpnpEnableWebserver(false);
         upnp_running.store(false);
     }
+    bool extra_verbose;
 };
 
 /// Transcoded media data blocks are held into that FIFO waiting the http upnp callbacks
