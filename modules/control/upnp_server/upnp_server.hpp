@@ -49,6 +49,9 @@
 #define SERVER_NAME_DESC N_("Upnp server name")
 #define SERVER_NAME_LONGTEXT N_("The client exposed upnp server name")
 
+#define SERVER_FORCE_TRANSCODE_TEXT N_("Force media transcoding")
+#define SERVER_FORCE_TRANSCODE_LONGTEXT N_("Only expose transcoded media profiles to clients")
+
 struct intf_sys_t
 {
 

@@ -556,7 +556,8 @@ int open(vlc_object_t *p_this)
     p_sys->upnp = vlc::wrap_cptr(UpnpInstanceWrapper::get(p_this),
                                  [](UpnpInstanceWrapper *p_upnp) { p_upnp->release(); });
 
-    p_sys->obj_hierarchy = cds::init_hierarchy(*p_ml);
+    const bool force_transcode = var_InheritBool(p_this, SERVER_PREFIX "force-transcode");
+    p_sys->obj_hierarchy = cds::init_hierarchy(*p_ml, force_transcode);
 
     if (!init_upnp(p_intf))
     {

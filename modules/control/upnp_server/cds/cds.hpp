@@ -48,7 +48,7 @@ std::tuple<unsigned, Object::ExtraId> parse_id(const std::string &id);
 
 /// Initialize the Upnp server objects hierarchy.
 /// This needs to be called once at the startup of the server.
-std::vector<std::unique_ptr<Object>> init_hierarchy(vlc_medialibrary_t &ml);
+std::vector<std::unique_ptr<Object>> init_hierarchy(vlc_medialibrary_t &ml, bool only_transcode);
 
 } // namespace cds
 
