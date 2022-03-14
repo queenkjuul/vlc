@@ -111,6 +111,8 @@ struct intf_sys_t
     // `--upnp-server-accept-risk` option
     bool accept_risk;
 
+    bool extra_verbose;
+
     // We need to create a separate threaded context to properly display the privacy warning dialog
     // at server initialization without blocking the `Open` callback.
     vlc_thread_t init_thread;
