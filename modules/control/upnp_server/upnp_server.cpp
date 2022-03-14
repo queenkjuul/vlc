@@ -577,6 +577,7 @@ int open( vlc_object_t* p_this )
 
     p_sys->obj_hierarchy = cds::init_hierarchy( *p_ml );
     p_sys->accept_risk = var_InheritBool( p_this, SERVER_PREFIX "accept-risk" );
+    const bool force_transcode = var_InheritBool( p_this, SERVER_PREFIX "force-transcode" );
 
     // In the case the accept risk option is passed, we know the user does not need privacy warnings
     // and basically should know what he's doing. Calling the module with this option initiate the

@@ -31,6 +31,8 @@
 
 #include "Object.hpp"
 
+#include <cassert>
+
 namespace cds
 {
 /// This is a dynamic object representing a medialibrary media
@@ -40,6 +42,9 @@ class Item : public Object
 {
     vlc_medialibrary_t& m_medialib;
 
+    /// Don't display native media representations.
+    static bool s_force_transcoding;
+
     public:
     Item( const int64_t id, vlc_medialibrary_t& ) noexcept;
     void dump_metadata( xml::Element&, const Object::ExtraId&, const ClientProfile& ) const final;
@@ -48,6 +53,12 @@ class Item : public Object
                                         const vlc_ml_media_t& media,
                                         vlc_medialibrary_t& ml,
                                         const ClientProfile& );
+
+    static void force_transcoding() noexcept
+    {
+        assert( !s_force_transcoding );
+        s_force_transcoding = true;
+    }
 };
 } // namespace cds
 
