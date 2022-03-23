@@ -34,6 +34,7 @@
 #include <vlc_common.h>
 #include <vlc_plugin.h>
 #include <vlc_sout.h>
+#include <vlc_tracer.h>
 #include <vlc_spu.h>
 
 #include "transcode.h"
@@ -603,10 +604,12 @@ static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt )
                 id->pf_drift_validate = ValidateDrift;
                 id->callback_data = p_stream;
             }
+            id->strid = "AUDIO";
             break;
         case VIDEO_ES:
             id->p_filterscfg = &p_sys->vfilters_cfg;
             id->p_enccfg = &p_sys->venc_cfg;
+            id->strid = "VIDEO";
             break;
         case SPU_ES:
             id->p_filterscfg = NULL;
@@ -616,6 +619,7 @@ static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt )
             if( p_sys->b_master_sync )
                 id->pf_get_master_drift = GetMasterDrift;
             id->callback_data = p_stream;
+            id->strid = "SPU";
             break;
         default:
             break;
@@ -706,6 +710,20 @@ static void Del( sout_stream_t *p_stream, void *_id )
     DeleteSoutStreamID( id );
 }
 
+static inline void
+trace( sout_stream_t *stream, sout_stream_id_sys_t *id, const block_t *buffer, const char *way )
+{
+    struct vlc_tracer *tracer = vlc_object_get_tracer( &stream->obj );
+    if ( tracer != NULL && buffer != NULL )
+    {
+        vlc_tracer_TraceStreamDTS( tracer, "TRANSCODE", id->strid, way, buffer->i_pts,
+                                   buffer->i_dts );
+        vlc_tracer_Trace( tracer, VLC_TRACE( "type", "TRANSCODE" ), VLC_TRACE( "id", id->strid ),
+                          VLC_TRACE( "stream", way ),
+                          VLC_TRACE( "len", NS_FROM_VLC_TICK( buffer->i_length ) ), VLC_TRACE_END );
+    }
+}
+
 static int Send( sout_stream_t *p_stream, void *_id, block_t *p_buffer )
 {
     sout_stream_id_sys_t *id = (sout_stream_id_sys_t *)_id;
@@ -714,10 +732,15 @@ static int Send( sout_stream_t *p_stream, void *_id, block_t *p_buffer )
     if( id->b_error )
         goto error;
 
+
+    trace(p_stream, id, p_buffer, "IN");
     if( !id->b_transcode )
     {
         if( id->downstream_id )
+        {
+            trace(p_stream, id, p_buffer, "OUT");
             return sout_StreamIdSend( p_stream->p_next, id->downstream_id, p_buffer );
+        }
         else
             goto error;
     }
@@ -741,6 +764,8 @@ static int Send( sout_stream_t *p_stream, void *_id, block_t *p_buffer )
         goto error;
     }
 
+    for (const block_t *it = p_out; it != NULL; it = it->p_next)
+        trace(p_stream, id, it, "OUT");
     if( p_out &&
         sout_StreamIdSend( p_stream->p_next, id->downstream_id, p_out ) )
         i_ret = VLC_EGENERIC;

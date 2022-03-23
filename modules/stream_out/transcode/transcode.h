@@ -145,6 +145,8 @@ struct sout_stream_id_sys_t
     /* Sync */
     date_t          next_input_pts; /**< Incoming calculated PTS */
     vlc_tick_t      i_drift; /** how much buffer is ahead of calculated PTS */
+
+    const char *strid;
 };
 
 struct decoder_owner
