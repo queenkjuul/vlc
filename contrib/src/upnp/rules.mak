@@ -54,11 +54,9 @@ endif
 .upnp: upnp
 	$(RECONF)
 	cd $< && $(HOSTVARS) CFLAGS="$(UPNP_CFLAGS)" CXXFLAGS="$(UPNP_CXXFLAGS)" ./configure $(UPNP_CONF) $(HOSTCONF)
-ifdef HAVE_LINUX
 ifndef HAVE_ANDROID
 	sed -e 's,^Libs\(.*\)-pthread,Libs\1-pthread -lpthread,' \
 		-i $</libupnp.pc
-endif
 endif
 	cd $< && $(MAKE) install
 	touch $@
