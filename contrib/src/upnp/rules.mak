@@ -37,8 +37,8 @@ endif
 upnp: pupnp-release-$(UPNP_VERSION).tar.gz .sum-upnp
 	$(UNPACK)
 ifdef HAVE_WIN32
-	$(APPLY) $(SRC)/upnp/libupnp-pthread-w32-force.patch
-	$(APPLY) $(SRC)/upnp/libupnp-win32-exports.patch
+	#$(APPLY) $(SRC)/upnp/libupnp-pthread-w32-force.patch
+	#$(APPLY) $(SRC)/upnp/libupnp-win32-exports.patch
 	$(APPLY) $(SRC)/upnp/libupnp-win32.patch
 	$(APPLY) $(SRC)/upnp/libupnp-win64.patch
 	$(APPLY) $(SRC)/upnp/windows-version-inet.patch
