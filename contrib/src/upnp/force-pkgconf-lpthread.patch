@@ -1,0 +1,25 @@
+From 41ffebb2f9207bb6f5234bba38f43a171d73070d Mon Sep 17 00:00:00 2001
+From: Alaric Senat <dev.asenat@posteo.net>
+Date: Sat, 26 Mar 2022 13:40:08 +0100
+Subject: [PATCH] force lpthread
+
+---
+ libupnp.pc.in | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/libupnp.pc.in b/libupnp.pc.in
+index 8c6fc22f..3eebd085 100644
+--- a/libupnp.pc.in
++++ b/libupnp.pc.in
+@@ -6,7 +6,7 @@ includedir=@includedir@
+ Name: libupnp
+ Description: Linux SDK for UPnP Devices
+ Version: @VERSION@
+-Libs: @PTHREAD_CFLAGS@ @PTHREAD_LIBS@ -L${libdir} -lupnp -lixml
++Libs: @PTHREAD_CFLAGS@ -lpthread @PTHREAD_LIBS@ -L${libdir} -lupnp -lixml
+ Libs.private: @OPENSSL_LIBS@
+ Cflags: @PTHREAD_CFLAGS@ -I${includedir}/upnp
+ 
+-- 
+2.35.1
+
