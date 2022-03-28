@@ -1,37 +1,33 @@
-From 6334d9726e409cec3c095a8764044aee7624032c Mon Sep 17 00:00:00 2001
+From 32d44beab80bed4766ff2c25dc77132d754650a7 Mon Sep 17 00:00:00 2001
 From: Alaric Senat <dev.asenat@posteo.net>
-Date: Wed, 10 Mar 2021 16:07:08 +0100
-Subject: win32 exports
+Date: Mon, 28 Mar 2022 17:19:55 +0200
+Subject: [PATCH] libupnp win32 exports
 
 ---
- configure.ac  | 11 +++++++++++
- libupnp.pc.in |  4 ++--
- 2 files changed, 13 insertions(+), 2 deletions(-)
+ configure.ac  | 7 +++++++
+ libupnp.pc.in | 2 +-
+ 2 files changed, 8 insertions(+), 1 deletion(-)
 
 diff --git a/configure.ac b/configure.ac
-index 2a73ca1..a92b3dc 100644
+index 35c060cc..76f48486 100644
 --- a/configure.ac
 +++ b/configure.ac
-@@ -759,6 +759,17 @@ AX_PTHREAD(
+@@ -509,6 +509,13 @@ AX_PTHREAD(
  CC="$PTHREAD_CC"
  CFLAGS="$PTHREAD_CFLAGS $CFLAGS"
  LIBS="$PTHREAD_LIBS $LIBS"
 +
-+PC_CFLAGS="$PTHREAD_CFLAGS"
-+
 +# WIN32 specific
 +if test "$ac_cv_win32" = "yes"; then
 +WIN32_LIBS="-liphlpapi -lws2_32"
-+PC_CFLAGS="$PC_CFLAGS -DUPNP_STATIC_LIB"
 +fi
-+AC_SUBST(PC_CFLAGS)
 +AC_SUBST(WIN32_LIBS)
 +
  #
  # Determine if pthread_rwlock_t is available
  #
 diff --git a/libupnp.pc.in b/libupnp.pc.in
-index 8c6fc22..fa93393 100644
+index 8c6fc22f..ccdaf871 100644
 --- a/libupnp.pc.in
 +++ b/libupnp.pc.in
 @@ -6,7 +6,7 @@ includedir=@includedir@
@@ -39,11 +35,10 @@ index 8c6fc22..fa93393 100644
  Description: Linux SDK for UPnP Devices
  Version: @VERSION@
 -Libs: @PTHREAD_CFLAGS@ @PTHREAD_LIBS@ -L${libdir} -lupnp -lixml
++Libs: -L${libdir} -lupnp -lixml @PTHREAD_CFLAGS@ @PTHREAD_LIBS@ @WIN32_LIBS@
  Libs.private: @OPENSSL_LIBS@
--Cflags: @PTHREAD_CFLAGS@ -I${includedir}/upnp
-+Libs: -L${libdir} -lupnp -lixml @PTHREAD_LIBS@ @WIN32_LIBS@
-+Cflags: @PC_CFLAGS@ -I${includedir}/upnp
+ Cflags: @PTHREAD_CFLAGS@ -I${includedir}/upnp
  
 -- 
-2.29.2
+2.35.1
 

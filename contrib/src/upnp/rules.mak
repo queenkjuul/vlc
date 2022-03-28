@@ -37,16 +37,15 @@ endif
 upnp: pupnp-release-$(UPNP_VERSION).tar.gz .sum-upnp
 	$(UNPACK)
 ifdef HAVE_WIN32
-	#$(APPLY) $(SRC)/upnp/libupnp-pthread-w32-force.patch
+	$(APPLY) $(SRC)/upnp/libupnp-pthread-force.patch
 	$(APPLY) $(SRC)/upnp/libupnp-win32-exports.patch
-	$(APPLY) $(SRC)/upnp/force-pkgconf-lpthread.patch
 	$(APPLY) $(SRC)/upnp/libupnp-win32.patch
 	$(APPLY) $(SRC)/upnp/libupnp-win64.patch
 	$(APPLY) $(SRC)/upnp/windows-version-inet.patch
 endif
 ifdef HAVE_LINUX
 ifndef HAVE_ANDROID
-	$(APPLY) $(SRC)/upnp/force-pkgconf-lpthread.patch
+	$(APPLY) $(SRC)/upnp/libupnp-pthread-force.patch
 endif
 endif
 ifdef HAVE_ANDROID
@@ -61,4 +60,6 @@ endif
 	$(RECONF)
 	cd $< && $(HOSTVARS) CFLAGS="$(UPNP_CFLAGS)" CXXFLAGS="$(UPNP_CXXFLAGS)" ./configure $(UPNP_CONF) $(HOSTCONF)
 	cd $< && $(MAKE) install
+	cd $< && cat libupnp.pc.in
+	cd $< && cat libupnp.pc
 	touch $@
