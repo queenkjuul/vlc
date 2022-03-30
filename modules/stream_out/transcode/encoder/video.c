@@ -348,7 +348,7 @@ int transcode_encoder_video_test( encoder_t *p_encoder,
     es_format_Copy( p_enc_wanted_in, &p_encoder->fmt_in );
     video_format_FixRgb( &p_enc_wanted_in->video ); /* set masks when RGB */
 
-    vlc_encoder_Destroy(p_encoder);
+    //vlc_encoder_Destroy(p_encoder);
 
     return p_module != NULL ? VLC_SUCCESS : VLC_EGENERIC;
 }
