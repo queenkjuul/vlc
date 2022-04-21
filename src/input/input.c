@@ -364,13 +364,14 @@ input_thread_t *input_Create( vlc_object_t *p_parent,
     else
         priv->stats = NULL;
 
-    priv->p_es_out_display = input_EsOutNew( p_input, priv->master, priv->rate,
-                                             priv->type );
-    if( !priv->p_es_out_display )
-    {
-        Destroy( p_input );
-        return NULL;
-    }
+    //priv->p_es_out_display = input_EsOutNew( p_input, priv->master, priv->rate,
+    //                                         priv->type );
+    //if( !priv->p_es_out_display )
+    //{
+    //    Destroy( p_input );
+    //    return NULL;
+    //}
+    priv->p_es_out_display = NULL;
     priv->p_es_out = NULL;
 
     return p_input;
@@ -1279,6 +1280,22 @@ static int Init( input_thread_t * p_input )
     if( InitSout( p_input ) )
         goto error;
 #endif
+
+    assert( priv->p_es_out_display == NULL );
+    //if ( priv->p_sout != NULL )
+    //{
+        priv->p_es_out_display =
+            input_EsOutSoutNew( p_input, priv->master, priv->rate, priv->type, priv->p_sout );
+    //}
+    //else
+    //{
+    //    priv->p_es_out_display = input_EsOutNew( p_input, priv->master, priv->rate, priv->type );
+    //}
+
+    if ( priv->p_es_out_display == NULL )
+    {
+        goto error;
+    }
 
     /* Create es out */
     priv->p_es_out = input_EsOutTimeshiftNew( p_input, priv->p_es_out_display, priv->rate );

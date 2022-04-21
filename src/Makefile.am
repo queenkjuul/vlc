@@ -267,7 +267,7 @@ libvlccore_la_SOURCES = \
 	input/decoder_helpers.c \
 	input/demux.c \
 	input/demux_chained.c \
-	input/es_out.c \
+	input/es_out_sout.c \
 	input/es_out_source.c \
 	input/es_out_timeshift.c \
 	input/packetizer.c \
