@@ -270,6 +270,8 @@ libvlccore_la_SOURCES = \
 	input/es_out.c \
 	input/es_out_source.c \
 	input/es_out_timeshift.c \
+	input/packetizer.c \
+	input/packetizer.h \
 	input/input.c \
 	input/info.h \
 	input/meta.c \
