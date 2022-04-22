@@ -93,6 +93,8 @@ int main(void)
 
     for (size_t i = 0; i < 21; i++) {
         size_t align = (size_t)1 << i;
+        if (align % sizeof(void*) != 0)
+            continue;
 
         test_posix_memalign(align, 0);
         test_posix_memalign(align, 1);
