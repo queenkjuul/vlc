@@ -962,8 +962,8 @@ static void DecoderThread_ProcessSout( vlc_input_decoder_t *p_owner, vlc_frame_t
             }
 
             /* FIXME --VLC_TICK_INVALID inspect stream_output*/
-            if ( sout_InputSendBuffer( p_owner->p_sout, p_owner->p_sout_input, sout_frame ) ==
-                 VLC_EGENERIC )
+            if ( sout_InputSendBuffer( p_owner->p_sout, p_owner->p_sout_input, sout_frame ) !=
+                 VLC_SUCCESS )
             {
                 msg_Err( p_dec, "cannot continue streaming due to errors with codec %4.4s",
                                 (char *)&p_owner->fmt.i_codec );
