@@ -7,6 +7,10 @@ ifeq ($(call need_pkg,"libpng >= 1.5.4"),)
 PKGS_FOUND += png
 endif
 
+ifdef HAVE_EMSCRIPTEN
+HOSTVARS += CFLAGS="$(CFLAGS) -pthread"
+endif
+
 $(TARBALLS)/libpng-$(PNG_VERSION).tar.xz:
 	$(call download_pkg,$(PNG_URL),png)
 

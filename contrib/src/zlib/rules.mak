@@ -7,6 +7,10 @@ ifeq ($(call need_pkg,"zlib"),)
 PKGS_FOUND += zlib
 endif
 
+ifdef HAVE_EMSCRIPTEN
+CFLAGS+="-pthread"
+endif
+
 ifeq ($(shell uname),Darwin) # zlib tries to use libtool on Darwin
 ifdef HAVE_CROSS_COMPILE
 ZLIB_CONFIG_VARS=CHOST=$(HOST)

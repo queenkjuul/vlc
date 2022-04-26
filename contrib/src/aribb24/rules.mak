@@ -25,6 +25,10 @@ aribb24: aribb24-$(ARIBB24_VERSION).tar.gz .sum-aribb24
 
 DEPS_aribb24 = png
 
+ifdef HAVE_EMSCRIPTEN
+CFLAGS+="-pthread"
+endif
+
 .aribb24: aribb24
 	$(REQUIRE_GPL)
 	$(REQUIRE_GNUV3)
