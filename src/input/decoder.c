@@ -201,6 +201,19 @@ static inline vlc_input_decoder_t *dec_get_owner( decoder_t *p_dec )
 }
 
 /**
+ * When the input decoder is being used only for packetizing (happen in stream output
+ * configuration.), there's no need to spawn a decoder thread. The input_decoder is then considered
+ * *synchronous*.
+ *
+ * @retval true When no decoder thread will be spawned.
+ * @retval false When a decoder thread will be spawned.
+ */
+static inline bool vlc_input_decoder_IsSynchronous( const vlc_input_decoder_t *dec )
+{
+    return dec->p_sout != NULL;
+}
+
+/**
  * Load a decoder module
  */
 static int LoadDecoder( decoder_t *p_dec, bool b_packetizer,
@@ -868,12 +881,6 @@ static inline void DecoderUpdatePreroll( vlc_tick_t *pi_preroll, const vlc_frame
 static int DecoderThread_PlaySout( vlc_input_decoder_t *p_owner, vlc_frame_t *sout_frame )
 {
     assert( !sout_frame->p_next );
-
-    vlc_mutex_lock( &p_owner->lock );
-
-    DecoderWaitUnblock( p_owner );
-
-    vlc_mutex_unlock( &p_owner->lock );
 
     /* FIXME --VLC_TICK_INVALID inspect stream_output*/
     return sout_InputSendBuffer( p_owner->p_sout, p_owner->p_sout_input,
@@ -2118,6 +2125,11 @@ decoder_New( vlc_object_t *p_parent, const struct vlc_input_decoder_cfg *cfg )
             p_owner->error = true;
         }
     }
+    if ( vlc_input_decoder_IsSynchronous( p_owner ) )
+    {
+        // Skip decoder thread spawning in synchronous scenario.
+        return p_owner;
+    }
 #endif
 
     /* Spawn the decoder thread */
@@ -2218,7 +2230,8 @@ void vlc_input_decoder_Delete( vlc_input_decoder_t *p_owner )
     }
     vlc_mutex_unlock( &p_owner->lock );
 
-    vlc_join( p_owner->thread, NULL );
+    if ( !vlc_input_decoder_IsSynchronous( p_owner ) )
+        vlc_join( p_owner->thread, NULL );
 
     /* */
     if( p_owner->cc.b_supported )
@@ -2241,6 +2254,14 @@ void vlc_input_decoder_Delete( vlc_input_decoder_t *p_owner )
 void vlc_input_decoder_Decode( vlc_input_decoder_t *p_owner, vlc_frame_t *frame,
                                bool b_do_pace )
 {
+    if ( vlc_input_decoder_IsSynchronous( p_owner ) )
+    {
+        // DecoderThread's fifo should be empty as no decoder thread is running.
+        assert( vlc_fifo_IsEmpty( p_owner->p_fifo ) );
+        DecoderThread_ProcessInput( p_owner, frame );
+        return;
+    }
+
     vlc_fifo_Lock( p_owner->p_fifo );
     if( !b_do_pace )
     {
@@ -2309,6 +2330,13 @@ bool vlc_input_decoder_IsEmpty( vlc_input_decoder_t * p_owner )
  */
 void vlc_input_decoder_Drain( vlc_input_decoder_t *p_owner )
 {
+    if ( vlc_input_decoder_IsSynchronous( p_owner ) )
+    {
+        // Nothing to drain, the decoder thread fifo is unused and the data is synchronously
+        // forwarded to stream output.
+        return;
+    }
+
     vlc_fifo_Lock( p_owner->p_fifo );
     p_owner->b_draining = true;
     vlc_fifo_Signal( p_owner->p_fifo );
@@ -2321,6 +2349,12 @@ void vlc_input_decoder_Drain( vlc_input_decoder_t *p_owner )
  */
 void vlc_input_decoder_Flush( vlc_input_decoder_t *p_owner )
 {
+    if ( vlc_input_decoder_IsSynchronous( p_owner ) )
+    {
+        DecoderThread_Flush( p_owner );
+        return;
+    }
+
     enum es_format_category_e cat = p_owner->dec.fmt_in.i_cat;
 
     vlc_fifo_Lock( p_owner->p_fifo );
@@ -2502,6 +2536,11 @@ void vlc_input_decoder_ChangeDelay( vlc_input_decoder_t *owner, vlc_tick_t delay
 
 void vlc_input_decoder_StartWait( vlc_input_decoder_t *p_owner )
 {
+    if ( vlc_input_decoder_IsSynchronous( p_owner ) )
+    {
+        return;
+    }
+
     assert( !p_owner->b_waiting );
 
     vlc_mutex_lock( &p_owner->lock );
@@ -2514,6 +2553,11 @@ void vlc_input_decoder_StartWait( vlc_input_decoder_t *p_owner )
 
 void vlc_input_decoder_StopWait( vlc_input_decoder_t *p_owner )
 {
+    if ( vlc_input_decoder_IsSynchronous( p_owner ) )
+    {
+        return;
+    }
+
     assert( p_owner->b_waiting );
 
     vlc_mutex_lock( &p_owner->lock );
@@ -2524,6 +2568,11 @@ void vlc_input_decoder_StopWait( vlc_input_decoder_t *p_owner )
 
 void vlc_input_decoder_Wait( vlc_input_decoder_t *p_owner )
 {
+    if ( vlc_input_decoder_IsSynchronous( p_owner ) )
+    {
+        // Nothing to wait for. There's no decoder thread running.
+        return;
+    }
     assert( p_owner->b_waiting );
 
     vlc_mutex_lock( &p_owner->lock );
