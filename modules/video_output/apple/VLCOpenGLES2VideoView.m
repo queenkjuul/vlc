@@ -54,7 +54,9 @@
 @interface VLCOpenGLES2VideoView : UIView {
     vlc_gl_t *_gl;
 
+    EAGLSharegroup *_eaglShareGroup;
     EAGLContext *_eaglContext;
+    EAGLContext *_privateContext;
     EAGLContext *_previousEaglContext;
     CAEAGLLayer *_layer;
 
@@ -70,6 +72,11 @@
     GLuint _frameBuffer;
 
     struct vlc_gl_api _api;
+    vlc_thread_t _thread;
+    vlc_sem_t _semReady;
+    CFRunLoopRef _runloop;
+
+    CADisplayLink *_displayLink;
 }
 
 - (id)initWithFrame:(CGRect)frame gl:(vlc_gl_t*)gl;
@@ -78,6 +85,8 @@
 - (void)presentRenderbuffer;
 - (void)didMoveToWindow;
 - (void)detachFromWindow;
+- (void)run;
+- (void)renderNext;
 @end
 
 static void vlc_dispatch_sync(void (^block_function)())
@@ -146,6 +155,12 @@ static void Resize(vlc_gl_t *gl, unsigned width, unsigned height)
      * automatically from the main thread queue. */
 }
 
+static void RenderNext(vlc_gl_t *gl)
+{
+    VLCOpenGLES2VideoView *view = (__bridge VLCOpenGLES2VideoView *)gl->sys;
+    [view renderNext];
+}
+
 static void Close(vlc_gl_t *gl)
 {
     /* Transfer ownership back from VLC to ARC so that it can be released. */
@@ -154,6 +169,20 @@ static void Close(vlc_gl_t *gl)
     /* We need to detach because the superview has a reference to our view. */
     [view detachFromWindow];
 }
+
+static void* Thread(void *opaque)
+{
+    VLCOpenGLES2VideoView *view = (__bridge VLCOpenGLES2VideoView *)opaque;
+    [view run];
+
+    return NULL;
+}
+
+static void SourcePerform(void *info) { (void)info; }
+static CFRunLoopSourceContext source_context =
+{ .perform = SourcePerform };
+
+
 
 /*****************************************************************************
  * Our UIView object
@@ -179,15 +208,22 @@ static void Close(vlc_gl_t *gl)
 
     _eaglEnabled = YES;
     _bufferNeedReset = YES;
+    _gl_attached = NO;
 
     vlc_mutex_init(&_mutex);
     vlc_cond_init(&_gl_attached_wait);
+
+    _eaglShareGroup = [[EAGLSharegroup alloc] init];
 
     /* The following creates a new OpenGL ES context with the API version we
      * need. If there is already an active context created by another OpenGL
      * provider we cache it and restore analog to the
      * makeCurrent/releaseCurrent pattern used through-out the class */
-    _eaglContext = [[EAGLContext alloc] initWithAPI:kEAGLRenderingAPIOpenGLES2];
+    _eaglContext = [[EAGLContext alloc] initWithAPI:kEAGLRenderingAPIOpenGLES2
+                                         sharegroup:_eaglShareGroup];
+    _privateContext = [[EAGLContext alloc] initWithAPI:kEAGLRenderingAPIOpenGLES2
+                                         sharegroup:_eaglShareGroup];
+
     _previousEaglContext = nil;
 
     _layer = (CAEAGLLayer *)self.layer;
@@ -228,6 +264,12 @@ static void Close(vlc_gl_t *gl)
                                                  name:UIApplicationDidBecomeActiveNotification
                                                object:nil];
 
+    _displayLink = [CADisplayLink displayLinkWithTarget:self
+                                               selector:@selector(update:)];
+    [_displayLink addToRunLoop:[NSRunLoop currentRunLoop]
+                       forMode:NSRunLoopCommonModes];
+
+
     /* Setup the usual vlc_gl_t callbacks before loading the API since we need
      * the get_proc_address symbol and a current context. */
     static const struct vlc_gl_operations gl_ops =
@@ -235,13 +277,28 @@ static void Close(vlc_gl_t *gl)
         .make_current = MakeCurrent,
         .release_current = ReleaseCurrent,
         .resize = Resize,
+        .render_next = RenderNext,
         .swap = Swap,
         .get_proc_address = GetSymbol,
         .close = Close,
     };
     gl->ops = &gl_ops;
 
+    vlc_sem_init(&_semReady, 0);
+    @synchronized(self)
+    {
+        // TODO
+        if (vlc_clone(&_thread, Thread, (__bridge void*)self) != VLC_SUCCESS)
+            return nil;
+    }
+    vlc_sem_wait(&_semReady);
+    
     return self;
+}
+
+- (void)update:(CADisplayLink *)sender
+{
+
 }
 
 - (BOOL)attachToWindow:(vlc_window_t*)wnd
@@ -280,8 +337,6 @@ static void Close(vlc_gl_t *gl)
 {
     /* Flush the OpenGL pipeline before leaving. */
     vlc_mutex_lock(&_mutex);
-    if (_eaglEnabled)
-        [self flushEAGLLocked];
     _eaglEnabled = NO;
     vlc_mutex_unlock(&_mutex);
 
@@ -315,10 +370,22 @@ static void Close(vlc_gl_t *gl)
         assert(!_gl_attached);
         [self removeFromSuperview];
     });
+
+    CFRunLoopPerformBlock(_runloop, kCFRunLoopDefaultMode, ^{
+        CFRunLoopStop(_runloop);
+    });
+    CFRunLoopWakeUp(_runloop);
+
+    vlc_join(_thread, NULL);
 }
 
 - (void)didMoveToWindow
 {
+    /* We might have lost the previous window and the view will not reside
+     * in any other window until this function is called again. */
+    if (self.window == nil)
+        return;
+
     self.contentScaleFactor = self.window.screen.scale;
 
     vlc_mutex_lock(&_mutex);
@@ -348,7 +415,7 @@ static void Close(vlc_gl_t *gl)
     glGenRenderbuffers(1, &_renderBuffer);
     glBindRenderbuffer(GL_RENDERBUFFER, _renderBuffer);
 
-    [_eaglContext renderbufferStorage:GL_RENDERBUFFER fromDrawable:_layer];
+    [_privateContext renderbufferStorage:GL_RENDERBUFFER fromDrawable:_layer];
 
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, _renderBuffer);
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
@@ -380,6 +447,7 @@ static void Close(vlc_gl_t *gl)
         return NO;
     }
 
+    /*
     BOOL resetBuffers = NO;
 
 
@@ -389,21 +457,20 @@ static void Close(vlc_gl_t *gl)
         resetBuffers = YES;
     }
 
-    _gl_attached = YES;
-
-    vlc_mutex_unlock(&_mutex);
 
     if (resetBuffers && ![self doResetBuffers:_gl])
     {
         [self releaseCurrent];
         return NO;
-    }
+    }*/
+    _gl_attached = YES;
+
     return YES;
 }
 
 - (void)releaseCurrent
 {
-    vlc_mutex_lock(&_mutex);
+    vlc_mutex_assert(&_mutex);
     assert(_gl_attached);
     _gl_attached = NO;
     [EAGLContext setCurrentContext:_previousEaglContext];
@@ -412,9 +479,72 @@ static void Close(vlc_gl_t *gl)
     vlc_mutex_unlock(&_mutex);
 }
 
+- (void)run
+{
+    [EAGLContext setCurrentContext:_privateContext];
+    _runloop = CFRunLoopGetCurrent();
+
+    [self doResetBuffers:_gl];
+
+    if (_gl->owner.cbs->init != NULL)
+        _gl->owner.cbs->init(_gl, _gl->owner.sys);
+    vlc_sem_post(&_semReady);
+    [EAGLContext setCurrentContext:nil];
+
+
+    /* We need to inject a source within the CFRunLoop to avoi the call to
+     * CFRunLoopRunInMode to think the runloop is empty and return the value
+     * kCFRunLoopRunFinished instead of waiting for an event. */
+    CFRunLoopSourceRef source =
+        CFRunLoopSourceCreate(NULL, 0, &source_context);
+
+    CFRunLoopAddSource(_runloop, source, kCFRunLoopDefaultMode);
+    CFRunLoopRun();
+    CFRunLoopRemoveSource(_runloop, source, kCFRunLoopDefaultMode);
+    CFRelease(source);
+
+    glDeleteFramebuffers(1, &_frameBuffer);
+    glDeleteRenderbuffers(1, &_renderBuffer);
+    glFinish();
+
+    [EAGLContext setCurrentContext:nil];
+}
+
+- (void)renderNext
+{
+    CFRunLoopPerformBlock(_runloop, kCFRunLoopDefaultMode, ^{
+        vlc_mutex_lock(&_mutex);
+        [EAGLContext setCurrentContext:_privateContext];
+
+        if (_bufferNeedReset)
+        {
+            _bufferNeedReset = NO;
+            [self doResetBuffers:_gl];
+        }
+        vlc_gl_ReportRender(_gl);
+
+        [EAGLContext setCurrentContext:nil];
+        vlc_mutex_unlock(&_mutex);
+    });
+    CFRunLoopWakeUp(_runloop);
+}
+
 - (void)presentRenderbuffer
 {
-    [_eaglContext presentRenderbuffer:GL_RENDERBUFFER];
+#if 0
+    CFRunLoopPerformBlock(_runloop, kCFRunLoopDefaultMode, ^{
+        vlc_mutex_lock(&_mutex);
+        //[EAGLContext setCurrentContext:_privateContext];
+
+        //[EAGLContext setCurrentContext:nil];
+        vlc_mutex_unlock(&_mutex);
+    });
+    CFRunLoopWakeUp(_runloop);
+#endif
+        vlc_mutex_lock(&_mutex);
+        [_privateContext presentRenderbuffer:GL_RENDERBUFFER];
+        vlc_mutex_unlock(&_mutex);
+
 }
 
 - (void)layoutSubviews
