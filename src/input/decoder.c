@@ -2573,9 +2573,10 @@ void vlc_input_decoder_Wait( vlc_input_decoder_t *p_owner )
         // Nothing to wait for. There's no decoder thread running.
         return;
     }
-    assert( p_owner->b_waiting );
 
     vlc_mutex_lock( &p_owner->lock );
+    assert( p_owner->b_waiting );
+
     while( !p_owner->b_has_data )
     {
         /* Don't need to lock p_owner->paused since it's only modified by the
