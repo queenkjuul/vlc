@@ -26,6 +26,8 @@
 #include <vlc_filter.h>
 #include <vlc_plugin.h>
 
+#include "../../video_output/emscripten/common.h"
+
 #include <emscripten/emscripten.h>
 #include <emscripten/em_js.h>
 #include <emscripten/val.h>
@@ -36,6 +38,15 @@ struct chroma_sys_t
 
 static picture_t* UploadSurface(filter_t* filter, picture_t* src)
 {
+    auto vctx = static_cast<webcodec_context*>(
+            vlc_video_context_GetPrivate( filter->vctx_out, VLC_VIDEO_CONTEXT_WEBCODEC) );
+    auto dst = picture_pool_Wait( vctx->pool );
+    if (dst == nullptr)
+    {
+        picture_Release(src);
+        return nullptr;
+    }
+
     auto size = 0u;
     for ( auto i = 0; i < src->i_planes; ++i )
         size += src->p[i].i_lines * src->p[i].i_pitch;
@@ -71,23 +82,17 @@ static picture_t* UploadSurface(filter_t* filter, picture_t* src)
     init.set( "visibleRect", visibleRect );
 
     auto frame = emscripten::val::global("VideoFrame").new_( buffer, init );
-    uintptr_t pictureId = EM_ASM_INT({return Module['pictureId']});
+    auto pictureIdx = PictureContextPrivate(dst->context)->pictureIdx;
     EM_ASM({
-               let frame = Emval.toValue($0);
-               Module.msgChannel.port2.postMessage({
-                   customCmd: 'displayFrame',
-                   pictureId: Module.pictureId,
-                   frame: frame
-               });
-               Module.pictureId = Module.pictureId + 1;
-    }, frame.as_handle());
-    auto dst = filter_NewPicture( filter );
-    if (dst == nullptr)
-    {
-        picture_Release(src);
-        return nullptr;
-    }
-    dst->p_sys = reinterpret_cast<void*>( pictureId );
+        let frame = Emval.toValue($0);
+        Module.msgChannel.port2.postMessage({
+            customCmd: 'displayFrame',
+            pictureId: $1,
+            frame: frame
+        });
+    }, frame.as_handle(), pictureIdx);
+
+
     picture_CopyProperties( dst, src );
     picture_Release(src);
     return dst;
@@ -95,7 +100,9 @@ static picture_t* UploadSurface(filter_t* filter, picture_t* src)
 
 static void vlc_webcodec_CloseChroma(filter_t* filter)
 {
-
+    auto vctx = static_cast<webcodec_context*>(
+                vlc_video_context_GetPrivate(filter->vctx_out, VLC_VIDEO_CONTEXT_WEBCODEC ) );
+    picture_pool_Release(vctx->pool);
 }
 
 static const struct vlc_filter_operations filter_ops = {
@@ -117,8 +124,7 @@ static int vlc_webcodec_OpenChroma(filter_t* filter)
         return VLC_EGENERIC;
 
     filter->ops = &filter_ops;
-    EM_ASM({Module.pictureId = 0;});
-    return VLC_SUCCESS;
+    return webcodec_CreatePool(filter->vctx_out, &filter->fmt_out.video);
 }
 
 vlc_module_begin()
