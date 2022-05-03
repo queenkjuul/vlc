@@ -59,24 +59,23 @@ struct decoder_sys_t
 extern "C"
 {
 
-EMSCRIPTEN_KEEPALIVE picture_t* createAndQueuePicture(decoder_t* dec, int pictureId,
-                                                      int64_t timestamp)
+EMSCRIPTEN_KEEPALIVE int32_t createAndQueuePicture(decoder_t* dec, int64_t timestamp)
 {
     auto sys = static_cast<decoder_sys_t*>( dec->p_sys );
     if ( decoder_UpdateVideoOutput( dec, sys->vctx ) )
     {
         msg_Err( dec, "Failure during UpdateVideoOutput! FIXME" );
-        return NULL;
+        return -1;
     }
-
-    auto pic = decoder_NewPicture(dec);
+    auto vctx = static_cast<webcodec_context*>(
+                vlc_video_context_GetPrivate(sys->vctx, VLC_VIDEO_CONTEXT_WEBCODEC) );
+    auto pic = picture_pool_Wait(vctx->pool);
     if (pic == nullptr)
-        return nullptr;
+        return -1;
     pic->date = VLC_TICK_FROM_US(timestamp);
     pic->b_progressive = true;
-    pic->p_sys = reinterpret_cast<void*>( static_cast<uintptr_t>( pictureId ) );
     decoder_QueueVideo(dec, pic);
-    return pic;
+    return PictureContextPrivate(pic->context)->pictureIdx;
 }
 
 }
@@ -102,18 +101,15 @@ EM_ASYNC_JS(void, declareCallbacks, (), {
         await p;
     }
 
-    Module.pictureId = 0;
     globalThis.Module.boundOutputCb = async function(frame) {
-        Module.pictureId = (Module.pictureId + 1);
-        _createAndQueuePicture(globalThis.Module.webCodecCtx, Module.pictureId,
-                    frame.timestamp);
+        let picIdx = _createAndQueuePicture(globalThis.Module.webCodecCtx, frame.timestamp);
         if (Module.voutPort === undefined)
             await getVoutMessagePort();
-        console.log('Posting frame', Module.pictureId);
+        console.log('Posting frame', picIdx);
         Module.voutPort.postMessage({
             customCmd: 'displayFrame',
             frame: frame,
-            pictureId: Module.pictureId,
+            pictureId: picIdx,
           }, [frame]);
     };
     globalThis.Module.boundErrorCb = function(err) {
@@ -346,6 +342,9 @@ static int Open( vlc_object_t* obj )
             vlc_video_context_GetPrivate(sys->vctx, VLC_VIDEO_CONTEXT_WEBCODEC));
     new (vctxPrivate) webcodec_context();
 
+    if ( webcodec_CreatePool(sys->vctx, &dec->fmt_out.video) != VLC_SUCCESS )
+        return VLC_EGENERIC;
+
     if ( vlc_clone( &sys->th, &WebcodecDecodeWorker, dec, 0 ) != VLC_SUCCESS )
     {
         msg_Err( obj, "Failed to create webcodec thread" );
@@ -363,6 +362,9 @@ static void Close( decoder_t* dec )
 {
     auto sys = static_cast<decoder_sys_t*>( dec->p_sys );
     sys->decoder.call<void>("close");
+    auto vctx = static_cast<webcodec_context*>(
+                vlc_video_context_GetPrivate(sys->vctx, VLC_VIDEO_CONTEXT_WEBCODEC ) );
+    picture_pool_Release(vctx->pool);
     delete sys;
 }
 
