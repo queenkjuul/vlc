@@ -27,6 +27,7 @@
 
 #include <vlc_threads.h>
 #include <vlc_picture.h>
+#include <vlc_picture_pool.h>
 
 #include <emscripten/html5_webgl.h>
 //#include <emscripten/val.h>
@@ -36,11 +37,21 @@
 struct webcodec_context
 {
     pthread_t decoder_worker;
+    picture_pool_t* pool;
+    picture_t* pictures[WEBCODEC_MAX_PICTURES];
 };
 
-struct webcodec_picture_sys_t
+struct webcodec_picture_ctx
 {
-    int pictureId;
+    picture_context_t context;
+    uint32_t pictureIdx;
 };
+
+int webcodec_CreatePool( vlc_video_context* vctx, const video_format_t* fmt );
+
+static inline webcodec_picture_ctx* PictureContextPrivate( picture_context_t* picCtx )
+{
+    return container_of( picCtx, webcodec_picture_ctx, context );
+}
 
 #endif // EMSCRIPTEN_COMMON_H
