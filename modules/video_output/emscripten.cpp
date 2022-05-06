@@ -191,7 +191,9 @@ static int Open (vlc_gl_t *gl, unsigned width, unsigned height, const struct vlc
         function onVoutMessage(msg) {
             let data = msg['data'];
             if (data.customCmd == 'commitFrame') {
-                Module.canvasCtx.drawImage(data['bitmap'], 0, 0);
+                let bmp = data['bitmap'];
+                Module.canvasCtx.drawImage(bmp, 0, 0);
+                bmp.close();
             }
         }
         let w = Module.PThread.pthreads[$0].worker;
