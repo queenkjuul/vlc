@@ -172,7 +172,6 @@ EM_JS(emscripten::EM_VAL, initDecoderJS, (void* decoder), {
             let picIdx = data['pictureIdx'];
             let frame = Module.framesReady[picIdx];
             Module.framesReady[picIdx] = undefined;
-            console.log('Posting frame', picIdx, 'from webcodec', frame);
             Module.voutPort.postMessage({
                 customCmd: 'displayFrame',
                 frame: frame,
