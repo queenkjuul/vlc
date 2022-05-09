@@ -429,7 +429,3 @@ vlc_module_begin ()
     add_submodule()
         set_callback_dec_device(OpenDecDevice, 1)
 vlc_module_end ()
-
-EMSCRIPTEN_BINDINGS(vlc_picture) {
-    emscripten::class_<picture_t>("picture_t");
-}
