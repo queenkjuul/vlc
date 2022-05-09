@@ -126,10 +126,6 @@ EM_JS(void, initGlConvWorker, (int maxPictures), {
             return Module.glConv.lastFrame.frame;
         }
         let p = new Promise((resolve, reject) => {
-                  if (Module.glConv.frameResolver)
-                        {
-                            alert('Duplicated interop promise');
-                        }
             Module.glConv.frameResolver = resolve;
             Module.msgChannel.port1.postMessage({
                 'customCmd': 'sendFrame',
@@ -137,10 +133,8 @@ EM_JS(void, initGlConvWorker, (int maxPictures), {
             });
 
         });
-        console.log('Waiting for frame ', pictureIdx, ' in interop');
         let frame = await p;
         Module.glConv.frameResolver = undefined;
-        console.log('Received frame ', pictureIdx, ' in interop');
         if (Module.glConv.lastFrame.frame)
             Module.glConv.lastFrame.frame.close();
         Module.glConv.lastFrame.frame = frame;
