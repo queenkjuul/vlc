@@ -277,10 +277,10 @@ EM_JS(emscripten::EM_VAL, initDecoderJS, (void* decoder, emscripten::EM_VAL decC
                 frame.close();
                 return;
             }
-            let p = await getPictureAsync(Module.webCodecCtx);
-            let picIdx = _queuePicture(Module.webCodecCtx, p, frame.timestamp);
             if (Module.voutPort === undefined)
                 await getVoutMessagePort();
+            let p = await getPictureAsync(Module.webCodecCtx);
+            let picIdx = _queuePicture(Module.webCodecCtx, p, frame.timestamp);
             if ( Module.framesReady[picIdx] ) {
                 /*
                  *  If we end up overriding a frame, it means it was dropped
