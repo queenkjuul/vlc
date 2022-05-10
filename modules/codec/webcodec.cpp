@@ -77,7 +77,6 @@ EMSCRIPTEN_KEEPALIVE int32_t queuePicture(void* ctx, picture_t* pic, int64_t tim
 {
     auto dec = static_cast<decoder_t*>(ctx);
     pic->date = VLC_TICK_FROM_US(timestamp);
-    msg_Dbg(dec, "Picture timestamp: %" PRId64 "\n", timestamp);
     pic->b_progressive = true;
     decoder_QueueVideo(dec, pic);
     return PictureContextPrivate(pic->context)->pictureIdx;
