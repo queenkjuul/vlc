@@ -252,9 +252,7 @@ EM_JS(emscripten::EM_VAL, initDecoderJS, (void* decoder, emscripten::EM_VAL decC
 
         if (msg['customCmd'] == 'getDecoderWorkerMessagePort') {
             Module.msgChannel = new MessageChannel();
-            Module.msgChannel.port1.onmessage = function(msg) {
-                onDecoderWorkerMessage(msg);
-            };
+            Module.msgChannel.port1.onmessage = onDecoderWorkerMessage;
             self.postMessage({
                 customCmd: 'transferMessagePort',
                 targetThread: msg['replyTo'],
