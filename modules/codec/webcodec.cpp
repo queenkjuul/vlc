@@ -400,7 +400,7 @@ static int Open( vlc_object_t* obj )
     {
         msg_Err( obj, "Can't get VideoDecoder type, webcodec is probably not "
                       "supported on this browser" );
-        return false;
+        return VLC_EGENERIC;
     }
     auto sys = std::make_unique<decoder_sys_t>();
     dec->p_sys = sys.get();
