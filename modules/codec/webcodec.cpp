@@ -168,7 +168,7 @@ static emval getDecoderConfig( decoder_t* dec, bool includeExtraData )
     decoderConfig.set( "codedHeight", dec->fmt_in.video.i_height );
     decoderConfig.set( "displayAspectWidth", dec->fmt_in.video.i_visible_width );
     decoderConfig.set( "displayAspectHeight", dec->fmt_in.video.i_visible_height );
-    decoderConfig.set( "optimizeForLatency", true );
+    decoderConfig.set( "optimizeForLatency", false );
     if ( includeExtraData )
     {
         if ( dec->fmt_in.i_extra > 0 )
