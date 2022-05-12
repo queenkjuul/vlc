@@ -215,14 +215,23 @@ EM_JS(emscripten::EM_VAL, initDecoderJS, (void* decoder, emscripten::EM_VAL decC
         await p;
     }
 
-    function onDecoderWorkerMessage(msg) {
+    async function onDecoderWorkerMessage(msg) {
         const data = msg['data'];
         if (data['customCmd'] == 'decode') {
             let block = data['block'];
             _decodeBlock( block );
             _releaseBlock(block);
         } else if ( data['customCmd'] == 'flush' ) {
-            Module.decoder.flush();
+            await Module.decoder.flush();
+            for ( let i = 0; i < Module.framesReady.length; ++i ) {
+                if (Module.framesReady[i]) {
+                    Module.framesReady[i].close();
+                    Module.framesReady[i] = undefined;
+                }
+            }
+            Module.msgChannel.port1.postMessage({
+                customCmd: 'onFlushCompleted'
+            });
         } else if ( data['customCmd'] == 'close' ) {
             Module.decoder.close();
         }
@@ -365,6 +374,12 @@ EM_ASYNC_JS(void, initDecoderWorkerMessagePort, (decoder_t* dec), {
         });
     });
     await workerMessagePortPromise;
+    Module.decoderWorkerPort.onmessage = (e) => {
+        let data = e['data'];
+        if (data['customCmd'] == 'onFlushCompleted') {
+            Module.flushPromiseResolver();
+        }
+    };
 })
 
 static int Decode( decoder_t* dec, block_t* block )
@@ -379,14 +394,21 @@ static int Decode( decoder_t* dec, block_t* block )
     return VLCDEC_SUCCESS;
 }
 
-static void Flush( decoder_t* dec )
-{
-    initDecoderWorkerMessagePort(dec);
-    EM_ASM({
+EM_ASYNC_JS(void, flushAsync, (), {
+    let p = new Promise((r) => {
+        Module.flushPromiseResolver = r;
         Module.decoderWorkerPort.postMessage({
             customCmd: 'flush'
         });
     });
+    await p;
+    Module.flushPromiseResolver = undefined;
+});
+
+static void Flush( decoder_t* dec )
+{
+    initDecoderWorkerMessagePort(dec);
+    flushAsync();
 }
 
 static int Open( vlc_object_t* obj )
