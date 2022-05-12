@@ -253,9 +253,9 @@ EM_JS(emscripten::EM_VAL, initDecoderJS, (void* decoder, emscripten::EM_VAL decC
         function getPicture(dec, resolve) {
             let pic = _tryGetPictureFromPool(dec);
             if (!pic) {
-                setTimeout( function(d, r) {
-                      getPicture(d, r);
-                  }, 1, dec, resolve );
+                setTimeout( function() {
+                      getPicture(dec, resolve);
+                  }, 1);
                 return;
             }
             resolve(pic);
