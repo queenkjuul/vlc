@@ -60,6 +60,8 @@ tc_emscripten_op_allocate_textures(const struct vlc_gl_interop *interop, GLuint 
 
 EM_ASYNC_JS(void, bindVideoFrame, (int pictureIdx), {
     let frame = await Module.awaitFrame(pictureIdx);
+    if (!frame)
+        return;
 
     let glCtx = Module.glCtx;
     glCtx.texImage2D(glCtx.TEXTURE_2D, 0, glCtx.RGBA, frame.codedWidth, frame.codedHeight, 0,
