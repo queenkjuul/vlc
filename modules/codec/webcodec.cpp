@@ -190,6 +190,18 @@ EM_JS(emscripten::EM_VAL, initDecoderJS, (void* decoder, emscripten::EM_VAL decC
             let picIdx = data['pictureIdx'];
             let frame = Module.framesReady[picIdx];
             Module.framesReady[picIdx] = undefined;
+            if (!frame) {
+                /* We may receive a late message after a flush, in which case
+                 * we still need to reply to the interop, but we don't have
+                 * anything to provide to it
+                 */
+                Module.voutPort.postMessage({
+                    customCmd: 'displayFrame',
+                    frame: undefined,
+                    pictureId: picIdx
+                });
+                return;
+            }
             Module.voutPort.postMessage({
                 customCmd: 'displayFrame',
                 frame: frame,
