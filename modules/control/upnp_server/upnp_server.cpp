@@ -576,6 +576,12 @@ int open( vlc_object_t* p_this )
     p_sys->ml_callback_handle = { ml_callback_handle, std::bind( vlc_ml_event_unregister_callback,
                                                                  p_ml, std::placeholders::_1 ) };
 
+    auto res = vlc_ml_set_folder_public(p_sys->p_ml, "file:///var/home/asenat/Music/public");
+    assert(res == VLC_SUCCESS);
+    res = vlc_ml_set_folder_public(p_sys->p_ml, "file:///var/home/asenat/Videos/public");
+
+    assert(res == VLC_SUCCESS);
+
     p_sys->upnp = vlc::wrap_cptr( UpnpInstanceWrapper::get( p_this ),
                                   []( UpnpInstanceWrapper* p_upnp ) { p_upnp->release(); } );
 

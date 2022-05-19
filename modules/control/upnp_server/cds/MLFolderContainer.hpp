@@ -101,7 +101,7 @@ class MLFolderContainer : public Container
                                         const ClientProfile& profile ) const final
     {
         const vlc_ml_query_params_t query_params = { nullptr, params.requested, params.offset,
-                                                     VLC_ML_SORTING_DEFAULT, true };
+                                                     VLC_ML_SORTING_DEFAULT, true, true };
         assert( extra.has_value() );
 
         const auto folder = ml::Folder::get( ml, extra->ml_id );

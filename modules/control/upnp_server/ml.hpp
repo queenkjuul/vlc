@@ -68,14 +68,16 @@ struct List : Object
         size_t res;
         int status;
 
+        const vlc_ml_query_params_t params = { nullptr, 0, 0, VLC_ML_SORTING_DEFAULT, false, true };
+
         if ( id.has_value() )
-            status = vlc_ml_list( &ml, CountQuery, nullptr, id.value(), &res );
+            status = vlc_ml_list( &ml, CountQuery, &params, id.value(), &res );
         else if ( CountQuery == VLC_ML_COUNT_ARTISTS )
-            status = vlc_ml_list( &ml, CountQuery, nullptr, (int)false, &res );
+            status = vlc_ml_list( &ml, CountQuery, &params, (int)false, &res );
         else if ( CountQuery == VLC_ML_COUNT_ENTRY_POINTS )
-            status = vlc_ml_list( &ml, CountQuery, nullptr, (int)false, &res );
+            status = vlc_ml_list( &ml, CountQuery, &params, (int)false, &res );
         else
-            status = vlc_ml_list( &ml, CountQuery, nullptr, &res );
+            status = vlc_ml_list( &ml, CountQuery, &params, &res );
         return status == VLC_SUCCESS ? res : 0;
     }
 
@@ -86,6 +88,8 @@ struct List : Object
     {
         ListType* res;
         int status;
+
+        assert( params->b_public_only );
 
         if ( id.has_value() )
             status = vlc_ml_list( &ml, ListQuery, params, id.value(), &res );

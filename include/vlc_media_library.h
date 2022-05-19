@@ -422,6 +422,7 @@ struct vlc_ml_query_params_t
     uint32_t i_offset;
     vlc_ml_sorting_criteria_t i_sort;
     bool b_desc;
+    bool b_public_only;
 };
 
 enum vlc_ml_get_queries
@@ -547,6 +548,8 @@ enum vlc_ml_control
     VLC_ML_REMOVE_FOLDER,           /**< arg1: mrl (const char*)  res: can't fail */
     VLC_ML_BAN_FOLDER,              /**< arg1: mrl (const char*)  res: can't fail */
     VLC_ML_UNBAN_FOLDER,            /**< arg1: mrl (const char*)  res: can't fail */
+    VLC_ML_SET_FOLDER_PUBLIC,       /**< arg1: mrl (const char*)  res: can't fail */
+    VLC_ML_SET_FOLDER_PRIVATE,      /**< arg1: mrl (const char*)  res: can't fail */
     VLC_ML_IS_INDEXED,              /**< arg1: mrl (const char*) arg2 (out): bool*;       res: can fail */
     /**
      * Reload a specific folder, or all.
@@ -947,7 +950,8 @@ static inline vlc_ml_query_params_t vlc_ml_query_params_create()
         .i_nbResults = 0,
         .i_offset = 0,
         .i_sort = VLC_ML_SORTING_DEFAULT,
-        .b_desc = false
+        .b_desc = false,
+        .b_public_only = false,
     };
 }
 
@@ -969,6 +973,16 @@ static inline int vlc_ml_ban_folder( vlc_medialibrary_t* p_ml, const char* psz_f
 static inline int vlc_ml_unban_folder( vlc_medialibrary_t* p_ml, const char* psz_folder )
 {
     return vlc_ml_control( p_ml, VLC_ML_UNBAN_FOLDER, psz_folder );
+}
+
+static inline int vlc_ml_set_folder_public(vlc_medialibrary_t* p_ml, const char* psz_folder)
+{
+    return vlc_ml_control( p_ml, VLC_ML_SET_FOLDER_PUBLIC, psz_folder );
+}
+
+static inline int vlc_ml_set_folder_private(vlc_medialibrary_t* p_ml, const char* psz_folder)
+{
+    return vlc_ml_control( p_ml, VLC_ML_SET_FOLDER_PRIVATE, psz_folder );
 }
 
 static inline int vlc_ml_is_indexed( vlc_medialibrary_t* p_ml,

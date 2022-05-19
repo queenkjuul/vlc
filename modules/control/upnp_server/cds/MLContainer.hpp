@@ -79,7 +79,7 @@ class MLContainer : public Container
                                         const Object::ExtraId& extra, const ClientProfile& profile ) const final
     {
         const vlc_ml_query_params_t query_params = { nullptr, params.requested, params.offset,
-                                                     VLC_ML_SORTING_DEFAULT, true };
+                                                     VLC_ML_SORTING_DEFAULT, true, true };
         opt::Option<int64_t> ml_id;
         if ( extra.has_value() )
             ml_id = static_cast<int64_t>( extra->ml_id );
@@ -127,7 +127,7 @@ class MLContainer : public Container
     {
         xml::Document& doc = dest.owner;
 
-        dest.set_attribute( "childCount", std::to_string( album.i_nb_tracks ).c_str() );
+        //dest.set_attribute( "childCount", std::to_string( album.i_nb_tracks ).c_str() );
 
         const auto album_thumbnail_url = utils::album_thumbnail_url( album );
         dest.add_children(
@@ -146,7 +146,7 @@ class MLContainer : public Container
     {
         xml::Document& doc = dest.owner;
 
-        dest.set_attribute( "childCount", std::to_string( artist.i_nb_album ).c_str() );
+        //dest.set_attribute( "childCount", std::to_string( artist.i_nb_album ).c_str() );
 
         dest.add_children(
             doc.create_element( "upnp:class",
@@ -160,7 +160,7 @@ class MLContainer : public Container
     {
         xml::Document& doc = dest.owner;
 
-        dest.set_attribute( "childCount", std::to_string( genre.i_nb_tracks ).c_str() );
+        //dest.set_attribute( "childCount", std::to_string( genre.i_nb_tracks ).c_str() );
 
         dest.add_children(
             doc.create_element( "upnp:class",
@@ -175,7 +175,7 @@ class MLContainer : public Container
         xml::Document& doc = dest.owner;
 
         const std::string nb_episodes = std::to_string( show.i_nb_episodes );
-        dest.set_attribute( "childCount", nb_episodes.c_str() );
+        //dest.set_attribute( "childCount", nb_episodes.c_str() );
         dest.add_children(
             doc.create_element( "upnp:class",
                                 doc.create_text_node( "object.container.playlistContainer" ) ),
