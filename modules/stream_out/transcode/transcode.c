@@ -737,8 +737,7 @@ static int Send( sout_stream_t *p_stream, void *_id, block_t *p_buffer )
         goto error;
     }
 
-    if( p_out &&
-        sout_StreamIdSend( p_stream->p_next, id->downstream_id, p_out ) )
+    if (p_out && sout_StreamIdSend(p_stream->p_next, id->downstream_id, p_out))
         i_ret = VLC_EGENERIC;
 
     if (i_ret != VLC_SUCCESS)
