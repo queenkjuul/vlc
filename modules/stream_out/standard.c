@@ -31,8 +31,12 @@
 #include <vlc_plugin.h>
 #include <vlc_sout.h>
 
+#include <vlc_tracer.h>
 #include <vlc_network.h>
 #include <vlc_url.h>
+#include <vlc_memstream.h>
+#include <vlc_block.h>
+#include "sdp_helper.h"
 
 /*****************************************************************************
  * Module descriptor
@@ -102,30 +106,61 @@ typedef struct
     sout_mux_t           *p_mux;
     session_descriptor_t *p_session;
     bool                  synchronous;
+
+    const char *type;
 } sout_stream_sys_t;
+
+typedef struct {
+    void *id;
+    const char *type;
+} sout_stream_id_sys_t;
 
 static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt )
 {
     sout_stream_sys_t *p_sys = p_stream->p_sys;
-    return sout_MuxAddStream( p_sys->p_mux, p_fmt );
+    static const char * const TYPES[] = {
+        [SPU_ES] = "SPU",
+        [VIDEO_ES] = "VIDEO",
+        [AUDIO_ES] = "AUDIO"
+    };
+    sout_stream_id_sys_t *id = malloc(sizeof(*id));
+    id->type = TYPES[p_fmt->i_cat];
+    id->id = sout_MuxAddStream( p_sys->p_mux, p_fmt ) ;
+    return id;
 }
 
 static void Del( sout_stream_t *p_stream, void *id )
 {
     sout_stream_sys_t *p_sys = p_stream->p_sys;
-    sout_MuxDeleteStream( p_sys->p_mux, (sout_input_t*)id );
+    sout_stream_id_sys_t * sid =  id;
+    sout_MuxDeleteStream( p_sys->p_mux, (sout_input_t*)sid->id );
+    free(sid);
 }
 
 static int Send( sout_stream_t *p_stream, void *id, block_t *p_buffer )
 {
     sout_stream_sys_t *p_sys = p_stream->p_sys;
-    return sout_MuxSendBuffer( p_sys->p_mux, (sout_input_t*)id, p_buffer );
+
+    sout_stream_id_sys_t *sid = id;
+    struct vlc_tracer * t = vlc_object_get_tracer(VLC_OBJECT(p_stream));
+    for (const block_t *i = p_buffer; i != NULL; i = i->p_next)
+    {
+        vlc_tracer_TraceStreamDTS(t, "STD",  sid->type, "IN", i->i_pts, i->i_dts);
+    }
+    return sout_MuxSendBuffer( p_sys->p_mux, (sout_input_t*)sid->id, p_buffer );
+}
+
+static void SetPCR(sout_stream_t *p_stream, vlc_tick_t pcr)
+{
+    struct vlc_tracer * t = vlc_object_get_tracer(VLC_OBJECT(p_stream));
+    vlc_tracer_TracePCR( t, "STD", "PCR", pcr );
 }
 
 static void Flush( sout_stream_t *p_stream, void *id )
 {
     sout_stream_sys_t *p_sys = p_stream->p_sys;
-    sout_MuxFlush( p_sys->p_mux, (sout_input_t*)id );
+    sout_stream_id_sys_t *sid = id;
+    sout_MuxFlush( p_sys->p_mux, (sout_input_t*)sid->id );
 }
 
 static const char *getMuxFromAlias( const char *psz_alias )
@@ -252,7 +287,7 @@ static int Control(sout_stream_t *stream, int query, va_list args)
 }
 
 static const struct sout_stream_operations ops = {
-    Add, Del, Send, Control, Flush, NULL,
+    Add, Del, Send, Control, Flush, SetPCR,
 };
 
 /*****************************************************************************
