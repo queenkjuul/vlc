@@ -148,4 +148,12 @@ vlc_gl_HasExtension(
     return false;
 }
 
+static inline bool vlc_gl_IsWebGL(struct vlc_gl_extension_vt *vt)
+{
+    const GLubyte *version = vt->GetString(GL_VERSION);
+    if (!version)
+        return false;
+    return strcasestr((const char*)version, "WebGL") != NULL;
+}
+
 #endif
