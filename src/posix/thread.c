@@ -129,7 +129,29 @@ void vlc_threads_setup (libvlc_int_t *p_libvlc)
 {
     (void) p_libvlc;
 }
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+typedef struct s_vlc_clone_data {
+    void *(*entry) (void *);
+    void *data;
+} vlc_clone_data_t;
 
+void vlc_js_runner(void *args) { VLC_UNUSED(args); }
+
+void *vlc_js_entry(void *args) {
+    vlc_clone_data_t *data = (vlc_clone_data_t *)args;
+    /*
+      don't simulate infinite loop to allow running
+      the pthread entry point.
+    */
+    emscripten_set_main_loop_arg(vlc_js_runner, args, -1, 0);
+    void *ret = data->entry(data->data);
+    emscripten_cancel_main_loop();
+    free(data);
+    return ret;
+}
+
+#endif
 static int vlc_clone_attr (vlc_thread_t *th, pthread_attr_t *attr,
                            void *(*entry) (void *), void *data)
 {
@@ -176,8 +198,19 @@ static int vlc_clone_attr (vlc_thread_t *th, pthread_attr_t *attr,
     ret = pthread_attr_setstacksize (attr, VLC_STACKSIZE);
     assert (ret == 0); /* fails iff VLC_STACKSIZE is invalid */
 #endif
-
+#ifdef __EMSCRIPTEN__
+    vlc_clone_data_t *vlc_js_data = (vlc_clone_data_t *) malloc(sizeof(vlc_clone_data_t));
+    if (unlikely(vlc_js_data == NULL)) {
+        ret = EAGAIN;
+        goto error;
+    }
+    vlc_js_data->entry = entry;
+    vlc_js_data->data = data;
+    ret = pthread_create(&th->handle, attr, vlc_js_entry, vlc_js_data);
+#else
     ret = pthread_create(&th->handle, attr, entry, data);
+#endif
+error:
     pthread_sigmask (SIG_SETMASK, &oldset, NULL);
     pthread_attr_destroy (attr);
     return ret;
