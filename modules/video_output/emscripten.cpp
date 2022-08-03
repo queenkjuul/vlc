@@ -188,7 +188,7 @@ static int Open (vlc_gl_t *gl, unsigned width, unsigned height)
                 bmp.close();
             }
         }
-        let w = Module.PThread.pthreads[$0].worker;
+        let w = Module.PThread.pthreads[$0];
         w.addEventListener('message', function (e) {
             let msg = e['data'];
             if (msg.customCmd == 'getVoutMessagePort') {
