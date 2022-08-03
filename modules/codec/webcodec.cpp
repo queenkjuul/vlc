@@ -358,7 +358,7 @@ static void* WebcodecDecodeWorker( void* arg )
     auto vctxPrivate = static_cast<webcodec_context*>(
             vlc_video_context_GetPrivate(sys->vctx, VLC_VIDEO_CONTEXT_WEBCODEC));
     vctxPrivate->decoder_worker = pthread_self();
-    emscripten_set_main_loop(mainloop_tick, 1, true);
+
     return NULL;
 }
 
