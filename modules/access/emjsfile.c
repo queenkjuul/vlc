@@ -27,13 +27,14 @@
 #include <vlc_plugin.h>
 #include <vlc_access.h>
 #include <vlc_threads.h>
+#include <stdalign.h>
 
 #include <emscripten.h>
 
 typedef struct
 {
     uint64_t offset;
-    uint64_t js_file_size;
+    uint64_t alignas(8) js_file_size;
 } access_sys_t;
 
 static ssize_t Read (stream_t *p_access, void *buffer, size_t size) {
