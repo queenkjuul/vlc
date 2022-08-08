@@ -396,6 +396,7 @@ EM_ASYNC_JS(void, initDecoderWorkerMessagePort, (decoder_t* dec), {
 
 static int Decode( decoder_t* dec, block_t* block )
 {
+    if ( !block ) return VLCDEC_SUCCESS;
     initDecoderWorkerMessagePort(dec);
     EM_ASM({
         Module.decoderWorkerPort.postMessage({
