@@ -28,5 +28,5 @@
 unsigned long vlc_thread_id(void)
 {
     static_assert(sizeof(pthread_t) <= sizeof(unsigned long),"invalid pthread_t size");
-    return pthread_self();
+    return (unsigned long) pthread_self();
 }
