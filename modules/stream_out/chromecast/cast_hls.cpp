@@ -10,6 +10,7 @@
 #include <vlc_sout.h>
 
 #include <memory>
+#include <algorithm>
 
 #define SOUT_CFG_PREFIX "sout-chromecast-"
 
@@ -20,6 +21,8 @@ struct SoutStreamId
     void *next_id = nullptr;
     vlc_frame_t *chain = nullptr;
     vlc_frame_t **chain_end = &chain;
+
+    bool is_flushed = false;
 };
 
 struct SoutStreamSys
@@ -29,9 +32,12 @@ struct SoutStreamSys
 
     sout_stream_t *hls = nullptr;
 
+    std::vector<std::unique_ptr<SoutStreamId>> tracks = {};
+
     bool is_video_supported = true;
     bool start_command_sent = false;
     bool error = false;
+    bool is_flushing = false;
 
     vlc::threads::mutex lock = {};
 };
@@ -49,14 +55,23 @@ static void *Add( sout_stream_t *stream, const es_format_t *fmt )
 {
     SoutStreamSys *sys = static_cast<SoutStreamSys *>( stream->p_sys );
 
+    if (fmt->i_cat != VIDEO_ES)
+    {
+        return nullptr;
+    }
+
     printf( "ADD %d\n", fmt->i_id );
     if ( !sys->is_video_supported && fmt->i_cat != AUDIO_ES )
     {
         return nullptr;
     }
 
-    auto *id = new ( std::nothrow ) SoutStreamId{};
-    if ( unlikely( id == nullptr ) )
+    std::unique_ptr<SoutStreamId> id;
+    try
+    {
+        id = std::make_unique<SoutStreamId>();
+    }
+    catch (const std::bad_alloc &)
     {
         return nullptr;
     }
@@ -66,24 +81,36 @@ static void *Add( sout_stream_t *stream, const es_format_t *fmt )
         sys->hls = CreateSoutChain( stream, *sys );
         if ( unlikely( sys->hls == nullptr ) )
         {
-            delete id;
             return nullptr;
         }
     }
     id->next_id = sout_StreamIdAdd( sys->hls, fmt );
     if ( id->next_id == nullptr )
     {
-        delete id;
         return nullptr;
     }
 
     if ( es_format_Copy( &id->fmt, fmt ) == VLC_EGENERIC )
     {
-        delete id;
         return nullptr;
     }
 
-    return id;
+    void *ret = id.get();
+    sys->tracks.push_back(std::move(id));
+
+    return ret;
+}
+
+static void RemoveTrack(std::vector<std::unique_ptr<SoutStreamId>> &tracks,
+                        const SoutStreamId *track)
+{
+    auto track_idx = std::find_if(std::begin(tracks), std::end(tracks),
+                                  [track](const auto &it) { return track == it.get(); });
+
+    if (track_idx != std::end(tracks))
+    {
+        tracks.erase(track_idx);
+    }
 }
 
 static void Del( sout_stream_t *stream, void *id )
@@ -97,13 +124,24 @@ static void Del( sout_stream_t *stream, void *id )
     //sys->GetTrackFromFmtCat( sys_id->fmt.i_cat ) = nullptr;
 
     es_format_Clean( &sys_id->fmt );
-    delete sys_id;
+
+    RemoveTrack(sys->tracks, sys_id);
 }
 
 static int Send( sout_stream_t *stream, void *id, vlc_frame_t *frame )
 {
     auto *sys = static_cast<SoutStreamSys *>( stream->p_sys );
     auto *sys_id = static_cast<SoutStreamId *>( id );
+
+    if (frame->i_flags & VLC_FRAME_FLAG_DISCONTINUITY)
+    {
+        printf("DISCONTINUITY\n");
+    }
+
+    if (sys->is_flushing)
+    {
+        sys->is_flushing = false;
+    }
 
     //printf( "SEND %d\n", sys_id->fmt.i_id );
     // if ( sys->error )
@@ -134,7 +172,31 @@ static void Flush( sout_stream_t *stream, void *id )
     auto *sys = static_cast<SoutStreamSys *>( stream->p_sys );
     auto *sys_id = static_cast<SoutStreamId *>( id );
 
-    sout_StreamFlush( sys->hls, sys_id->next_id );
+    printf("FLUSH\n");
+
+    if (sys->is_flushing)
+    {
+        return;
+    }
+
+    sys->is_flushing = true;
+
+    sys->intf->requestPlayerStop();
+    sys->start_command_sent = false;
+
+
+    for (auto &track : sys->tracks)
+    {
+        sout_StreamIdDel(sys->hls, track->next_id);
+    }
+    sout_StreamChainDelete(sys->hls, nullptr);
+
+    //TODO err.
+    sys->hls = CreateSoutChain(stream , *sys);
+    for (auto &track : sys->tracks)
+    {
+        track->next_id = sout_StreamIdAdd(sys->hls, &track->fmt);
+    }
 }
 
 static void SetPCR( sout_stream_t *stream, vlc_tick_t pcr )
@@ -157,15 +219,15 @@ static int Open( vlc_object_t *obj )
 {
     sout_stream_t *stream = container_of( obj, sout_stream_t, obj );
 
-    static const char *const ppsz_sout_options[] = { "ip", "port", "http-port", "video", nullptr };
-    config_ChainParse( stream, SOUT_CFG_PREFIX, ppsz_sout_options, stream->p_cfg );
+    static const char *const sout_options[] = { "ip", "port", "http-port", "video", nullptr };
+    config_ChainParse( stream, SOUT_CFG_PREFIX, sout_options, stream->p_cfg );
 
     const auto ip = vlc::wrap_cptr( var_GetNonEmptyString( stream, SOUT_CFG_PREFIX "ip" ) );
-     if ( unlikely( ip == nullptr ) )
+    if ( unlikely( ip == nullptr ) )
     {
          msg_Err( obj, "missing Chromecast IP address" );
          return VLC_EGENERIC;
-     }
+    }
 
     int device_port = 0; // default
     int local_server_port = var_InheritInteger( stream, SOUT_CFG_PREFIX "http-port" );
@@ -214,6 +276,10 @@ static void Close( vlc_object_t *obj )
 {
     sout_stream_t *stream = container_of( obj, sout_stream_t, obj );
     auto *sys = static_cast<SoutStreamSys *>( stream->p_sys );
+    if (sys->hls != nullptr)
+    {
+        sout_StreamChainDelete(sys->hls, nullptr);
+    }
     delete sys;
 }
 
