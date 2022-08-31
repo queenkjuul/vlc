@@ -188,3 +188,8 @@ endif
 if HAVE_WATCHOS
 aout_PLUGINS += libavsamplebuffer_plugin.la
 endif
+
+libemworklet_audio_plugin_la_SOURCES = audio_output/emscripten.c audio_output/webaudio/webaudio.c audio_output/webaudio/webaudio.h
+if HAVE_EMSCRIPTEN
+aout_PLUGINS += libemworklet_audio_plugin.la
+endif
