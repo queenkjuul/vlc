@@ -168,7 +168,7 @@ if HAVE_WATCHOS
 aout_LTLIBRARIES += libavsamplebuffer_plugin.la
 endif
 
-libemworklet_audio_plugin_la_SOURCES = audio_output/emscripten.cpp
+libemworklet_audio_plugin_la_SOURCES = audio_output/emscripten.c audio_output/webaudio/webaudio.c audio_output/webaudio/webaudio.h
 if HAVE_EMSCRIPTEN
 aout_LTLIBRARIES += libemworklet_audio_plugin.la
 endif
