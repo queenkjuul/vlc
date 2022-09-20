@@ -81,7 +81,13 @@ static int DeinterlaceCallback(vlc_object_t *object, char const *cmd,
     }
 
     /* */
-    var_SetString(vout, "sout-deinterlace-mode", mode);
+    // TODO: check deinterlace mode
+    if (config_GetType("sout-deinterlace-mode") != 0)
+    {
+        char *old = var_CreateGetString(vout, "sout-deinterlace-mode");
+        var_SetString(vout, "sout-deinterlace-mode", mode);
+        free(old);
+    }
 
     msg_Dbg(vout, "deinterlace %d, mode %s, is_needed %d", deinterlace_state, mode, is_needed);
     vout_ControlChangeInterlacing(vout, deinterlace_state != 0 && (is_needed || deinterlace_state >= 0));
