@@ -117,10 +117,10 @@ static void Pause(audio_output_t *aout, bool paused, vlc_tick_t date)
     Flush(aout);
 }
 
-static int Time_Get(audio_output_t *aout, vlc_tick_t *delay)
-{
-    return aout_TimeGetDefault(aout, delay);
-}
+//static int Time_Get(audio_output_t *aout, vlc_tick_t *delay)
+//{
+//    return aout_TimeGetDefault(aout, delay);
+//}
 
 static void Close(vlc_object_t *obj)
 {
@@ -221,7 +221,7 @@ static int Open(vlc_object_t *obj)
     aout->play = Play;
     aout->pause = Pause;
     aout->flush = Flush;
-    aout->time_get = Time_Get;
+    //aout->time_get = Time_Get;
     sys->channels = 0;
     sys->sample_rate = 0;
     sys->init = 0;
