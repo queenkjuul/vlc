@@ -151,8 +151,14 @@ static emval getDecoderConfig( decoder_t* dec, bool includeExtraData )
     case VLC_CODEC_H264:
     {
         char codec[12];
-        snprintf(codec, sizeof(codec), "avc1.%.2X%.2X%.2X", dec->fmt_in.i_profile,
-                 0, dec->fmt_in.i_level);
+
+        if (dec->fmt_in->i_extra > 0)
+            snprintf(codec, sizeof(codec), "avc1.%.2X%.2X%.2X",
+                     dec->fmt_in->i_profile, 0, dec->fmt_in->i_level);
+        else // TODO
+            snprintf(codec, sizeof(codec), "avc3.%.2X%.2X%.2X",
+                     dec->fmt_in->i_profile, 0, dec->fmt_in->i_level);
+
         decoderConfig.set( "codec", codec );
 
         //decoderConfig.set("codec", "avc1.64000b" );
