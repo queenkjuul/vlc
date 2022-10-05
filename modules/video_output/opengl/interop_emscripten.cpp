@@ -48,6 +48,8 @@ struct EmscriptenInterop
     {
         PFNGLBINDTEXTUREPROC BindTexture;
     } gl;
+
+    picture_t *lastPicture;
 };
 
 static int
@@ -87,6 +89,10 @@ tc_emscripten_op_update(const struct vlc_gl_interop *interop, GLuint *textures,
         vlc_video_context_GetPrivate( pic->context->vctx, VLC_VIDEO_CONTEXT_WEBCODEC ) );
 
     bindVideoFrame(picCtx->pictureIdx, vctx->decoder_worker);
+
+    if (sys->lastPicture)
+        picture_Release(sys->lastPicture);
+    sys->lastPicture = picture_Hold(pic);
 
     if (sys->lastPicture)
         picture_Release(sys->lastPicture);
@@ -155,8 +161,12 @@ EM_JS(void, closeMessagePort, (void), {
 });
 
 static void
-Close(struct vlc_gl_interop *)
+Close(struct vlc_gl_interop *interop)
 {
+    auto *sys = static_cast<EmscriptenInterop *>( interop->priv );
+
+    if (sys->lastPicture != NULL)
+        picture_Release(sys->lastPicture);
     closeMessagePort();
 }
 
@@ -176,6 +186,8 @@ Open(vlc_object_t *obj)
         vlc_gl_GetProcAddress(interop->gl, "glBindTexture");
     if (sys->gl.BindTexture == NULL)
         return VLC_EGENERIC;
+
+    sys->lastPicture = NULL;
 
     static const struct vlc_gl_interop_ops ops = {
         .allocate_textures = tc_emscripten_op_allocate_textures,
