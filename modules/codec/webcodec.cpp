@@ -56,12 +56,12 @@ struct decoder_sys_t
 
 extern "C"
 {
-EMSCRIPTEN_KEEPALIVE picture_t* tryGetPictureFromPool(decoder_t* dec)
+EMSCRIPTEN_KEEPALIVE picture_t* waitPictureFromPool(decoder_t* dec)
 {
     auto sys = static_cast<decoder_sys_t*>( dec->p_sys );
     auto vctx = static_cast<webcodec_context*>(
                 vlc_video_context_GetPrivate(sys->vctx, VLC_VIDEO_CONTEXT_WEBCODEC) );
-    return picture_pool_Get(vctx->pool);
+    return picture_pool_Wait(vctx->pool);
 }
 
 EMSCRIPTEN_KEEPALIVE bool updateVideoOutput(decoder_t* dec)
@@ -257,13 +257,7 @@ EM_JS(emscripten::EM_VAL, initDecoderJS, (void* decoder, emscripten::EM_VAL decC
 
     async function getPictureAsync(dec) {
         function getPicture(dec, resolve) {
-            let pic = _tryGetPictureFromPool(dec);
-            if (!pic) {
-                setTimeout( function() {
-                      getPicture(dec, resolve);
-                  }, 1);
-                return;
-            }
+            let pic = _waitPictureFromPool(dec);
             resolve(pic);
         }
         let p = new Promise((resolve) => {
