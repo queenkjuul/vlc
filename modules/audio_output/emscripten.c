@@ -25,6 +25,7 @@
 #include <vlc_common.h>
 #include <vlc_plugin.h>
 #include <vlc_aout.h>
+#include <vlc_atomic.h>
 
 #include <assert.h>
 #include <stdint.h>
@@ -62,7 +63,7 @@ typedef struct aout_sys_t
       and we can't init the context in Open() because we don't have
       access to audio_sample_format_t.
     */
-    bool init;
+    atomic_uint init;
 
     // required by volume.h
     bool soft_mute;
@@ -170,6 +171,9 @@ static void Init(void *userData)
         sys->sample_rate = rate;
     if (channels != sys->channels)
         sys->channels = channels;
+
+    atomic_store(&sys->init, 1);
+    vlc_atomic_notify_all(&sys->init);
 }
 
 static int Start(audio_output_t *aout, audio_sample_format_t *restrict fmt)
@@ -181,7 +185,7 @@ static int Start(audio_output_t *aout, audio_sample_format_t *restrict fmt)
     if (( nbChannels == 0 ) || !AOUT_FMT_LINEAR(fmt))
         return VLC_EGENERIC;
     fmt->i_format = VLC_CODEC_FL32;
-    if (sys->init == 0) {
+    if (atomic_load(&sys->init) == false) {
         sys->channels = nbChannels;
         sys->sample_rate = fmt->i_rate;
 
@@ -193,11 +197,14 @@ static int Start(audio_output_t *aout, audio_sample_format_t *restrict fmt)
             msg_Err(aout, "error: could not dispatch Init to main thread!");
             return VLC_EGENERIC;
         }
+
+        // Wait until initialization ended.
+        vlc_atomic_wait(&sys->init, 0);
+
         if ((sys->channels == 0) && (sys->sample_rate == 0))
             return VLC_EGENERIC;
         fmt->i_channels = sys->channels;
         fmt->i_rate = sys->sample_rate;
-        sys->init = 1;
     }
     atomic_store(&sys->sab->is_paused, 0);
 
@@ -224,7 +231,7 @@ static int Open(vlc_object_t *obj)
     //aout->time_get = Time_Get;
     sys->channels = 0;
     sys->sample_rate = 0;
-    sys->init = 0;
+    atomic_init(&sys->init, 0);
     sys->sab = (webaudio_buffer_t *) malloc(sizeof(webaudio_buffer_t));
     atomic_init(&sys->sab->is_paused, 0);
     atomic_init(&sys->sab->head, 0);
