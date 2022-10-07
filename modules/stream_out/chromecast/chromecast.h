@@ -68,6 +68,7 @@ static const std::string NAMESPACE_RECEIVER         = "urn:x-cast:com.google.cas
 
 // Media player Chromecast app id
 #define APP_ID "CC1AD845" // Default media player aka DEFAULT_MEDIA_RECEIVER_APPLICATION_ID
+//#define APP_ID "75F5CCD0" // Sample chromecast application to ease debugging
 
 enum States
 {
