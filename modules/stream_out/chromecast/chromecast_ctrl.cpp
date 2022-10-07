@@ -575,28 +575,28 @@ intf_sys_t::httpd_info_t::httpd_info_t( httpd_host_t* host, int port )
     : m_host( host )
     , m_port( port )
 {
-    for( int i = 0; i < 3; ++i )
-    {
+ //   for( int i = 0; i < 3; ++i )
+ //   {
         std::ostringstream ss;
         ss << "/chromecast"
            << "/" << vlc_tick_now()
            << "/" << static_cast<uint64_t>( vlc_mrand48() );
 
         m_root = ss.str();
-        m_url = httpd_UrlNew( m_host, m_root.c_str(), NULL, NULL );
-        if( m_url )
-            break;
-    }
+//        m_url = httpd_UrlNew( m_host, m_root.c_str(), NULL, NULL );
+ //       if( m_url )
+ //           break;
+ //   }
 
-    if( m_url == NULL )
-        throw std::runtime_error( "unable to bind to http path" );
+  //  if( m_url == NULL )
+  //      throw std::runtime_error( "unable to bind to http path" );
 }
 
 intf_sys_t::httpd_info_t::~httpd_info_t()
 
 {
-    if( m_url )
-        httpd_UrlDelete( m_url );
+//    if( m_url )
+//        httpd_UrlDelete( m_url );
 }
 
 /*****************************************************************************
@@ -1130,9 +1130,14 @@ unsigned int intf_sys_t::getHttpStreamPort() const
     return m_httpd.m_port;
 }
 
+std::string intf_sys_t::getHttpStreamRoot() const
+{
+    return m_httpd.m_root;
+}
+
 std::string intf_sys_t::getHttpStreamPath() const
 {
-    return m_httpd.m_root + "/stream";
+    return m_httpd.m_root + "/stream.m3u8";
 }
 
 std::string intf_sys_t::getHttpArtRoot() const
