@@ -135,7 +135,7 @@ libdemux_chromecast_plugin_la_SOURCES = stream_out/chromecast/chromecast_demux.c
                                         stream_out/chromecast/chromecast_common.h
 libdemux_chromecast_plugin_la_CPPFLAGS = $(AM_CPPFLAGS) -Istream_out/chromecast/@PROTOBUF_VERSION@
 
-libstream_out_chromecast_plugin_la_SOURCES = stream_out/chromecast/cast.cpp stream_out/chromecast/chromecast.h \
+libstream_out_chromecast_plugin_la_SOURCES = stream_out/chromecast/cast_hls.cpp stream_out/chromecast/chromecast.h \
                                              stream_out/chromecast/cast_channel.proto \
                                              stream_out/renderer_common.hpp \
                                              stream_out/renderer_common.cpp \
