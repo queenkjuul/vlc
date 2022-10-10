@@ -876,6 +876,13 @@ static void SetPCR(sout_stream_t *stream, vlc_tick_t pcr)
         vlc_list_foreach (playlist, &sys->media_playlists, node)
             ExtractAndAddSegment(
                 playlist, sys->last_segment, sys->config.segment_length);
+        hls_pacer_t *pacer = var_InheritAddress(stream, "hls-pacer");
+        if (pacer != NULL)
+        {
+            const vlc_tick_t pace_duration = stream_time - sys->last_segment;
+            printf("seglen: %ld\n", pace_duration);
+            hls_pacer_Pace(pacer, pace_duration);
+        }
         sys->last_segment = stream_time;
     }
 }
