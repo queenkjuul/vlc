@@ -96,7 +96,6 @@ typedef struct
     unsigned i_numsegs;
     unsigned i_initial_segment;
     bool b_delsegs;
-    bool b_pace;
     bool b_splitanywhere;
     bool b_caching;
     bool b_generate_iv;
@@ -161,7 +160,6 @@ int AccessOpen( vlc_object_t *p_this )
     p_sys->i_initial_segment = var_GetInteger( p_access, ACO_CFG_PREFIX "initial-segment-number" );
     p_sys->b_splitanywhere = var_GetBool( p_access, ACO_CFG_PREFIX "splitanywhere" );
     p_sys->b_delsegs = var_GetBool( p_access, ACO_CFG_PREFIX "delsegs" );
-    p_sys->b_pace = var_GetBool( p_access, ACO_CFG_PREFIX "pace" );
     p_sys->b_caching = var_GetBool( p_access, ACO_CFG_PREFIX "caching" );
     p_sys->b_generate_iv = var_GetBool( p_access, ACO_CFG_PREFIX "generate-iv" );
     p_sys->b_segment_has_data = false;
@@ -817,7 +815,7 @@ static int Control( sout_access_out_t *p_access, int i_query, va_list args )
     case ACCESS_OUT_CONTROLS_PACE:
     {
         bool *pb = va_arg( args, bool * );
-        *pb = p_sys->b_pace;
+        *pb = var_GetBool( p_access, ACO_CFG_PREFIX "pace" );
         break;
     }
 
@@ -891,6 +889,15 @@ static ssize_t openNextFile( sout_access_out_t *p_access, sout_access_out_sys_t 
     return 1;
 }
 
+static void SignalPacing(struct hls_pacer *pacer, vlc_tick_t segment_length)
+{
+    // Pace for the duration of the segment minus the time it took to generate
+    // it.
+    const vlc_tick_t pace_duration = segment_length;
+    printf("seglen: %ld\n", pace_duration);
+    hls_pacer_Pace(pacer, pace_duration);
+}
+
 /*****************************************************************************
  * CheckSegmentChange: Check if segment needs to be closed and new opened
  *****************************************************************************/
@@ -931,6 +938,14 @@ static ssize_t CheckSegmentChange( sout_access_out_t *p_access, block_t *p_buffe
         if ( callbacks )
             callbacks->segment_added( callbacks->sys, segment );
         segment->closed = true;
+
+        const bool pace = var_GetBool( p_access, ACO_CFG_PREFIX "pace" );
+        if (pace)
+        {
+            hls_pacer_t *pacer = var_InheritAddress(p_access, "hls-pacer");
+            if (pacer != NULL)
+                SignalPacing(pacer, segment->segment_length);
+        }
     }
 
     if ( segment == NULL || segment->closed )

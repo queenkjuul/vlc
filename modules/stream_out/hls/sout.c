@@ -380,6 +380,32 @@ static struct hls_track *hls_track_New( sout_stream_t *sout, const es_format_t *
     var_Create( access, HLS_SOUT_CALLBACKS_VAR, VLC_VAR_ADDRESS );
     var_SetAddress( access, HLS_SOUT_CALLBACKS_VAR, &track->callbacks );
 
+    var_Create(access, ACO_CFG_PREFIX "pace", VLC_VAR_BOOL);
+    var_SetBool(access, ACO_CFG_PREFIX "pace", false);
+    if (sys->main_track == NULL)
+    {
+        if ( fmt->i_cat == AUDIO_ES || fmt->i_cat == VIDEO_ES )
+        {
+            sys->main_track = track;
+            track->is_main_track = true;
+            var_SetBool(access, ACO_CFG_PREFIX "pace", true);
+        }
+    }
+    else if ( sys->main_track->fmt.i_cat != VIDEO_ES && fmt->i_cat == VIDEO_ES )
+    {
+        sys->main_track->is_main_track = false;
+        var_SetBool(
+            sys->main_track->mux->p_access, ACO_CFG_PREFIX "pace", false);
+        if (sys->main_track->is_caching)
+            sys->main_track = track;
+    }
+        static const char *const track_types[] = {
+            [VIDEO_ES] = "VIDEO",
+            [AUDIO_ES] = "AUDIO",
+            [SPU_ES] = "SUBTITLES",
+        };
+    printf("Adding %s Main Track: %s\n", track_types[fmt->i_cat], sys->main_track ? track_types[sys->main_track->fmt.i_cat] : "none");
+
     track->mux = get_muxer( access, sys, fmt->i_cat );
     if ( unlikely( track->mux == NULL ) )
     {
@@ -698,21 +724,6 @@ static void *Add( sout_stream_t *sout, const es_format_t *fmt )
     track->type = TYPES[fmt->i_cat];
 
     sout_stream_sys_t *sys = sout->p_sys;
-
-    if ( sys->main_track == NULL)
-    {
-        if ( fmt->i_cat == AUDIO_ES || fmt->i_cat == VIDEO_ES )
-        {
-            sys->main_track = track;
-            track->is_main_track = true;
-        }
-    }
-    else if ( sys->main_track->fmt.i_cat != VIDEO_ES && fmt->i_cat == VIDEO_ES )
-    {
-        sys->main_track->is_main_track = false;
-        if (sys->main_track->is_caching)
-        sys->main_track = track;
-    }
 
     vlc_list_append( &track->node, &sys->tracks );
 
