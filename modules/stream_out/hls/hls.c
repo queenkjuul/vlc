@@ -616,6 +616,14 @@ static ssize_t AccessOutWrite(sout_access_out_t *access, block_t *block)
             if (ExtractAndAddSegment(it, sys) != VLC_SUCCESS)
                 return -1;
         }
+
+        hls_pacer_t *pacer = var_InheritAddress(access, "hls-pacer");
+        if (pacer != NULL)
+        {
+            const vlc_tick_t pace_duration = sys->config.segment_length;
+            printf("seglen: %ld\n", pace_duration);
+            hls_pacer_Pace(pacer, pace_duration);
+        }
     }
     return size;
 }

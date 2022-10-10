@@ -56,4 +56,27 @@ sout_mux_t *CreateSubtitleSegmenter(sout_access_out_t *access,
                                     const struct hls_config *config);
 void hls_sub_segmenter_SignalStreamUpdate(sout_mux_t *, vlc_tick_t);
 
+typedef struct hls_pacer {
+    bool is_enabled;
+    vlc_tick_t deadline;
+} hls_pacer_t;
+
+static inline void hls_pacer_Pace(hls_pacer_t *pacer,
+                                        vlc_tick_t pace_for)
+{
+    if (!pacer->is_enabled)
+        return;
+
+    const vlc_tick_t now = vlc_tick_now();
+
+    vlc_tick_t last_deadline = pacer->deadline;
+    if (last_deadline == VLC_TICK_INVALID)
+        last_deadline = now;
+
+    pacer->deadline = now + (pace_for - (now - last_deadline));
+    printf("Pacer for %ld, deadline =  %ld",
+           MS_FROM_VLC_TICK(pace_for),
+           MS_FROM_VLC_TICK(pacer->deadline));
+}
+
 #endif
