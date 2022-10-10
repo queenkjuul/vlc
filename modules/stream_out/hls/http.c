@@ -115,6 +115,7 @@ int hls_http_IndexCallback( httpd_callback_sys_t *sys,
         return VLC_SUCCESS;
     }
 
+    printf( "fetching INDEX\n" );
     hls_index *index = (hls_index *)sys;
 
     vlc_mutex_lock( &index->lock );
@@ -122,6 +123,7 @@ int hls_http_IndexCallback( httpd_callback_sys_t *sys,
     const hls_io *io = index->handle;
     if ( io == NULL )
     {
+        printf("ERR\n");
         goto err;
     }
 

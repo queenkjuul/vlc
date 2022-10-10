@@ -139,6 +139,7 @@ static int SegmentAdded( void *opaque, const hls_segment *segment )
 {
     struct hls_track *track = opaque;
 
+    printf("URI %s\n", segment->psz_uri);
     vlc_url_t url;
     if ( vlc_UrlParse( &url, segment->psz_uri ) != VLC_SUCCESS )
         return VLC_EGENERIC;
