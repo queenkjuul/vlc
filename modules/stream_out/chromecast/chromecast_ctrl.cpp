@@ -118,6 +118,7 @@ intf_sys_t::intf_sys_t(vlc_object_t * const p_this, int port, std::string device
  , m_cc_time_date( VLC_TICK_INVALID )
  , m_cc_time( VLC_TICK_INVALID )
  , m_pingRetriesLeft( PING_WAIT_RETRIES )
+ , m_has_forced_tracks(false)
 {
     m_communication = new ChromecastCommunication( p_this,
         getHttpStreamPath(), getHttpStreamPort(),
@@ -886,7 +887,28 @@ void intf_sys_t::processMediaMessage( const castchannel::CastMessage& msg )
                 m_cc_time = currentTime;
                 m_cc_time_date = vlc_tick_now();
 
-                setState( Playing );
+                if ( !m_has_forced_tracks )
+                {
+                    const json_value media = status[0]["media"];
+                    const json_value tracks = media["tracks"];
+                    std::vector<int64_t> trackIds;
+                    for ( auto i = 0u; i < tracks.u.array.length; ++i )
+                    {
+                        const json_value *it = tracks.u.array.values[i];
+                        const std::string mime = ( *it )["type"].u.string.ptr;
+                        if ( mime == "TEXT" || mime == "AUDIO" )
+                        {
+                            trackIds.push_back( ( *it )["trackId"].u.integer );
+                        }
+                    }
+                    m_communication->msgPlayerEnableTracks( m_appTransportId, m_mediaSessionId,
+                                                            trackIds );
+                    m_has_forced_tracks = true;
+                }
+                else
+                {
+                    setState( Playing );
+                }
             }
             else if (newPlayerState == "BUFFERING")
             {
