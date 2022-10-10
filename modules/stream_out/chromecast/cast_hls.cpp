@@ -5,6 +5,9 @@
 #include "../renderer_common.hpp"
 #include "chromecast.h"
 
+
+#include "../hls/hls.h"
+
 #include <vlc_cxx_helpers.hpp>
 #include <vlc_frame.h>
 #include <vlc_sout.h>
@@ -40,6 +43,7 @@ struct SoutStreamSys
     bool is_flushing = false;
 
     vlc::threads::mutex lock = {};
+    hls_pacer_t pacer = {false, VLC_TICK_INVALID};
 };
 
 static sout_stream_t *CreateSoutChain( sout_stream_t *stream, SoutStreamSys &sys )
@@ -162,6 +166,7 @@ static int Send( sout_stream_t *stream, void *id, vlc_frame_t *frame )
     {
         printf( "START\n" );
         sys->intf->setHasInput( "application/vnd.apple.mpegurl" );
+        sys->pacer.is_enabled = true;
         sys->start_command_sent = true;
     }
     return VLC_SUCCESS;
@@ -170,7 +175,6 @@ static int Send( sout_stream_t *stream, void *id, vlc_frame_t *frame )
 static void Flush( sout_stream_t *stream, void *id )
 {
     auto *sys = static_cast<SoutStreamSys *>( stream->p_sys );
-    auto *sys_id = static_cast<SoutStreamId *>( id );
 
     printf("FLUSH\n");
 
@@ -180,6 +184,8 @@ static void Flush( sout_stream_t *stream, void *id )
     }
 
     sys->is_flushing = true;
+
+    sys->pacer.is_enabled = false;
 
     sys->intf->requestPlayerStop();
     sys->start_command_sent = false;
@@ -263,6 +269,12 @@ static int Open( vlc_object_t *obj )
     stream->p_sys = new ( std::nothrow ) SoutStreamSys{ std::move( intf ), std::move( host ) };
     if ( unlikely( stream->p_sys == nullptr ) )
         return VLC_ENOMEM;
+
+    vlc_object_t *input = vlc_object_parent(vlc_object_parent(obj));
+    var_Create(input, "hls-pacer", VLC_VAR_ADDRESS);
+    var_SetAddress(input,
+                   "hls-pacer",
+                   &static_cast<SoutStreamSys *>(stream->p_sys)->pacer);
 
     static const struct sout_stream_operations ops = {
         Add, Del, Send, nullptr, Flush, SetPCR,
