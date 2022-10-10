@@ -33,6 +33,7 @@
 #include <vlc_demux.h>
 
 #include "chromecast_common.h"
+#include "../hls/hls.h"
 
 #include <cassert>
 #include <new>
@@ -229,33 +230,54 @@ struct demux_cc
     {
         if ( !m_enabled )
             return demux_Demux( p_demux->s );
+        static vlc_tick_t yep = VLC_TICK_INVALID;
+        if (yep == VLC_TICK_INVALID)
+        {
+            initTimes();
+            yep = vlc_tick_now();
+        }
+
+        if (vlc_tick_now() - yep < VLC_TICK_FROM_SEC(2))
+            return VLC_DEMUXER_SUCCESS;
 
         /* The CC sout is not pacing, so we pace here */
-        int pace = p_renderer->pf_pace( p_renderer->p_opaque );
-        switch (pace)
+        auto *pacer = static_cast<hls_pacer_t *>(
+            var_InheritAddress(p_demux, "hls-pacer"));
+        assert(pacer != nullptr);
+        const vlc_tick_t deadline = pacer->deadline;
+        if (pacer->deadline != VLC_TICK_INVALID && pacer->is_enabled)
         {
-            case CC_PACE_ERR:
-                return VLC_DEMUXER_EGENERIC;
-            case CC_PACE_ERR_RETRY:
+            const vlc_tick_t now = vlc_tick_now();
+            if (now < deadline)
             {
-                /* Seek back to started position */
-                seekBack(m_start_time, m_start_pos);
-
-                resetDemuxEof();
-                p_renderer->pf_send_input_event( p_renderer->p_opaque,
-                                                 CC_INPUT_EVENT_RETRY,
-                                                 cc_input_arg{false} );
-                break;
-            }
-            case CC_PACE_OK_WAIT:
-                /* Yield: return to let the input thread doing controls  */
                 return VLC_DEMUXER_SUCCESS;
-            case CC_PACE_OK:
-            case CC_PACE_OK_ENDED:
-                break;
-            default:
-                vlc_assert_unreachable();
+            }
         }
+        // int pace = p_renderer->pf_pace( p_renderer->p_opaque );
+        // switch (pace)
+        //{
+        //     case CC_PACE_ERR:
+        //         return VLC_DEMUXER_EGENERIC;
+        //     case CC_PACE_ERR_RETRY:
+        //     {
+        //         /* Seek back to started position */
+        //         seekBack(m_start_time, m_start_pos);
+
+        //        resetDemuxEof();
+        //        p_renderer->pf_send_input_event( p_renderer->p_opaque,
+        //                                         CC_INPUT_EVENT_RETRY,
+        //                                         cc_input_arg{false} );
+        //        break;
+        //    }
+        //    case CC_PACE_OK_WAIT:
+        //        /* Yield: return to let the input thread doing controls  */
+        //        return VLC_DEMUXER_SUCCESS;
+        //    case CC_PACE_OK:
+        //    case CC_PACE_OK_ENDED:
+        //        break;
+        //    default:
+        //        vlc_assert_unreachable();
+        //}
 
         int ret = VLC_DEMUXER_SUCCESS;
         if( !m_demux_eof )
@@ -283,7 +305,8 @@ struct demux_cc
              * this demux filter to have more controls over the sout. Indeed,
              * we still can seek or change tracks when the input is EOF and we
              * should continue to handle CC errors. */
-            ret = pace == CC_PACE_OK ? VLC_DEMUXER_SUCCESS : VLC_DEMUXER_EOF;
+            //ret = pace == CC_PACE_OK ? VLC_DEMUXER_SUCCESS : VLC_DEMUXER_EOF;
+            ret = VLC_DEMUXER_EOF;
         }
 
         return ret;
