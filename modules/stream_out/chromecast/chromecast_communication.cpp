@@ -222,8 +222,31 @@ unsigned ChromecastCommunication::msgConnect( const std::string& destinationId )
 unsigned ChromecastCommunication::msgReceiverClose( const std::string& destinationId )
 {
     std::string s("{\"type\":\"CLOSE\"}");
+
     return buildMessage( NAMESPACE_CONNECTION, s, destinationId )
            == VLC_SUCCESS ? 1 : kInvalidId;
+}
+
+unsigned ChromecastCommunication::msgPlayerEnableTracks( const std::string &destinationId,
+                                                         int64_t mediaSessionId,
+                                                         const std::vector<int64_t> &trackIds )
+{
+    unsigned id = getNextReceiverRequestId();
+    std::stringstream ss;
+    ss << "{\"type\":\"EDIT_TRACKS_INFO\","
+       <<  "\"requestId\":" << id << ","
+       <<  "\"mediaSessionId\":" << mediaSessionId << ","
+       <<  "\"activeTrackIds\":[";
+
+    for ( auto i = 0u; i < trackIds.size(); ++i )
+    {
+        ss << trackIds[i];
+        if ( i != trackIds.size() - 1 )
+            ss << ",";
+    }
+    ss << "]}";
+
+    return pushMediaPlayerMessage( destinationId, ss ) == VLC_SUCCESS ? id : kInvalidId;
 }
 
 unsigned ChromecastCommunication::msgReceiverGetStatus()
