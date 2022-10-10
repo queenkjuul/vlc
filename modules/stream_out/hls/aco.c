@@ -802,6 +802,7 @@ void AccessClose( vlc_object_t *p_this )
 
     free( p_sys->psz_indexPath );
     free( p_sys->psz_segmentUrl );
+    free( p_sys->psz_segmentPath );
     free( p_sys );
 
     msg_Dbg( p_access, "livehttp access output closed" );
