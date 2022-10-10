@@ -132,6 +132,9 @@ public:
                             const std::string & currentTime );
     unsigned msgPlayerSetVolume( const std::string& destinationId, int64_t mediaSessionId,
                                  float volume, bool mute);
+    unsigned msgPlayerEnableTracks( const std::string &destinationId,
+                                    int64_t mediaSessionId,
+                                    const std::vector<int64_t> &trackIds );
     ssize_t receive( uint8_t *p_data, size_t i_size, int i_timeout, bool *pb_timeout );
 
     const std::string getServerIp()
@@ -304,11 +307,15 @@ private:
     vlc_tick_t        m_cc_time_date;
     vlc_tick_t        m_cc_time;
 
+    int64_t           m_sub_track_id;
+
     /* shared structure with the demux-filter */
     chromecast_common      m_common;
 
     /* Heartbeat */
     uint8_t m_pingRetriesLeft;
+
+    bool m_has_forced_tracks;
 };
 
 #endif /* VLC_CHROMECAST_H */
