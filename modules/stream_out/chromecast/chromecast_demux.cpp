@@ -46,6 +46,7 @@ struct demux_cc
         :p_demux(demux)
         ,p_renderer(renderer)
         ,m_enabled( true )
+        ,m_slave(false)
     {
         init();
     }
@@ -194,6 +195,7 @@ struct demux_cc
         vlc_tick_t time = m_start_time;
         vlc_tick_t cc_time = getCCTime();
 
+        printf("time: %ld\n", cc_time);
         if( cc_time != VLC_TICK_INVALID )
             time += cc_time;
         m_last_time = time;
@@ -229,16 +231,15 @@ struct demux_cc
     int Demux()
     {
         if ( !m_enabled )
-            return demux_Demux( p_demux->s );
-        static vlc_tick_t yep = VLC_TICK_INVALID;
-        if (yep == VLC_TICK_INVALID)
         {
-            initTimes();
-            yep = vlc_tick_now();
+            const int ret = demux_Demux( p_demux->s );
+            if (!m_slave)
+            {
+                initTimes();
+                printf("start %ld\n", m_start_time);
+            }
+            return ret;
         }
-
-        if (vlc_tick_now() - yep < VLC_TICK_FROM_SEC(2))
-            return VLC_DEMUXER_SUCCESS;
 
         /* The CC sout is not pacing, so we pace here */
         auto *pacer = static_cast<hls_pacer_t *>(
@@ -312,8 +313,14 @@ struct demux_cc
         return ret;
     }
 
-    int Control( demux_t *, int i_query, va_list args )
+    int Control( demux_t *d, int i_query, va_list args )
     {
+        if (m_slave && i_query == DEMUX_SET_NEXT_DEMUX_TIME)
+        {
+            //printf("%p CONTROL %d (enabled %d) %d\n", d,  i_query, m_enabled, DEMUX_SET_NEXT_DEMUX_TIME);
+            //printf("Ouep %ld\n", va_arg( args, vlc_tick_t ));
+        }
+
         if( !m_enabled && i_query != DEMUX_FILTER_ENABLE )
             return demux_vaControl( p_demux->s, i_query, args );
 
@@ -332,6 +339,7 @@ struct demux_cc
         case DEMUX_GET_TIME:
         {
             vlc_tick_t time = getTime();
+            //printf("GET TIME %ld\n", time);
             if( time >= 0 )
             {
                 *va_arg(args, vlc_tick_t *) = time;
@@ -413,10 +421,24 @@ struct demux_cc
             p_renderer = static_cast<chromecast_common *>(
                         var_InheritAddress( p_demux, CC_SHARED_VAR_NAME ) );
             assert(p_renderer != NULL);
+            //printf("FILTER ENABLE\n");
             m_enabled = true;
             init();
             return VLC_SUCCESS;
 
+        case DEMUX_SET_NEXT_DEMUX_TIME:
+        {
+            //printf("SET_NEXT_DEMUX_TIME\n");
+            m_enabled = false;
+            m_slave = true;
+            vlc_tick_t time = va_arg(args, vlc_tick_t);
+            int ret =
+                demux_Control(p_demux->s, DEMUX_SET_NEXT_DEMUX_TIME, time);
+            if (ret != VLC_SUCCESS)
+                return ret;
+
+            return VLC_SUCCESS;
+        }
         case DEMUX_FILTER_DISABLE:
 
             deinit();
@@ -441,6 +463,7 @@ protected:
     vlc_tick_t    m_length;
     bool          m_can_seek;
     bool          m_enabled;
+    bool          m_slave;
     bool          m_demux_eof;
     double        m_start_pos;
     double        m_last_pos;
