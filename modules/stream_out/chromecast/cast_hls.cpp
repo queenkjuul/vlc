@@ -137,11 +137,10 @@ static int Send( sout_stream_t *stream, void *id, vlc_frame_t *frame )
     auto *sys = static_cast<SoutStreamSys *>( stream->p_sys );
     auto *sys_id = static_cast<SoutStreamId *>( id );
 
-    if (frame->i_flags & VLC_FRAME_FLAG_DISCONTINUITY)
+    if (sys_id->fmt.i_cat == SPU_ES)
     {
-        printf("DISCONTINUITY\n");
+        printf("SUB ARRIVED: %.*s\n" , frame->i_buffer, frame->p_buffer);
     }
-
     if (sys->is_flushing)
     {
         sys->is_flushing = false;
