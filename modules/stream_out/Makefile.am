@@ -36,6 +36,7 @@ libstream_out_udp_plugin_la_LIBADD = $(SOCKET_LIBS)
 
 libstream_out_hls_plugin_la_SOURCES = \
 	stream_out/hls/common.h \
+	stream_out/hls/hls.c \
 	stream_out/hls/access.c
 libstream_out_hls_plugin_la_CFLAGS = $(AM_CFLAGS) $(GCRYPT_CFLAGS)
 libstream_out_hls_plugin_la_LIBADD = $(GCRYPT_LIBS) -lgpg-error $(LIBM)
