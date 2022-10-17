@@ -48,6 +48,8 @@
 #include <vlc_sout.h>
 #include <vlc_strings.h>
 
+#include "common.h"
+
 #ifndef O_LARGEFILE
 #define O_LARGEFILE 0
 #endif
@@ -59,10 +61,6 @@
 /*****************************************************************************
  * Module descriptor
  *****************************************************************************/
-static int AccessOpen(vlc_object_t *);
-static void AccessClose(vlc_object_t *);
-
-#define ACCESS_CFG_PREFIX "access-hls"
 #define SEGLEN_TEXT N_("Segment length")
 #define SEGLEN_LONGTEXT N_("Length of TS stream segments")
 
@@ -213,7 +211,7 @@ static ssize_t openNextFile(sout_access_out_t *p_access,
 /*****************************************************************************
  * Open: open the file
  *****************************************************************************/
-static int AccessOpen(vlc_object_t *p_this)
+int AccessOpen(vlc_object_t *p_this)
 {
     sout_access_out_t *p_access = (sout_access_out_t *)p_this;
     sout_access_out_sys_t *p_sys;
@@ -810,7 +808,7 @@ static void closeCurrentSegment(sout_access_out_t *p_access,
 /*****************************************************************************
  * Close: close the target
  *****************************************************************************/
-static void AccessClose(vlc_object_t *p_this)
+void AccessClose(vlc_object_t *p_this)
 {
     sout_access_out_t *p_access = (sout_access_out_t *)p_this;
     sout_access_out_sys_t *p_sys = p_access->p_sys;
