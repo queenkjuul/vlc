@@ -62,7 +62,7 @@
 static int Open(vlc_object_t *);
 static void Close(vlc_object_t *);
 
-#define SOUT_CFG_PREFIX "sout-livehttp-"
+#define ACCESS_CFG_PREFIX "access-hls"
 #define SEGLEN_TEXT N_("Segment length")
 #define SEGLEN_LONGTEXT N_("Length of TS stream segments")
 
@@ -115,28 +115,28 @@ vlc_module_begin()
     add_shortcut("livehttp")
     set_capability("sout access", 0)
     set_subcategory(SUBCAT_SOUT_ACO)
-    add_integer(SOUT_CFG_PREFIX "seglen", 10, SEGLEN_TEXT, SEGLEN_LONGTEXT)
-    add_integer(SOUT_CFG_PREFIX "numsegs", 0, NUMSEGS_TEXT, NUMSEGS_LONGTEXT)
-    add_integer(SOUT_CFG_PREFIX "initial-segment-number", 1, INTITIAL_SEG_TEXT, INITIAL_SEG_LONGTEXT)
-    add_bool(SOUT_CFG_PREFIX "splitanywhere", false,
+    add_integer(ACCESS_CFG_PREFIX "seglen", 10, SEGLEN_TEXT, SEGLEN_LONGTEXT)
+    add_integer(ACCESS_CFG_PREFIX "numsegs", 0, NUMSEGS_TEXT, NUMSEGS_LONGTEXT)
+    add_integer(ACCESS_CFG_PREFIX "initial-segment-number", 1, INTITIAL_SEG_TEXT, INITIAL_SEG_LONGTEXT)
+    add_bool(ACCESS_CFG_PREFIX "splitanywhere", false,
               SPLITANYWHERE_TEXT, SPLITANYWHERE_LONGTEXT)
-    add_bool(SOUT_CFG_PREFIX "delsegs", true,
+    add_bool(ACCESS_CFG_PREFIX "delsegs", true,
               DELSEGS_TEXT, DELSEGS_LONGTEXT)
-    add_bool(SOUT_CFG_PREFIX "ratecontrol", false,
+    add_bool(ACCESS_CFG_PREFIX "ratecontrol", false,
               RATECONTROL_TEXT, NULL)
-    add_bool(SOUT_CFG_PREFIX "caching", false,
+    add_bool(ACCESS_CFG_PREFIX "caching", false,
               NOCACHE_TEXT, NOCACHE_LONGTEXT)
-    add_bool(SOUT_CFG_PREFIX "generate-iv", false,
+    add_bool(ACCESS_CFG_PREFIX "generate-iv", false,
               RANDOMIV_TEXT, RANDOMIV_LONGTEXT)
-    add_string(SOUT_CFG_PREFIX "index", NULL,
+    add_string(ACCESS_CFG_PREFIX "index", NULL,
                 INDEX_TEXT, INDEX_LONGTEXT)
-    add_string(SOUT_CFG_PREFIX "index-url", NULL,
+    add_string(ACCESS_CFG_PREFIX "index-url", NULL,
                 INDEXURL_TEXT, INDEXURL_LONGTEXT)
-    add_string(SOUT_CFG_PREFIX "key-uri", NULL,
+    add_string(ACCESS_CFG_PREFIX "key-uri", NULL,
                 KEYURI_TEXT, NULL)
-    add_loadfile(SOUT_CFG_PREFIX "key-file", NULL,
+    add_loadfile(ACCESS_CFG_PREFIX "key-file", NULL,
                  KEYFILE_TEXT, KEYFILE_LONGTEXT)
-    add_loadfile(SOUT_CFG_PREFIX "key-loadfile", NULL,
+    add_loadfile(ACCESS_CFG_PREFIX "key-loadfile", NULL,
                  KEYLOADFILE_TEXT, KEYLOADFILE_LONGTEXT)
     set_callbacks(Open, Close)
 vlc_module_end()
@@ -220,7 +220,7 @@ static int Open(vlc_object_t *p_this)
     char *psz_idx;
 
     config_ChainParse(
-        p_access, SOUT_CFG_PREFIX, ppsz_sout_options, p_access->p_cfg);
+        p_access, ACCESS_CFG_PREFIX, ppsz_sout_options, p_access->p_cfg);
 
     if (!p_access->psz_path)
     {
@@ -232,7 +232,7 @@ static int Open(vlc_object_t *p_this)
         return VLC_ENOMEM;
 
     /* Try to get within asked segment length */
-    size_t i_seglen = var_GetInteger(p_access, SOUT_CFG_PREFIX "seglen");
+    size_t i_seglen = var_GetInteger(p_access, ACCESS_CFG_PREFIX "seglen");
 
     p_sys->segment_max_length = vlc_tick_from_sec(i_seglen);
     p_sys->full_segments = NULL;
@@ -241,15 +241,15 @@ static int Open(vlc_object_t *p_this)
     p_sys->ongoing_segment = NULL;
     p_sys->ongoing_segment_end = &p_sys->ongoing_segment;
 
-    p_sys->i_numsegs = var_GetInteger(p_access, SOUT_CFG_PREFIX "numsegs");
+    p_sys->i_numsegs = var_GetInteger(p_access, ACCESS_CFG_PREFIX "numsegs");
     p_sys->i_initial_segment =
-        var_GetInteger(p_access, SOUT_CFG_PREFIX "initial-segment-number");
+        var_GetInteger(p_access, ACCESS_CFG_PREFIX "initial-segment-number");
     p_sys->b_splitanywhere =
-        var_GetBool(p_access, SOUT_CFG_PREFIX "splitanywhere");
-    p_sys->b_delsegs = var_GetBool(p_access, SOUT_CFG_PREFIX "delsegs");
-    p_sys->b_ratecontrol = var_GetBool(p_access, SOUT_CFG_PREFIX "ratecontrol");
-    p_sys->b_caching = var_GetBool(p_access, SOUT_CFG_PREFIX "caching");
-    p_sys->b_generate_iv = var_GetBool(p_access, SOUT_CFG_PREFIX "generate-iv");
+        var_GetBool(p_access, ACCESS_CFG_PREFIX "splitanywhere");
+    p_sys->b_delsegs = var_GetBool(p_access, ACCESS_CFG_PREFIX "delsegs");
+    p_sys->b_ratecontrol = var_GetBool(p_access, ACCESS_CFG_PREFIX "ratecontrol");
+    p_sys->b_caching = var_GetBool(p_access, ACCESS_CFG_PREFIX "caching");
+    p_sys->b_generate_iv = var_GetBool(p_access, ACCESS_CFG_PREFIX "generate-iv");
     p_sys->b_segment_has_data = false;
 
     vlc_array_init(&p_sys->segments_t);
@@ -257,7 +257,7 @@ static int Open(vlc_object_t *p_this)
     p_sys->stuffing_size = 0;
 
     p_sys->psz_indexPath = NULL;
-    psz_idx = var_GetNonEmptyString(p_access, SOUT_CFG_PREFIX "index");
+    psz_idx = var_GetNonEmptyString(p_access, ACCESS_CFG_PREFIX "index");
     if (psz_idx)
     {
         char *psz_tmp;
@@ -274,10 +274,10 @@ static int Open(vlc_object_t *p_this)
     }
 
     p_sys->psz_indexUrl =
-        var_GetNonEmptyString(p_access, SOUT_CFG_PREFIX "index-url");
+        var_GetNonEmptyString(p_access, ACCESS_CFG_PREFIX "index-url");
     p_sys->psz_keyfile =
-        var_GetNonEmptyString(p_access, SOUT_CFG_PREFIX "key-loadfile");
-    p_sys->key_uri = var_GetNonEmptyString(p_access, SOUT_CFG_PREFIX "key-uri");
+        var_GetNonEmptyString(p_access, ACCESS_CFG_PREFIX "key-loadfile");
+    p_sys->key_uri = var_GetNonEmptyString(p_access, ACCESS_CFG_PREFIX "key-uri");
 
     p_access->p_sys = p_sys;
 
@@ -326,7 +326,7 @@ static int CryptSetup(sout_access_out_t *p_access, char *key_file)
     if (key_file)
         keyfile = strdup(key_file);
     else
-        keyfile = var_InheritString(p_access, SOUT_CFG_PREFIX "key-file");
+        keyfile = var_InheritString(p_access, ACCESS_CFG_PREFIX "key-file");
 
     if (unlikely(keyfile == NULL))
     {
