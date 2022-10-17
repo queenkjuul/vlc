@@ -59,8 +59,8 @@
 /*****************************************************************************
  * Module descriptor
  *****************************************************************************/
-static int Open(vlc_object_t *);
-static void Close(vlc_object_t *);
+static int AccessOpen(vlc_object_t *);
+static void AccessClose(vlc_object_t *);
 
 #define ACCESS_CFG_PREFIX "access-hls"
 #define SEGLEN_TEXT N_("Segment length")
@@ -138,7 +138,7 @@ vlc_module_begin()
                  KEYFILE_TEXT, KEYFILE_LONGTEXT)
     add_loadfile(ACCESS_CFG_PREFIX "key-loadfile", NULL,
                  KEYLOADFILE_TEXT, KEYLOADFILE_LONGTEXT)
-    set_callbacks(Open, Close)
+    set_callbacks(AccessOpen, AccessClose)
 vlc_module_end()
 
 /*****************************************************************************
@@ -213,7 +213,7 @@ static ssize_t openNextFile(sout_access_out_t *p_access,
 /*****************************************************************************
  * Open: open the file
  *****************************************************************************/
-static int Open(vlc_object_t *p_this)
+static int AccessOpen(vlc_object_t *p_this)
 {
     sout_access_out_t *p_access = (sout_access_out_t *)p_this;
     sout_access_out_sys_t *p_sys;
@@ -810,7 +810,7 @@ static void closeCurrentSegment(sout_access_out_t *p_access,
 /*****************************************************************************
  * Close: close the target
  *****************************************************************************/
-static void Close(vlc_object_t *p_this)
+static void AccessClose(vlc_object_t *p_this)
 {
     sout_access_out_t *p_access = (sout_access_out_t *)p_this;
     sout_access_out_sys_t *p_sys = p_access->p_sys;
