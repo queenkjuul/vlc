@@ -121,6 +121,7 @@ pluginsinclude_HEADERS = \
 	../include/vlc_window.h \
 	../include/vlc_xlib.h \
 	../include/vlc_xml.h \
+	../include/vlc_clock.h \
 	$(NULL)
 nodist_pluginsinclude_HEADERS = ../include/vlc_about.h
 
@@ -286,7 +287,6 @@ libvlccore_la_SOURCES = \
 	player/medialib.c \
 	player/metadata.c \
 	clock/input_clock.h \
-	clock/clock.h \
 	clock/clock_internal.h \
 	input/decoder.h \
 	input/demux.h \

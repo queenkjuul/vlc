@@ -41,10 +41,10 @@
 #include <vlc_decoder.h>
 #include <vlc_memstream.h>
 #include <vlc_tracer.h>
+#include <vlc_clock.h>
 
 #include "input_internal.h"
 #include "../clock/input_clock.h"
-#include "../clock/clock.h"
 #include "decoder.h"
 #include "es_out.h"
 #include "event.h"

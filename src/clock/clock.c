@@ -26,7 +26,7 @@
 #include <assert.h>
 #include <limits.h>
 #include <vlc_tracer.h>
-#include "clock.h"
+#include <vlc_clock.h>
 #include "clock_internal.h"
 
 #define COEFF_THRESHOLD 0.2 /* between 0.8 and 1.2 */

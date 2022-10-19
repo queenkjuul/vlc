@@ -45,8 +45,8 @@
 #include <vlc_aout.h>
 #include <vlc_vout.h>
 #include <vlc_player.h>
+#include <vlc_clock.h>
 
-#include "clock/clock.h"
 
 static const char *const ppsz_snap_formats[] =
 { "png", "jpg", "tiff" };

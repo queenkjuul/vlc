@@ -1020,3 +1020,15 @@ vlc_executor_WaitIdle
 vlc_input_attachment_Release
 vlc_input_attachment_New
 vlc_input_attachment_Hold
+vlc_clock_CreateSlave
+vlc_clock_Delete
+vlc_clock_Update
+vlc_clock_UpdateVideo
+vlc_clock_Reset
+vlc_clock_SetDelay
+vlc_clock_Lock
+vlc_clock_Unlock
+vlc_clock_IsPaused
+vlc_clock_Wait
+vlc_clock_Wake
+vlc_clock_ConvertToSystemLocked

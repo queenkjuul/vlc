@@ -50,6 +50,7 @@
 #include <vlc_codec.h>
 #include <vlc_tracer.h>
 #include <vlc_atomic.h>
+#include <vlc_clock.h>
 
 #include <libvlc.h>
 #include "vout_private.h"
@@ -58,7 +59,6 @@
 #include "snapshot.h"
 #include "video_window.h"
 #include "../misc/variables.h"
-#include "../clock/clock.h"
 #include "statistic.h"
 #include "chrono.h"
 #include "control.h"

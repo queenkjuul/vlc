@@ -26,7 +26,7 @@
 
 #include <vlc_common.h>
 #include <vlc_input.h> /* FIXME Needed for input_clock_t */
-#include "clock.h"
+#include <vlc_clock.h>
 
 /** @struct input_clock_t
  * This structure is used to manage clock drift and reception jitters

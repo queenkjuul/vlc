@@ -29,7 +29,7 @@
 # include <vlc_filter.h>
 # include <vlc_list.h>
 # include <vlc_viewpoint.h>
-# include "../clock/clock.h"
+# include <vlc_clock.h>
 
 /* Max input rate factor (1/4 -> 4) */
 # define AOUT_MAX_INPUT_RATE (4)

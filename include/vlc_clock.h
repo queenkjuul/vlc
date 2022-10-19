@@ -129,13 +129,13 @@ vlc_clock_t *vlc_clock_main_CreateSlave(vlc_clock_main_t *main_clock,
  *
  * You must use vlc_clock_Delete to free it.
  */
-vlc_clock_t *vlc_clock_CreateSlave(const vlc_clock_t *clock,
-                                   enum es_format_category_e cat);
+VLC_API vlc_clock_t *vlc_clock_CreateSlave(const vlc_clock_t *clock,
+                                           enum es_format_category_e cat);
 
 /**
  * This function free the resources allocated by vlc_clock*Create*()
  */
-void vlc_clock_Delete(vlc_clock_t *clock);
+VLC_API void vlc_clock_Delete(vlc_clock_t *clock);
 
 /**
  * This function will update the clock drift and returns the drift
@@ -144,8 +144,10 @@ void vlc_clock_Delete(vlc_clock_t *clock);
  * @return a valid drift relative time, VLC_TICK_INVALID if there is no drift
  * (clock is master) or VLC_TICK_MAX if the clock is paused
  */
-vlc_tick_t vlc_clock_Update(vlc_clock_t *clock, vlc_tick_t system_now,
-                            vlc_tick_t ts, double rate);
+VLC_API vlc_tick_t vlc_clock_Update(vlc_clock_t *clock,
+                                    vlc_tick_t system_now,
+                                    vlc_tick_t ts,
+                                    double rate);
 
 /**
  * This function will update the video clock drift and returns the drift
@@ -153,14 +155,17 @@ vlc_tick_t vlc_clock_Update(vlc_clock_t *clock, vlc_tick_t system_now,
  * Same behavior than vlc_clock_Update() except that the video is passed to the
  * clock, this will be used for clock update callbacks.
  */
-vlc_tick_t vlc_clock_UpdateVideo(vlc_clock_t *clock, vlc_tick_t system_now,
-                                 vlc_tick_t ts, double rate,
-                                 unsigned frame_rate, unsigned frame_rate_base);
+VLC_API vlc_tick_t vlc_clock_UpdateVideo(vlc_clock_t *clock,
+                                         vlc_tick_t system_now,
+                                         vlc_tick_t ts,
+                                         double rate,
+                                         unsigned frame_rate,
+                                         unsigned frame_rate_base);
 
 /**
  * This function resets the clock drift
  */
-void vlc_clock_Reset(vlc_clock_t *clock);
+VLC_API void vlc_clock_Reset(vlc_clock_t *clock);
 
 /**
  * This functions change the clock delay
@@ -168,17 +173,17 @@ void vlc_clock_Reset(vlc_clock_t *clock);
  * It returns the amount of time the clock owner need to wait in order to reach
  * the time introduced by the new positive delay.
  */
-vlc_tick_t vlc_clock_SetDelay(vlc_clock_t *clock, vlc_tick_t ts_delay);
+VLC_API vlc_tick_t vlc_clock_SetDelay(vlc_clock_t *clock, vlc_tick_t ts_delay);
 
 /**
  * Lock the clock mutex
  */
-void vlc_clock_Lock(vlc_clock_t *clock);
+VLC_API void vlc_clock_Lock(vlc_clock_t *clock);
 
 /**
  * Unlock the clock mutex
  */
-void vlc_clock_Unlock(vlc_clock_t *clock);
+VLC_API void vlc_clock_Unlock(vlc_clock_t *clock);
 
 /**
  * Indicate if the clock is paused
@@ -188,7 +193,7 @@ void vlc_clock_Unlock(vlc_clock_t *clock);
  * @retval true if the clock is paused
  * @retval false if the clock is not paused
  */
-bool vlc_clock_IsPaused(vlc_clock_t *clock);
+VLC_API bool vlc_clock_IsPaused(vlc_clock_t *clock);
 
 /**
  * Wait for a timestamp expressed in system time
@@ -201,12 +206,12 @@ bool vlc_clock_IsPaused(vlc_clock_t *clock);
  *
  * @return 0 if the condition was signaled, an error code in case of timeout
  */
-int vlc_clock_Wait(vlc_clock_t *clock, vlc_tick_t system_deadline);
+VLC_API int vlc_clock_Wait(vlc_clock_t *clock, vlc_tick_t system_deadline);
 
 /**
  * Wake up any vlc_clock_Wait()
  */
-void vlc_clock_Wake(vlc_clock_t *clock);
+VLC_API void vlc_clock_Wake(vlc_clock_t *clock);
 
 /**
  * This function converts a timestamp from stream to system
@@ -215,9 +220,10 @@ void vlc_clock_Wake(vlc_clock_t *clock);
  *
  * @return the valid system time or VLC_TICK_MAX when the clock is paused
  */
-vlc_tick_t vlc_clock_ConvertToSystemLocked(vlc_clock_t *clock,
-                                           vlc_tick_t system_now, vlc_tick_t ts,
-                                           double rate);
+VLC_API vlc_tick_t vlc_clock_ConvertToSystemLocked(vlc_clock_t *clock,
+                                                   vlc_tick_t system_now,
+                                                   vlc_tick_t ts,
+                                                   double rate);
 
 static inline vlc_tick_t
 vlc_clock_ConvertToSystem(vlc_clock_t *clock, vlc_tick_t system_now,

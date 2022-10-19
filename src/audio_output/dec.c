@@ -34,9 +34,9 @@
 #include <vlc_common.h>
 #include <vlc_aout.h>
 #include <vlc_tracer.h>
+#include <vlc_clock.h>
 
 #include "aout_internal.h"
-#include "clock/clock.h"
 #include "libvlc.h"
 
 struct vlc_aout_stream
