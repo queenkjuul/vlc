@@ -28,9 +28,6 @@ enum vlc_clock_master_source
     VLC_CLOCK_MASTER_MONOTONIC,
 };
 
-typedef struct vlc_clock_main_t vlc_clock_main_t;
-typedef struct vlc_clock_t vlc_clock_t;
-
 /**
  * Callbacks for the owner of the main clock
  */

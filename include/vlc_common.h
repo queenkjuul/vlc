@@ -405,6 +405,10 @@ typedef struct info_t info_t;
 typedef struct info_category_t info_category_t;
 typedef struct input_attachment_t input_attachment_t;
 
+/* Clock */
+typedef struct vlc_clock_main_t vlc_clock_main_t;
+typedef struct vlc_clock_t vlc_clock_t;
+
 /* Format */
 typedef struct audio_format_t audio_format_t;
 typedef struct video_format_t video_format_t;
