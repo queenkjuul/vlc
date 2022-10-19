@@ -29,6 +29,7 @@
  * @{
  */
 
+#include <vlc_clock.h>
 #include <vlc_subpicture.h>
 
 typedef struct vlc_input_decoder_t vlc_input_decoder_t;
@@ -40,7 +41,8 @@ typedef struct input_resource_t input_resource_t;
 
 /* */
 VLC_API vlc_input_decoder_t *
-vlc_input_decoder_Create( vlc_object_t *, const es_format_t *, input_resource_t * ) VLC_USED;
+vlc_input_decoder_Create( vlc_object_t *, const es_format_t *, vlc_clock_t *,
+                          input_resource_t * ) VLC_USED;
 VLC_API void vlc_input_decoder_Delete( vlc_input_decoder_t * );
 VLC_API void vlc_input_decoder_Decode( vlc_input_decoder_t *, block_t *, bool b_do_pace );
 VLC_API void vlc_input_decoder_Drain( vlc_input_decoder_t * );
