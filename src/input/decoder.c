@@ -2203,13 +2203,13 @@ vlc_input_decoder_New( vlc_object_t *parent, const struct vlc_input_decoder_cfg 
  * Spawn a decoder thread outside of the input thread.
  */
 vlc_input_decoder_t *
-vlc_input_decoder_Create( vlc_object_t *p_parent, const es_format_t *fmt,
+vlc_input_decoder_Create( vlc_object_t *p_parent, const es_format_t *fmt, void *clock,
                           input_resource_t *p_resource )
 {
     const struct vlc_input_decoder_cfg cfg = {
         .fmt = fmt,
         .str_id = NULL,
-        .clock = NULL,
+        .clock = clock,
         .resource = p_resource,
         .sout = NULL,
         .input_type = INPUT_TYPE_NONE,
