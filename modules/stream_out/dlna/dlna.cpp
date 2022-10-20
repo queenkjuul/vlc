@@ -187,7 +187,7 @@ bool sout_stream_sys_t::startSoutChain(sout_stream_t *p_stream,
     {
         sout_stream_id_sys_t *p_sys_id = *it;
         p_sys_id->p_sub_id = static_cast<sout_stream_id_sys_t *>(
-                sout_StreamIdAdd( p_out, &p_sys_id->fmt ) );
+                sout_StreamIdAdd( p_out, &p_sys_id->fmt, NULL ) );
         if ( p_sys_id->p_sub_id == nullptr )
         {
             msg_Err( p_stream, "can't handle %4.4s stream",
@@ -759,7 +759,7 @@ int MediaRenderer::SetAVTransportURI(const char* uri, const protocol_info_t& pro
     return VLC_SUCCESS;
 }
 
-static void *Add(sout_stream_t *p_stream, const es_format_t *p_fmt)
+static void *Add(sout_stream_t *p_stream, const es_format_t *p_fmt, vlc_clock_t *)
 {
     sout_stream_sys_t *p_sys = static_cast<sout_stream_sys_t *>( p_stream->p_sys );
 

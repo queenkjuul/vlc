@@ -70,7 +70,7 @@ static vlc_tick_t get_dts(const block_t *block)
     return block->i_dts;
 }
 
-static void *Add(sout_stream_t *stream, const es_format_t *fmt)
+static void *Add(sout_stream_t *stream, const es_format_t *fmt, vlc_clock_t *clock)
 {
     sout_stream_sys_t *sys = stream->p_sys;
     sout_stream_id_sys_t *id = malloc(sizeof (*id));
@@ -85,7 +85,7 @@ static void *Add(sout_stream_t *stream, const es_format_t *fmt)
     }
 
     if (sys->stream != NULL)
-        id->id = sout_StreamIdAdd(sys->stream, &id->fmt);
+        id->id = sout_StreamIdAdd(sys->stream, &id->fmt, NULL);
 
     vlc_list_append(&id->node, &sys->ids);
     return id;
@@ -118,7 +118,7 @@ static int AddStream(sout_stream_t *stream, char *chain)
         return -1;
 
     vlc_list_foreach (id, &sys->ids, node)
-        id->id = sout_StreamIdAdd(sys->stream, &id->fmt);
+        id->id = sout_StreamIdAdd(sys->stream, &id->fmt, NULL);
 
     return 0;
 }

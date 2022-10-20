@@ -82,7 +82,7 @@ typedef struct
     input_resource_t *p_resource;
 } sout_stream_sys_t;
 
-static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt )
+static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt, vlc_clock_t *clock )
 {
     sout_stream_sys_t *p_sys = p_stream->p_sys;
 

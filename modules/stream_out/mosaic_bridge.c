@@ -78,7 +78,7 @@ static inline struct decoder_owner *dec_get_owner( decoder_t *p_dec )
  *****************************************************************************/
 static int  Open    ( vlc_object_t * );
 static void Close   ( vlc_object_t * );
-static void *Add( sout_stream_t *, const es_format_t * );
+static void *Add( sout_stream_t *, const es_format_t *, vlc_clock_t *clock );
 static void  Del( sout_stream_t *, void * );
 static int   Send( sout_stream_t *, void *, block_t * );
 
@@ -325,7 +325,7 @@ static vlc_decoder_device * video_filter_hold_device(vlc_object_t *o, void *sys)
     return MosaicHoldDecoderDevice(p_owner);
 }
 
-static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt )
+static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt, vlc_clock_t *clock )
 {
     sout_stream_sys_t *p_sys = p_stream->p_sys;
     bridge_t *p_bridge;

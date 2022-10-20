@@ -216,7 +216,7 @@ AbstractStream *SDIOutput::createStream(const StreamID &id,
      return s;
 }
 
-void *SDIOutput::SoutCallback_Add(sout_stream_t *p_stream, const es_format_t *fmt)
+void *SDIOutput::SoutCallback_Add(sout_stream_t *p_stream, const es_format_t *fmt, vlc_clock_t *)
 {
     SDIOutput *me = reinterpret_cast<SDIOutput *>(p_stream->p_sys);
     return me->Add(fmt);

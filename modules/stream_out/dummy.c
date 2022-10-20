@@ -33,7 +33,7 @@
 #include <vlc_block.h>
 #include <vlc_sout.h>
 
-static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt )
+static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt, vlc_clock_t *clock )
 {
     VLC_UNUSED(p_stream); VLC_UNUSED(p_fmt);
     return malloc( 1 );

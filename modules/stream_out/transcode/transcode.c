@@ -227,7 +227,7 @@ static const char *const ppsz_sout_options[] = {
 /*****************************************************************************
  * Exported prototypes
  *****************************************************************************/
-static void *Add( sout_stream_t *, const es_format_t * );
+static void *Add( sout_stream_t *, const es_format_t *, vlc_clock_t * );
 static void  Del( sout_stream_t *, void * );
 static int   Send( sout_stream_t *, void *, block_t * );
 static void  SetPCR(sout_stream_t *, vlc_tick_t );
@@ -568,12 +568,12 @@ static void *transcode_downstream_Add( sout_stream_t *p_stream,
     if( tmp.i_group != fmt_orig->i_group )
         tmp.i_group = fmt_orig->i_group;
 
-    void *downstream = sout_StreamIdAdd( p_stream->p_next, &tmp );
+    void *downstream = sout_StreamIdAdd( p_stream->p_next, &tmp, NULL );
     es_format_Clean( &tmp );
     return downstream;
 }
 
-static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt )
+static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt, vlc_clock_t *clock )
 {
     sout_stream_sys_t *p_sys = p_stream->p_sys;
     sout_stream_id_sys_t *id;

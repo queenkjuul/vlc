@@ -92,8 +92,8 @@ static const char *ppsz_sout_options_lang[] = {
     "id", "lang", NULL
 };
 
-static void *AddId  ( sout_stream_t *, const es_format_t * );
-static void *AddLang( sout_stream_t *, const es_format_t * );
+static void *AddId  ( sout_stream_t *, const es_format_t *, vlc_clock_t * );
+static void *AddLang( sout_stream_t *, const es_format_t *, vlc_clock_t * );
 static void  Del    ( sout_stream_t *, void * );
 static int   Send   ( sout_stream_t *, void *, block_t * );
 
@@ -183,7 +183,7 @@ static void Close( vlc_object_t * p_this )
     free( p_sys );
 }
 
-static void *AddId( sout_stream_t *p_stream, const es_format_t *p_fmt )
+static void *AddId( sout_stream_t *p_stream, const es_format_t *p_fmt, vlc_clock_t *clock )
 {
     sout_stream_sys_t *p_sys = (sout_stream_sys_t *)p_stream->p_sys;
     es_format_t fmt;
@@ -198,10 +198,10 @@ static void *AddId( sout_stream_t *p_stream, const es_format_t *p_fmt )
         p_fmt = &fmt;
     }
 
-    return sout_StreamIdAdd( p_stream->p_next, p_fmt );
+    return sout_StreamIdAdd( p_stream->p_next, p_fmt, NULL );
 }
 
-static void *AddLang( sout_stream_t *p_stream, const es_format_t *p_fmt )
+static void *AddLang( sout_stream_t *p_stream, const es_format_t *p_fmt, vlc_clock_t *clock )
 {
     sout_stream_sys_t *p_sys = (sout_stream_sys_t *)p_stream->p_sys;
     es_format_t fmt;
@@ -217,7 +217,7 @@ static void *AddLang( sout_stream_t *p_stream, const es_format_t *p_fmt )
         p_fmt = &fmt;
     }
 
-    return sout_StreamIdAdd( p_stream->p_next, p_fmt );
+    return sout_StreamIdAdd( p_stream->p_next, p_fmt, NULL );
 }
 
 static void Del( sout_stream_t *p_stream, void *id )

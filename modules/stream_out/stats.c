@@ -54,7 +54,7 @@ typedef struct
     vlc_hash_md5_t hash;
 } sout_stream_id_sys_t;
 
-static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt )
+static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt, vlc_clock_t *clock )
 {
     sout_stream_sys_t *p_sys = (sout_stream_sys_t *)p_stream->p_sys;
     sout_stream_id_sys_t *id;
@@ -223,12 +223,12 @@ static int OutputOpen(vlc_object_t *obj)
     return val;
 }
 
-static void *FilterAdd(sout_stream_t *stream, const es_format_t *fmt)
+static void *FilterAdd(sout_stream_t *stream, const es_format_t *fmt, vlc_clock_t *clock)
 {
-    sout_stream_id_sys_t *id = Add(stream, fmt);
+    sout_stream_id_sys_t *id = Add(stream, fmt, clock);
 
     if (likely(id != NULL))
-        id->next_id = sout_StreamIdAdd(stream->p_next, fmt);
+        id->next_id = sout_StreamIdAdd(stream->p_next, fmt, clock);
 
     return id;
 }

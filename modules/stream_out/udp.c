@@ -48,7 +48,7 @@ struct sout_stream_udp
     uint_fast16_t mtu;
 };
 
-static void *Add(sout_stream_t *stream, const es_format_t *fmt)
+static void *Add(sout_stream_t *stream, const es_format_t *fmt, vlc_clock_t *clock)
 {
     struct sout_stream_udp *sys = stream->p_sys;
 

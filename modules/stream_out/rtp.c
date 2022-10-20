@@ -246,11 +246,11 @@ static const char *const ppsz_sout_options[] = {
     "mp4a-latm", NULL
 };
 
-static void *Add( sout_stream_t *, const es_format_t * );
+static void *Add( sout_stream_t *, const es_format_t *, vlc_clock_t * );
 static void  Del( sout_stream_t *, void * );
 static int   Send( sout_stream_t *, void *, block_t * );
 
-static void *MuxAdd( sout_stream_t *, const es_format_t * );
+static void *MuxAdd( sout_stream_t *, const es_format_t *, vlc_clock_t * );
 static void  MuxDel( sout_stream_t *, void * );
 static int   MuxSend( sout_stream_t *, void *, block_t * );
 
@@ -579,7 +579,7 @@ static int Open( vlc_object_t *p_this )
 
     if( p_sys->p_mux != NULL )
     {
-        sout_stream_id_sys_t *id = Add( p_stream, NULL );
+        sout_stream_id_sys_t *id = Add( p_stream, NULL, NULL  );
         if( id == NULL )
         {
             Close( p_this );
@@ -914,7 +914,7 @@ uint32_t rtp_compute_ts( unsigned i_clock_rate, vlc_tick_t i_pts )
 }
 
 /** Add an ES as a new RTP stream */
-static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt )
+static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt, vlc_clock_t *clock )
 {
     /* NOTE: As a special case, if we use a non-RTP
      * mux (TS/PS), then p_fmt is NULL. */
@@ -1575,7 +1575,7 @@ size_t rtp_mtu (const sout_stream_id_sys_t *id)
  *****************************************************************************/
 
 /** Add an ES to a non-RTP muxed stream */
-static void *MuxAdd( sout_stream_t *p_stream, const es_format_t *p_fmt )
+static void *MuxAdd( sout_stream_t *p_stream, const es_format_t *p_fmt, vlc_clock_t *clock )
 {
     sout_input_t      *p_input;
     sout_stream_sys_t *p_sys = p_stream->p_sys;
