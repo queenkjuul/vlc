@@ -32,6 +32,7 @@
 #include <vlc_plugin.h>
 #include <vlc_sout.h>
 #include <vlc_block.h>
+#include <vlc_vector.h>
 
 /*****************************************************************************
  * Module descriptor
@@ -70,9 +71,10 @@ typedef struct
 
 typedef struct
 {
-    int                 i_nb_ids;
-    void                **pp_ids;
-} sout_stream_id_sys_t;
+    void *id;
+} duplicated_id_t;
+
+typedef struct VLC_VECTOR(duplicated_id_t) sout_stream_id_sys_t;
 
 static bool ESSelected( struct vlc_logger *, const es_format_t *fmt,
                         char *psz_select );
@@ -91,11 +93,13 @@ static int Control( sout_stream_t *p_stream, int i_query, va_list args )
         {
             sout_stream_id_sys_t *id = va_arg(args, void *);
             void *spu_hl = va_arg(args, void *);
-            for( int i = 0; i < id->i_nb_ids; i++ )
+            duplicated_id_t it;
+            sout_stream_t **stream_it = p_sys->pp_streams;
+            vlc_vector_foreach(it, id)
             {
-                if( id->pp_ids[i] )
-                    sout_StreamControl( p_sys->pp_streams[i], i_query,
-                                        id->pp_ids[i], spu_hl );
+                sout_stream_t *stream = *(stream_it++);
+                if (stream != NULL)
+                    sout_StreamControl(stream, i_query, it.id, spu_hl);
             }
             return VLC_SUCCESS;
         }
@@ -216,22 +220,22 @@ Add( sout_stream_t *p_stream, const es_format_t *p_fmt, vlc_clock_t *clock )
     if( !id )
         return NULL;
 
-    TAB_INIT( id->i_nb_ids, id->pp_ids );
+    vlc_vector_init(id);
 
     msg_Dbg( p_stream, "duplicated a new stream codec=%4.4s (es=%d group=%d)",
              (char*)&p_fmt->i_codec, p_fmt->i_id, p_fmt->i_group );
 
     for( i_stream = 0; i_stream < p_sys->i_nb_streams; i_stream++ )
     {
-        void *id_new = NULL;
+        duplicated_id_t dup_id = {};
 
         if( ESSelected( p_stream->obj.logger, p_fmt,
                         p_sys->ppsz_select[i_stream] ) )
         {
             sout_stream_t *out = p_sys->pp_streams[i_stream];
 
-            id_new = (void*)sout_StreamIdAdd( out, p_fmt, NULL );
-            if( id_new )
+            dup_id.id = (void*)sout_StreamIdAdd( out, p_fmt, NULL );
+            if( dup_id.id )
             {
                 msg_Dbg( p_stream, "    - added for output %d", i_stream );
                 i_valid_streams++;
@@ -248,7 +252,7 @@ Add( sout_stream_t *p_stream, const es_format_t *p_fmt, vlc_clock_t *clock )
 
         /* Append failed attempts as well to keep track of which pp_id
          * belongs to which duplicated stream */
-        TAB_APPEND( id->i_nb_ids, id->pp_ids, id_new );
+        vlc_vector_push(id, dup_id);
     }
 
     if( i_valid_streams <= 0 )
@@ -271,14 +275,16 @@ static void Del( sout_stream_t *p_stream, void *_id )
 
     for( i_stream = 0; i_stream < p_sys->i_nb_streams; i_stream++ )
     {
-        if( id->pp_ids[i_stream] )
+
+        const duplicated_id_t *dup_id = &id->data[i_stream];
+        if( dup_id->id != NULL )
         {
             sout_stream_t *out = p_sys->pp_streams[i_stream];
-            sout_StreamIdDel( out, id->pp_ids[i_stream] );
+            sout_StreamIdDel( out, dup_id->id );
         }
     }
 
-    free( id->pp_ids );
+    vlc_vector_clear(id);
     free( id );
 }
 
@@ -302,20 +308,22 @@ static int Send( sout_stream_t *p_stream, void *_id, block_t *p_buffer )
         for( i_stream = 0; i_stream < p_sys->i_nb_streams - 1; i_stream++ )
         {
             p_dup_stream = p_sys->pp_streams[i_stream];
+            const duplicated_id_t *dup_id = &id->data[i_stream];
 
-            if( id->pp_ids[i_stream] )
+            if( dup_id->id != NULL )
             {
                 block_t *p_dup = block_Duplicate( p_buffer );
 
                 if( p_dup )
-                    sout_StreamIdSend( p_dup_stream, id->pp_ids[i_stream], p_dup );
+                    sout_StreamIdSend( p_dup_stream, dup_id->id, p_dup );
             }
         }
 
-        if( i_stream < p_sys->i_nb_streams && id->pp_ids[i_stream] )
+        const duplicated_id_t *dup_id = &id->data[i_stream];
+        if( i_stream < p_sys->i_nb_streams && dup_id->id )
         {
             p_dup_stream = p_sys->pp_streams[i_stream];
-            sout_StreamIdSend( p_dup_stream, id->pp_ids[i_stream], p_buffer );
+            sout_StreamIdSend( p_dup_stream, dup_id->id, p_buffer );
         }
         else
         {
