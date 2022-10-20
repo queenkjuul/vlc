@@ -1321,6 +1321,15 @@ static void EsOutSendEsEvent(es_out_t *out, es_out_id_t *es, int action,
     });
 }
 
+static inline bool StreamOutputNeedsPacing( input_thread_t *input )
+{
+#ifdef ENABLE_SOUT
+    input_thread_private_t *priv = input_priv( input );
+    return priv->p_sout != NULL && sout_StreamIsSynchronous( priv->p_sout );
+#else
+    return false;
+#endif
+}
 static void EsOutProgramHandleClockSource( es_out_t *out, es_out_pgrm_t *p_pgrm )
 {
     es_out_sys_t *p_sys = container_of(out, es_out_sys_t, out);
@@ -2992,19 +3001,12 @@ static int EsOutSend( es_out_t *out, es_out_id_t *es, block_t *p_block )
         return VLC_SUCCESS;
     }
 
-#ifdef ENABLE_SOUT
-    /* Check for sout mode */
-    if( input_priv(p_input)->p_sout )
+    const bool async = !StreamOutputNeedsPacing( p_input );
+    if( input_priv(p_input)->b_out_pace_control != async )
     {
-        bool async = !sout_StreamIsSynchronous(input_priv(p_input)->p_sout);
-
-        if( input_priv(p_input)->b_out_pace_control != async )
-        {
-            msg_Dbg( p_input, "switching to %ssync mode", async ? "a" : "" );
-            input_priv(p_input)->b_out_pace_control = async;
-        }
+        msg_Dbg( p_input, "switching to %ssync mode", async ? "a" : "" );
+        input_priv( p_input )->b_out_pace_control = async;
     }
-#endif
 
     /* Decode */
     if( es->p_dec_record )
