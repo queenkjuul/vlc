@@ -28,10 +28,13 @@
 # include "config.h"
 #endif
 
+#include <assert.h>
+
 #include <vlc_common.h>
 #include <vlc_plugin.h>
 #include <vlc_sout.h>
 #include <vlc_block.h>
+#include <vlc_clock.h>
 #include <vlc_vector.h>
 
 /*****************************************************************************
@@ -72,6 +75,7 @@ typedef struct
 typedef struct
 {
     void *id;
+    vlc_clock_t *clock;
 } duplicated_id_t;
 
 typedef struct VLC_VECTOR(duplicated_id_t) sout_stream_id_sys_t;
@@ -234,7 +238,11 @@ Add( sout_stream_t *p_stream, const es_format_t *p_fmt, vlc_clock_t *clock )
         {
             sout_stream_t *out = p_sys->pp_streams[i_stream];
 
-            dup_id.id = (void*)sout_StreamIdAdd( out, p_fmt, NULL );
+            dup_id.clock = vlc_clock_CreateSlave(clock, p_fmt->i_cat);
+            // TODO real run-time check needs a branch refactor here.
+            assert(dup_id.clock != NULL);
+
+            dup_id.id = (void*)sout_StreamIdAdd( out, p_fmt, dup_id.clock );
             if( dup_id.id )
             {
                 msg_Dbg( p_stream, "    - added for output %d", i_stream );
@@ -282,6 +290,7 @@ static void Del( sout_stream_t *p_stream, void *_id )
             sout_stream_t *out = p_sys->pp_streams[i_stream];
             sout_StreamIdDel( out, dup_id->id );
         }
+        vlc_clock_Delete(dup_id->clock);
     }
 
     vlc_vector_clear(id);
