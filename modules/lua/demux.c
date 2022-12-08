@@ -100,6 +100,15 @@ static int vlclua_demux_readline( lua_State *L )
     return 1;
 }
 
+static int vlclua_demux_setmeta( lua_State *L )
+{
+    stream_t *s = (stream_t *)vlclua_get_this(L);
+
+    vlclua_read_meta_data(s, L, input_GetItem(s->p_input));
+
+    return 0;
+}
+
 /*****************************************************************************
  *
  *****************************************************************************/
@@ -115,6 +124,7 @@ static const luaL_Reg p_reg_parse[] =
 {
     { "read", vlclua_demux_read },
     { "readline", vlclua_demux_readline },
+    { "set_current_playlist_meta", vlclua_demux_setmeta },
     { NULL, NULL }
 };
 
