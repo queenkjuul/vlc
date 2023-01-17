@@ -590,6 +590,7 @@ static void MainLoopStatistics( input_thread_t *p_input )
      * normal_time value (that is VLC_TICK_0 by default). */
     demux_Control( priv->master->p_demux, DEMUX_GET_NORMAL_TIME, &priv->normal_time );
 
+    printf("pos: %.6f time: %ld len: %ld normal: %ld\n", f_position, i_time, i_length, priv->normal_time);
     es_out_SetTimes( priv->p_es_out, f_position, i_time, priv->normal_time,
                      i_length );
 

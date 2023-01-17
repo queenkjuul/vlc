@@ -3385,6 +3385,7 @@ static int EsOutVaControlLocked( es_out_t *out, input_source_t *source,
         }
 
         i_pcr = va_arg( args, vlc_tick_t );
+        printf("SETPCR %ld", i_pcr);
         if( i_pcr == VLC_TICK_INVALID )
         {
             msg_Err( p_sys->p_input, "Invalid PCR value in ES_OUT_SET_(GROUP_)PCR !" );

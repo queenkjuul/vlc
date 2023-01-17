@@ -134,6 +134,7 @@ static int Demux( demux_t *p_demux )
     }
     block->i_buffer = rd;
 
+    es_out_SetPCR(p_demux->out, vlc_stream_Tell(p_demux->s));
     size_t wr = sout_AccessOutWrite( out, block );
     if( wr != (size_t)rd )
     {
@@ -145,5 +146,13 @@ static int Demux( demux_t *p_demux )
 
 static int Control( demux_t *p_demux, int i_query, va_list args )
 {
-    return demux_vaControlHelper( p_demux->s, 0, -1, 0, 1, i_query, args );
+    switch (i_query)
+    {
+        case DEMUX_GET_TIME:
+            {
+                printf("Get time: %ld %ld\n", stream_Size(p_demux->s), vlc_stream_Tell(p_demux->s));
+                break;
+            }
+    }
+    return demux_vaControlHelper( p_demux->s, 0, -1, DUMP_BLOCKSIZE, 1, i_query, args );
 }

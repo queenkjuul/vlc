@@ -284,6 +284,7 @@ int demux_vaControlHelper( stream_t *s,
             return vlc_stream_vaControl( s, i_query, args );
 
         case DEMUX_GET_LENGTH:
+            printf("GL: %ld %ld %ld\n", i_bitrate, i_end, i_start);
             if( i_bitrate > 0 && i_end > i_start )
             {
                 *va_arg( args, vlc_tick_t * ) = vlc_tick_from_samples((i_end - i_start) * 8, i_bitrate);
@@ -292,6 +293,7 @@ int demux_vaControlHelper( stream_t *s,
             return VLC_EGENERIC;
 
         case DEMUX_GET_TIME:
+            printf("GL: %ld %ld %ld\n", i_bitrate, i_tell, i_start);
             if( i_bitrate > 0 && i_tell >= i_start )
             {
                 *va_arg( args, vlc_tick_t * ) = vlc_tick_from_samples((i_tell - i_start) * 8, i_bitrate);

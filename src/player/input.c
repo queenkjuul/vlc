@@ -784,6 +784,7 @@ input_thread_Events(input_thread_t *input_thread,
             bool changed = false;
             vlc_tick_t system_date = VLC_TICK_INVALID;
 
+            printf("event: %ld %ld %.6f\n",event->times.time, input->time, event->times.position );
             if (event->times.time != VLC_TICK_INVALID
              && (input->time != event->times.time
               || input->position != event->times.position))
