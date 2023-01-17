@@ -25,4 +25,22 @@
 int AccessOpen( vlc_object_t * );
 void AccessClose( vlc_object_t * );
 
+typedef struct hls_storage hls_storage_t;
+struct hls_storage
+{
+    void *sys;
+    size_t size;
+
+    block_t *(*write_block)(hls_storage_t *, block_t *);
+    ssize_t (*write_bytes)(hls_storage_t *, const uint8_t *, size_t);
+    int (*read)(const hls_storage_t *, uint8_t[], size_t);
+    void (*destroy)(hls_storage_t *);
+};
+
+hls_storage_t *
+hls_storage_FromFile(const char *path, int flags, bool unlink_on_destroy);
+hls_storage_t *hls_storage_MemoryNew(void);
+void hls_storage_Destroy(hls_storage_t *storage);
+
+
 #endif
