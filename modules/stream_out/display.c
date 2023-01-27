@@ -203,6 +203,18 @@ static int Control( sout_stream_t *p_stream, int i_query, va_list args )
     return VLC_SUCCESS;
 }
 
+static void Flush( sout_stream_t *p_stream, void *id )
+{
+    sout_stream_id_sys_t *id_sys = id;
+    vlc_input_decoder_Flush( id_sys->dec );
+
+    sout_stream_sys_t *sys = p_stream->p_sys;
+    if( !sys->first_pcr_signaled )
+        return;
+
+    sys->first_pcr_signaled = false;
+}
+
 static void SetPCR( sout_stream_t *p_stream, vlc_tick_t pcr )
 {
     sout_stream_sys_t *sys = p_stream->p_sys;
@@ -215,7 +227,7 @@ static void SetPCR( sout_stream_t *p_stream, vlc_tick_t pcr )
 }
 
 static const struct sout_stream_operations ops = {
-    Add, Del, Send, Control, NULL, SetPCR
+    Add, Del, Send, Control, Flush, SetPCR
 };
 
 /*****************************************************************************
