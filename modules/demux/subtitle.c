@@ -823,7 +823,6 @@ static int Control( demux_t *p_demux, int i_query, va_list args )
         case DEMUX_SET_NEXT_DEMUX_TIME:
             p_sys->b_slave = true;
             p_sys->i_next_demux_date = va_arg( args, vlc_tick_t ) - VLC_TICK_0;
-            printf("lol %ld\n",p_sys->i_next_demux_date );
             return VLC_SUCCESS;
 
         case DEMUX_CAN_PAUSE:
