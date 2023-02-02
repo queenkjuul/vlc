@@ -214,6 +214,9 @@ private:
 
     void setMeta( vlc_meta_t *p_meta );
 
+    void setMasterDemuxTime(vlc_tick_t time) { m_master_demux_time = time; }
+    vlc_tick_t getMasterDemuxTime() const { return m_master_demux_time; }
+
     vlc_tick_t getPlaybackTimestamp();
 
     double getPlaybackPosition() const;
@@ -242,6 +245,9 @@ private:
     static void set_pause_state(void*, bool paused);
 
     static void set_meta(void*, vlc_meta_t *p_meta);
+
+    static void set_master_demux_time(void *, vlc_tick_t time);
+    static vlc_tick_t get_master_demux_time(void *);
 
     void prepareHttpArtwork();
 
@@ -305,6 +311,7 @@ private:
     vlc_tick_t        m_cc_time_last_request_date;
     vlc_tick_t        m_cc_time_date;
     vlc_tick_t        m_cc_time;
+    vlc_tick_t        m_master_demux_time;
 
     int64_t           m_sub_track_id;
 
