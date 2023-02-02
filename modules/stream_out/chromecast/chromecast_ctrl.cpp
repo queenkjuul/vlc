@@ -117,6 +117,7 @@ intf_sys_t::intf_sys_t(vlc_object_t * const p_this, int port, std::string device
  , m_art_idx(0)
  , m_cc_time_date( VLC_TICK_INVALID )
  , m_cc_time( VLC_TICK_INVALID )
+ , m_master_demux_time( VLC_TICK_0 )
  , m_pingRetriesLeft( PING_WAIT_RETRIES )
  , m_has_forced_tracks(false)
 {
@@ -139,6 +140,8 @@ intf_sys_t::intf_sys_t(vlc_object_t * const p_this, int port, std::string device
     m_common.pf_send_input_event = send_input_event;
     m_common.pf_set_pause_state  = set_pause_state;
     m_common.pf_set_meta         = set_meta;
+    m_common.pf_set_master_demux_time = set_master_demux_time;
+    m_common.pf_get_master_demux_time = get_master_demux_time;
 
     assert( var_Type( vlc_object_parent(vlc_object_parent(m_module)), CC_SHARED_VAR_NAME) == 0 );
     if (var_Create( vlc_object_parent(vlc_object_parent(m_module)), CC_SHARED_VAR_NAME, VLC_VAR_ADDRESS ) == VLC_SUCCESS )
@@ -1281,4 +1284,16 @@ void intf_sys_t::set_meta(void *pt, vlc_meta_t *p_meta)
 {
     intf_sys_t *p_this = static_cast<intf_sys_t*>(pt);
     p_this->setMeta( p_meta );
+}
+
+void intf_sys_t::set_master_demux_time(void *pt, vlc_tick_t time)
+{
+    intf_sys_t *p_this = static_cast<intf_sys_t*>(pt);
+    p_this->setMasterDemuxTime( time );
+}
+
+vlc_tick_t intf_sys_t::get_master_demux_time(void *pt)
+{
+    intf_sys_t *p_this = static_cast<intf_sys_t*>(pt);
+    return p_this->getMasterDemuxTime();
 }
