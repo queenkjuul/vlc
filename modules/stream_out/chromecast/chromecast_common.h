@@ -70,6 +70,9 @@ typedef struct
 
     void (*pf_set_meta)(void*, vlc_meta_t *p_meta);
 
+    void (*pf_set_master_demux_time)(void*, vlc_tick_t);
+    vlc_tick_t (*pf_get_master_demux_time)(void*);
+
 } chromecast_common;
 
 # ifdef __cplusplus

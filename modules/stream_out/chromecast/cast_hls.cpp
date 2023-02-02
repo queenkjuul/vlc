@@ -49,7 +49,8 @@ struct SoutStreamSys
 static sout_stream_t *CreateSoutChain( sout_stream_t *stream, SoutStreamSys &sys )
 {
     std::stringstream sstream;
-    sstream << "hls{is-http=true,"
+    sstream << "transcode{vcodec=h264}:"
+            << "hls{is-http,"
             << ",path=" << sys.intf->getHttpStreamRoot() << "}";
 
     return sout_StreamChainNew( VLC_OBJECT( stream ), sstream.str().c_str(), nullptr );
@@ -59,10 +60,10 @@ static void *Add( sout_stream_t *stream, const es_format_t *fmt )
 {
     SoutStreamSys *sys = static_cast<SoutStreamSys *>( stream->p_sys );
 
-    if (fmt->i_cat != VIDEO_ES)
-    {
-        return nullptr;
-    }
+    //if (fmt->i_cat != VIDEO_ES)
+    //{
+    //    return nullptr;
+    //}
 
     printf( "ADD %d\n", fmt->i_id );
     if ( !sys->is_video_supported && fmt->i_cat != AUDIO_ES )
@@ -161,7 +162,7 @@ static int Send( sout_stream_t *stream, void *id, vlc_frame_t *frame )
         return result;
 
     const auto hls_segcount = var_GetInteger( sys->hls, "seg-count" );
-    if ( hls_segcount >= 3 && !sys->start_command_sent )
+    if ( hls_segcount >= 2 && !sys->start_command_sent )
     {
         printf( "START\n" );
         sys->intf->setHasInput( "application/vnd.apple.mpegurl" );
@@ -304,17 +305,22 @@ static void Close( vlc_object_t *obj )
 #define PORT_TEXT N_( "Chromecast port" )
 #define PORT_LONGTEXT N_( "The port used to talk to the Chromecast." )
 
+// clang-format off
 vlc_module_begin()
 
-    set_shortname( N_( "Chromecast" ) ) set_description( N_( "Chromecast stream output" ) )
-        set_capability( "sout output", 0 ) add_shortcut( "chromecast" )
-            set_subcategory( SUBCAT_SOUT_STREAM ) set_callbacks( Open, Close )
-
-                add_string( SOUT_CFG_PREFIX "ip", NULL, NULL, NULL ) change_private()
-                    add_integer( SOUT_CFG_PREFIX "port", CHROMECAST_CONTROL_PORT, NULL, NULL )
-                        change_private() add_bool( SOUT_CFG_PREFIX "video", true, NULL, NULL )
-                            change_private() add_integer( SOUT_CFG_PREFIX "http-port",
-                                                          HTTP_PORT,
-                                                          HTTP_PORT_TEXT,
-                                                          HTTP_PORT_LONGTEXT )
-                                add_renderer_opts( SOUT_CFG_PREFIX ) vlc_module_end()
+    set_shortname( N_( "Chromecast" ) )
+    set_description( N_( "Chromecast stream output" ) )
+    set_capability( "sout output", 0 )
+    add_shortcut( "chromecast" )
+    set_subcategory( SUBCAT_SOUT_STREAM )
+    set_callbacks( Open, Close )
+    
+    add_string( SOUT_CFG_PREFIX "ip", NULL, NULL, NULL )
+        change_private()
+    add_integer( SOUT_CFG_PREFIX "port", CHROMECAST_CONTROL_PORT, NULL, NULL )
+        change_private()
+    add_bool( SOUT_CFG_PREFIX "video", true, NULL, NULL )
+        change_private()
+    add_integer( SOUT_CFG_PREFIX "http-port", HTTP_PORT, HTTP_PORT_TEXT, HTTP_PORT_LONGTEXT )
+    add_renderer_opts( SOUT_CFG_PREFIX )
+vlc_module_end()

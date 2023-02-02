@@ -162,6 +162,7 @@ struct demux_cc
 
         m_last_time = m_start_time;
         m_last_pos = m_start_pos;
+        p_renderer->pf_set_master_demux_time( p_renderer->p_opaque, m_start_time );
     }
 
     ~demux_cc()
@@ -195,7 +196,7 @@ struct demux_cc
         vlc_tick_t time = m_start_time;
         vlc_tick_t cc_time = getCCTime();
 
-        printf("time: %ld\n", cc_time);
+        //printf("time: %ld\n", cc_time);
         if( cc_time != VLC_TICK_INVALID )
             time += cc_time;
         m_last_time = time;
@@ -315,8 +316,7 @@ struct demux_cc
 
     int Control( demux_t *d, int i_query, va_list args )
     {
-        if (m_slave && i_query == DEMUX_SET_NEXT_DEMUX_TIME)
-        {
+        if (m_slave && i_query == DEMUX_SET_NEXT_DEMUX_TIME) {
             //printf("%p CONTROL %d (enabled %d) %d\n", d,  i_query, m_enabled, DEMUX_SET_NEXT_DEMUX_TIME);
             //printf("Ouep %ld\n", va_arg( args, vlc_tick_t ));
         }
@@ -326,6 +326,11 @@ struct demux_cc
 
         switch (i_query)
         {
+        //case DEMUX_GET_PTS_DELAY:
+        //{
+        //    *va_arg(args, vlc_tick_t *) = VLC_TICK_FROM_SEC(24);
+        //    return VLC_SUCCESS;
+        //}
         case DEMUX_GET_POSITION:
         {
             double pos = getPosition();
@@ -338,7 +343,18 @@ struct demux_cc
         }
         case DEMUX_GET_TIME:
         {
-            vlc_tick_t time = getTime();
+            vlc_tick_t time;
+            const int status = demux_Control( p_demux->s, DEMUX_GET_TIME, &time );
+            if (status != VLC_SUCCESS)
+                return status;
+            if ( m_slave )
+            {
+                *va_arg(args, vlc_tick_t *) = time;
+                return VLC_SUCCESS;
+            }
+
+            p_renderer->pf_set_master_demux_time( p_renderer->p_opaque, time );
+            time = getTime();
             //printf("GET TIME %ld\n", time);
             if( time >= 0 )
             {
@@ -428,16 +444,12 @@ struct demux_cc
 
         case DEMUX_SET_NEXT_DEMUX_TIME:
         {
-            //printf("SET_NEXT_DEMUX_TIME\n");
-            m_enabled = false;
             m_slave = true;
-            vlc_tick_t time = va_arg(args, vlc_tick_t);
-            int ret =
-                demux_Control(p_demux->s, DEMUX_SET_NEXT_DEMUX_TIME, time);
-            if (ret != VLC_SUCCESS)
-                return ret;
 
-            return VLC_SUCCESS;
+            const vlc_tick_t master_time =
+                p_renderer->pf_get_master_demux_time(p_renderer->p_opaque);
+            return demux_Control(
+                p_demux->s, DEMUX_SET_NEXT_DEMUX_TIME, master_time);
         }
         case DEMUX_FILTER_DISABLE:
 
