@@ -394,6 +394,7 @@ static struct hls_track *hls_track_New( sout_stream_t *sout, const es_format_t *
     else if ( sys->main_track->fmt.i_cat != VIDEO_ES && fmt->i_cat == VIDEO_ES )
     {
         sys->main_track->is_main_track = false;
+        track->is_main_track = true;
         var_SetBool(
             sys->main_track->mux->p_access, ACO_CFG_PREFIX "pace", false);
         if (sys->main_track->is_caching)
@@ -404,7 +405,7 @@ static struct hls_track *hls_track_New( sout_stream_t *sout, const es_format_t *
             [AUDIO_ES] = "AUDIO",
             [SPU_ES] = "SUBTITLES",
         };
-    printf("Adding %s Main Track: %s\n", track_types[fmt->i_cat], sys->main_track ? track_types[sys->main_track->fmt.i_cat] : "none");
+    msg_Info(sout, "Adding %s Main Track: %s\n", track_types[fmt->i_cat], sys->main_track ? track_types[sys->main_track->fmt.i_cat] : "none");
 
     track->mux = get_muxer( access, sys, fmt->i_cat );
     if ( unlikely( track->mux == NULL ) )
