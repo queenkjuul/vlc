@@ -1017,11 +1017,11 @@ static ssize_t writeSegment( hls_segment *segment, sout_access_out_t *p_access )
         struct vlc_tracer *tracer = vlc_object_get_tracer( VLC_OBJECT(p_access) );
         if (tracer != NULL)
         {
-            vlc_tracer_TraceStreamDTS( tracer, "HLS_ACO", "OUT", p_sys->psz_indexPath, output->i_pts, output->i_dts );
+            vlc_tracer_TraceStreamDTS( tracer, "HLS_ACO", "OUT", p_sys->psz_segmentUrl, output->i_pts, output->i_dts );
             if (output->i_flags & BLOCK_FLAG_TYPE_I)
             {
                 char *n;
-                asprintf(&n, "%s-iframe", p_sys->psz_indexPath);
+                asprintf(&n, "%s-iframe", p_sys->psz_segmentUrl);
                 vlc_tracer_TraceStreamDTS( tracer, "HLS_ACO", "OUT", n, output->i_pts, output->i_dts );
                 free(n);
             }
@@ -1062,12 +1062,12 @@ static ssize_t Write( sout_access_out_t *p_access, block_t *p_buffer )
         struct vlc_tracer *t = vlc_object_get_tracer( VLC_OBJECT( p_access ) );
         if (t != NULL)
         {
-            vlc_tracer_TraceStreamDTS( t, "HLS_ACO", "IN", p_sys->psz_indexPath, p_buffer->i_pts,
+            vlc_tracer_TraceStreamDTS( t, "HLS_ACO", "IN", p_sys->psz_segmentUrl, p_buffer->i_pts,
                                    p_buffer->i_dts );
             if ( p_buffer->i_flags & BLOCK_FLAG_TYPE_I )
             {
                 char *n;
-                asprintf( &n, "%s-iframe", p_sys->psz_indexPath );
+                asprintf( &n, "%s-iframe", p_sys->psz_segmentUrl );
                 vlc_tracer_TraceStreamDTS( t, "HLS_ACO", "IN", n, p_buffer->i_pts, p_buffer->i_dts );
                 free( n );
             }
