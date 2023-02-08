@@ -49,7 +49,7 @@ struct SoutStreamSys
 static sout_stream_t *CreateSoutChain( sout_stream_t *stream, SoutStreamSys &sys )
 {
     std::stringstream sstream;
-    sstream << "transcode{vcodec=h264}:"
+    sstream << "transcode{acodec=aac}:"
             << "hls{is-http,"
             << ",path=" << sys.intf->getHttpStreamRoot() << "}";
 
@@ -161,7 +161,7 @@ static int Send( sout_stream_t *stream, void *id, vlc_frame_t *frame )
     if ( result != VLC_SUCCESS )
         return result;
 
-    const auto hls_segcount = var_GetInteger( sys->hls, "seg-count" );
+    const auto hls_segcount = var_GetInteger( sys->hls->p_next, "seg-count" );
     if ( hls_segcount >= 2 && !sys->start_command_sent )
     {
         printf( "START\n" );
