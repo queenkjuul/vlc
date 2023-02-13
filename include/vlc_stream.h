@@ -255,6 +255,8 @@ enum stream_query_e
     STREAM_CAN_CONTROL_PACE,                /**< arg1=(bool *) res=cannot fail */
     /* */
     STREAM_GET_SIZE=6,                      /**< arg1=(uint64_t *) res=can fail */
+    STREAM_GET_MTIME,                       /**< arg1=(uint64_t *) res=can fail
+                                                 Returns the last modified time in seconds since EPOCH */
 
     /* */
     STREAM_GET_PTS_DELAY = 0x101,           /**< arg1=(vlc_tick_t *) res=cannot fail */
