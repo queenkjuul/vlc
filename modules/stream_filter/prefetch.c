@@ -51,6 +51,19 @@ struct stream_ctrl
 
 typedef struct
 {
+    uint64_t value;
+    bool exists;
+} opt_val_t;
+
+static inline void GetStreamOptionalValue(stream_t *stream,
+                                          enum stream_query_e query,
+                                          opt_val_t *val)
+{
+    val->exists = vlc_stream_Control(stream, query, &val->value) == VLC_SUCCESS;
+}
+
+typedef struct
+{
     vlc_mutex_t  lock;
     vlc_cond_t   wait_data;
     vlc_cond_t   wait_space;
@@ -64,7 +77,7 @@ typedef struct
     bool         can_seek;
     bool         can_pace;
     bool         can_pause;
-    uint64_t     size;
+    opt_val_t    size;
     vlc_tick_t   pts_delay;
     char        *content_type;
 
@@ -361,9 +374,9 @@ static int Control(stream_t *stream, int query, va_list args)
             *va_arg (args, bool *) = sys->can_pace;
             break;
         case STREAM_GET_SIZE:
-            if (sys->size == (uint64_t)-1)
+            if (!sys->size.exists)
                 return VLC_EGENERIC;
-            *va_arg(args, uint64_t *) = sys->size;
+            *va_arg(args, uint64_t *) = sys->size.value;
             break;
         case STREAM_GET_PTS_DELAY:
             *va_arg(args, vlc_tick_t *) = sys->pts_delay;
@@ -452,8 +465,9 @@ static int Open(vlc_object_t *obj)
     vlc_stream_Control(stream->s, STREAM_CAN_SEEK, &sys->can_seek);
     vlc_stream_Control(stream->s, STREAM_CAN_PAUSE, &sys->can_pause);
     vlc_stream_Control(stream->s, STREAM_CAN_CONTROL_PACE, &sys->can_pace);
-    if (vlc_stream_Control(stream->s, STREAM_GET_SIZE, &sys->size))
-        sys->size = -1;
+
+    GetStreamOptionalValue(stream->s, STREAM_GET_SIZE, &sys->size);
+
     vlc_stream_Control(stream->s, STREAM_GET_PTS_DELAY, &sys->pts_delay);
     if (vlc_stream_Control(stream->s, STREAM_GET_CONTENT_TYPE,
                            &sys->content_type))
