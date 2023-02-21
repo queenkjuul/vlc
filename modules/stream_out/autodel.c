@@ -74,6 +74,25 @@ static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt )
     return p_es;
 }
 
+static int Control( sout_stream_t *p_stream, int i_query, va_list args )
+{
+    switch( i_query )
+    {
+        case SOUT_STREAM_ID_SPU_HIGHLIGHT:
+        {
+            sout_stream_id_sys_t *id = va_arg( args, void * );
+            void *spu_hl = va_arg( args, void * );
+            if (id->id != NULL)
+                return sout_StreamControl(
+                    p_stream->p_next, i_query, id->id, spu_hl );
+        }
+        case SOUT_STREAM_IS_SYNCHRONOUS:
+        case SOUT_STREAM_WANTS_SUBSTREAMS:
+            return sout_StreamControlVa( p_stream->p_next, i_query, args );
+    }
+    return VLC_EGENERIC;
+}
+
 static void Del( sout_stream_t *p_stream, void *_p_es )
 {
     sout_stream_id_sys_t *p_es = (sout_stream_id_sys_t *)_p_es;
@@ -132,7 +151,7 @@ static void SetPCR( sout_stream_t *stream, vlc_tick_t pcr )
 #define SOUT_CFG_PREFIX "sout-autodel-"
 
 static const struct sout_stream_operations ops = {
-    Add, Del, Send, NULL, NULL, SetPCR,
+    Add, Del, Send, Control, NULL, SetPCR,
 };
 
 static int Open( vlc_object_t *p_this )
