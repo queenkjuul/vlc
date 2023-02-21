@@ -122,8 +122,13 @@ static int OpenCommon( vlc_object_t *p_this )
     return VLC_SUCCESS;
 }
 
+static int Control( sout_stream_t *p_stream, int i_query, va_list args )
+{
+    return sout_StreamControlVa( p_stream->p_next, i_query, args );
+}
+
 static const struct sout_stream_operations id_ops = {
-    AddId, Del, Send, NULL, NULL, SetPCR,
+    AddId, Del, Send, Control, NULL, SetPCR,
 };
 
 static int OpenId( vlc_object_t *p_this )
@@ -148,7 +153,7 @@ static int OpenId( vlc_object_t *p_this )
 }
 
 static const struct sout_stream_operations lang_ops = {
-    AddLang, Del, Send, NULL, NULL, SetPCR,
+    AddLang, Del, Send, Control, NULL, SetPCR,
 };
 
 static int OpenLang( vlc_object_t *p_this )
