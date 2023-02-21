@@ -259,8 +259,28 @@ static int FilterSend(sout_stream_t *stream, void *opaque, block_t *block)
     return sout_StreamIdSend(stream->p_next, id->next_id, block);
 }
 
+static int FilterControl(sout_stream_t *p_stream, int i_query, va_list args)
+{
+    switch (i_query)
+    {
+        case SOUT_STREAM_ID_SPU_HIGHLIGHT:
+        {
+            sout_stream_id_sys_t *id = va_arg(args, void *);
+            void *spu_hl = va_arg(args, void *);
+            if (id->next_id != NULL)
+                return sout_StreamControl(p_stream->p_next, i_query,
+                                          id->next_id, spu_hl);
+            break;
+        }
+        case SOUT_STREAM_IS_SYNCHRONOUS:
+        case SOUT_STREAM_WANTS_SUBSTREAMS:
+            return sout_StreamControlVa(p_stream->p_next, i_query, args);
+    }
+    return VLC_EGENERIC;
+}
+
 static const struct sout_stream_operations filter_ops = {
-    FilterAdd, FilterDel, FilterSend, NULL, NULL, SetPCR,
+    FilterAdd, FilterDel, FilterSend, FilterControl, NULL, SetPCR,
 };
 
 static int FilterOpen(vlc_object_t *obj)
