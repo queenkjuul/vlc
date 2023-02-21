@@ -100,6 +100,20 @@ static int Control( sout_stream_t *p_stream, int i_query, va_list args )
             }
             return VLC_SUCCESS;
         }
+        case SOUT_STREAM_IS_SYNCHRONOUS:
+        {
+            bool is_one_substream_sync = false;
+            for( int i = 0; i < p_sys->i_nb_streams; i++ )
+            {
+                bool is_sync;
+                if( sout_StreamControl(p_sys->pp_streams[i],
+                                       i_query,
+                                       &is_sync) == VLC_SUCCESS && is_sync )
+                    is_one_substream_sync = true;
+            }
+            *va_arg( args, bool* ) = is_one_substream_sync;
+            return VLC_SUCCESS;
+        }
     }
 
     return VLC_EGENERIC;
