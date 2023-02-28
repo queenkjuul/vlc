@@ -25,11 +25,13 @@
 
 #include <vlc_block.h>
 #include <vlc_list.h>
+#include <vlc_memstream.h>
 #include <vlc_plugin.h>
 #include <vlc_sout.h>
 
 #include "hls.h"
 #include "segments.h"
+#include "storage.h"
 
 typedef struct
 {
@@ -52,6 +54,9 @@ typedef struct
         vlc_tick_t length;
     } ongoing_segment_data;
     hls_segment_queue_t segments;
+
+    struct hls_storage *manifest;
+
     struct vlc_list node;
 } hls_playlist_t;
 
@@ -60,6 +65,50 @@ static inline void ResetSegmentBuffer(struct segment_buffer *buffer)
     buffer->begin = NULL;
     buffer->end = &buffer->begin;
     buffer->length = 0u;
+}
+
+static struct hls_storage *
+GeneratePlaylistManifest(const hls_playlist_t *playlist)
+{
+    struct vlc_memstream out;
+    vlc_memstream_open(&out);
+
+#define MANIFEST_ADD_TAG(fmt, ...)                                             \
+    do                                                                         \
+    {                                                                          \
+        if (vlc_memstream_printf(&out, fmt "\n", ##__VA_ARGS__) < 0)           \
+            goto error;                                                        \
+    } while (0)
+
+    MANIFEST_ADD_TAG("#EXTM3U");
+    const double seg_duration =
+        secf_from_vlc_tick(playlist->config->segment_length);
+    MANIFEST_ADD_TAG("#EXT-X-TARGETDURATION:%.0f", seg_duration);
+    MANIFEST_ADD_TAG("#EXT-X-VERSION:3");
+    MANIFEST_ADD_TAG("#EXT-X-ALLOW-CACHE:NO");
+    MANIFEST_ADD_TAG("#EXT-X-PLAYLIST-TYPE:EVENT");
+
+    const hls_segment_t *first_seg = hls_segment_GetFirst(&playlist->segments);
+    MANIFEST_ADD_TAG("#EXT-X-MEDIA-SEQUENCE:%u",
+                     (first_seg == NULL) ? 0u : first_seg->id);
+
+    const hls_segment_t *segment;
+    hls_segment_queue_Foreach(&playlist->segments, segment)
+    {
+        MANIFEST_ADD_TAG("#EXTINF:%.2f,", secf_from_vlc_tick(segment->length));
+        MANIFEST_ADD_TAG("%s", segment->url);
+    }
+
+#undef MANIFEST_ADD_TAG
+
+    if (vlc_memstream_close(&out) != 0)
+        return NULL;
+    return hls_storage_FromBytes(out.ptr, out.length, HLS_STORAGE_TYPE_MEMORY);
+error:
+    if (vlc_memstream_close(&out) != 0)
+        return NULL;
+    free(out.ptr);
+    return NULL;
 }
 
 static ssize_t AccessOutWrite(sout_access_out_t *access, block_t *block)
@@ -78,6 +127,15 @@ static ssize_t AccessOutWrite(sout_access_out_t *access, block_t *block)
                 playlist->ongoing_segment_data.length);
             if (unlikely(status != VLC_SUCCESS))
                 goto error;
+
+            struct hls_storage *new_manifest =
+                GeneratePlaylistManifest(playlist);
+            if (unlikely(new_manifest == NULL))
+                goto error;
+
+            if (playlist->manifest != NULL)
+                hls_storage_Destroy(playlist->manifest);
+            playlist->manifest = new_manifest;
 
             ResetSegmentBuffer(&playlist->ongoing_segment_data);
         }
@@ -151,6 +209,8 @@ static void *Add(sout_stream_t *stream, const es_format_t *fmt)
 
     ResetSegmentBuffer(&playlist->ongoing_segment_data);
 
+    playlist->manifest = NULL;
+
     vlc_list_append(&playlist->node, &sys->playlists);
 
     return playlist;
@@ -173,6 +233,8 @@ static void Del(sout_stream_t *stream, void *id)
     sout_MuxDelete(playlist->mux);
 
     sout_AccessOutDelete(playlist->access);
+    if (playlist->manifest != NULL)
+        hls_storage_Destroy(playlist->manifest);
 
     block_ChainRelease(playlist->ongoing_segment_data.begin);
     hls_segment_queue_Clear(&playlist->segments);
