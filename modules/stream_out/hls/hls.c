@@ -42,6 +42,9 @@ typedef struct
     const struct hls_config *config;
 
     sout_access_out_t *access;
+    sout_mux_t *mux;
+    sout_input_t *input;
+
     struct segment_buffer
     {
         block_t *begin;
@@ -128,6 +131,14 @@ static void *Add(sout_stream_t *stream, const es_format_t *fmt)
     if (unlikely(playlist->access == NULL))
         goto error;
 
+    playlist->mux = sout_MuxNew(playlist->access, "ts");
+    if (unlikely(playlist->mux == NULL))
+        goto error;
+
+    playlist->input = sout_MuxAddStream(playlist->mux, fmt);
+    if (playlist->input == NULL)
+        goto error;
+
     playlist->config = &sys->config;
 
     hls_segment_queue_Init(&playlist->segments, fmt->i_id, &sys->config);
@@ -138,6 +149,12 @@ static void *Add(sout_stream_t *stream, const es_format_t *fmt)
 
     return playlist;
 error:
+    if (playlist->access != NULL)
+        sout_AccessOutDelete(playlist->access);
+    if (playlist->input != NULL)
+        sout_MuxDeleteStream(playlist->mux, playlist->input);
+    if (playlist->mux != NULL)
+        sout_MuxDelete(playlist->mux);
     free(playlist);
     return NULL;
 }
@@ -145,6 +162,9 @@ error:
 static void Del(sout_stream_t *stream, void *id)
 {
     hls_playlist_t *playlist = id;
+
+    sout_MuxDeleteStream(playlist->mux, playlist->input);
+    sout_MuxDelete(playlist->mux);
 
     sout_AccessOutDelete(playlist->access);
 
@@ -157,7 +177,8 @@ static void Del(sout_stream_t *stream, void *id)
 
 static int Send(sout_stream_t *stream, void *id, vlc_frame_t *frame)
 {
-    return VLC_ENOTSUP; // TODO: Implement once the Mux/access output is introduced.
+    hls_playlist_t *playlist = id;
+    return sout_MuxSendBuffer(playlist->mux, playlist->input, frame);
 }
 
 #define SOUT_CFG_PREFIX "sout-hls-"
