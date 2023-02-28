@@ -28,8 +28,11 @@
 #include <vlc_plugin.h>
 #include <vlc_sout.h>
 
+#include "hls.h"
+
 typedef struct
 {
+    struct hls_config config;
     struct vlc_list playlists;
 } sout_stream_sys_t;
 
@@ -71,6 +74,8 @@ static int Send(sout_stream_t *stream, void *id, vlc_frame_t *frame)
                         // introduced.
 }
 
+#define SOUT_CFG_PREFIX "sout-hls-"
+
 static int Open(vlc_object_t *this)
 {
     sout_stream_t *stream = (sout_stream_t *)this;
@@ -78,6 +83,16 @@ static int Open(vlc_object_t *this)
     sout_stream_sys_t *sys = malloc(sizeof(*sys));
     if (unlikely(sys == NULL))
         return VLC_ENOMEM;
+
+    static const char *const options[] = {
+        "base-url", "numsegs", "seglen", NULL};
+    config_ChainParse(stream, SOUT_CFG_PREFIX, options, stream->p_cfg);
+
+    sys->config.base_url = var_GetString(stream, SOUT_CFG_PREFIX "base-url");
+    sys->config.max_segments =
+        var_GetInteger(stream, SOUT_CFG_PREFIX "numsegs");
+    sys->config.segment_length =
+        VLC_TICK_FROM_SEC(var_GetInteger(stream, SOUT_CFG_PREFIX "seglen"));
 
     vlc_list_init(&sys->playlists);
 
@@ -97,8 +112,16 @@ static void Close(vlc_object_t *this)
     sout_stream_t *stream = (sout_stream_t *)this;
     sout_stream_sys_t *sys = stream->p_sys;
 
+    hls_config_Clean(&sys->config);
+
     free(sys);
 }
+
+#define BASEURL_TEXT N_("Base URL/Path")
+#define NUMSEGS_LONGTEXT N_("Number of segments to include in index")
+#define NUMSEGS_TEXT N_("Number of segments")
+#define SEGLEN_LONGTEXT N_("Length of segments in seconds")
+#define SEGLEN_TEXT N_("Segment length (sec)")
 
 // clang-format off
 vlc_module_begin()
@@ -107,6 +130,10 @@ vlc_module_begin()
     set_capability("sout output", 50)
     add_shortcut("hls")
     set_subcategory(SUBCAT_SOUT_STREAM)
+
+    add_string(SOUT_CFG_PREFIX "base-url", "", BASEURL_TEXT, BASEURL_TEXT)
+    add_integer(SOUT_CFG_PREFIX "numsegs", 5, NUMSEGS_TEXT, NUMSEGS_LONGTEXT)
+    add_integer(SOUT_CFG_PREFIX "seglen", 4, SEGLEN_TEXT, SEGLEN_LONGTEXT)
 
     set_callbacks(Open, Close)
 vlc_module_end()

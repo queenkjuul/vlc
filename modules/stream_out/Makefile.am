@@ -35,6 +35,7 @@ libstream_out_udp_plugin_la_SOURCES = \
 libstream_out_udp_plugin_la_LIBADD = $(SOCKET_LIBS)
 
 libstream_out_hls_plugin_la_SOURCES = \
+	stream_out/hls/hls.h \
 	stream_out/hls/hls.c
 
 sout_LTLIBRARIES = \
