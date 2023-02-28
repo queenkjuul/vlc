@@ -29,6 +29,7 @@
 #include <vlc_sout.h>
 
 #include "hls.h"
+#include "segments.h"
 
 typedef struct
 {
@@ -38,8 +39,82 @@ typedef struct
 
 typedef struct
 {
+    const struct hls_config *config;
+
+    sout_access_out_t *access;
+    struct segment_buffer
+    {
+        block_t *begin;
+        block_t **end;
+        vlc_tick_t length;
+    } ongoing_segment_data;
+    hls_segment_queue_t segments;
     struct vlc_list node;
 } hls_playlist_t;
+
+static inline void ResetSegmentBuffer(struct segment_buffer *buffer)
+{
+    buffer->begin = NULL;
+    buffer->end = &buffer->begin;
+    buffer->length = 0u;
+}
+
+static ssize_t AccessOutWrite(sout_access_out_t *access, block_t *block)
+{
+    hls_playlist_t *playlist = access->p_sys;
+
+    ssize_t wrote = 0;
+    while (block != NULL)
+    {
+        if (playlist->ongoing_segment_data.length + block->i_length >=
+            playlist->config->segment_length)
+        {
+            const int status = hls_segment_queue_NewSegment(
+                &playlist->segments,
+                playlist->ongoing_segment_data.begin,
+                playlist->ongoing_segment_data.length);
+            if (unlikely(status != VLC_SUCCESS))
+                goto error;
+
+            ResetSegmentBuffer(&playlist->ongoing_segment_data);
+        }
+
+        wrote += block->i_buffer;
+
+        block_t *next = block->p_next;
+
+        block->p_next = NULL;
+        playlist->ongoing_segment_data.length += block->i_length;
+        block_ChainLastAppend(&playlist->ongoing_segment_data.end, block);
+
+        block = next;
+    }
+
+    return wrote;
+error:
+    block_ChainRelease(block);
+    return -1;
+}
+
+static sout_access_out_t *CreateAccessOut(sout_stream_t *stream,
+                                          hls_playlist_t *sys)
+{
+    sout_access_out_t *access = vlc_object_create(stream, sizeof(*access));
+    if (unlikely(access == NULL))
+        return NULL;
+
+    access->p_cfg = NULL;
+    access->p_module = NULL;
+    access->p_sys = sys;
+    access->psz_access = strdup("hls");
+    access->psz_path = NULL;
+
+    access->pf_control = NULL;
+    access->pf_read = NULL;
+    access->pf_seek = NULL;
+    access->pf_write = AccessOutWrite;
+    return access;
+}
 
 static hls_playlist_t *CreatePlaylist(sout_stream_t *stream)
 {
@@ -55,14 +130,32 @@ static void *Add(sout_stream_t *stream, const es_format_t *fmt)
 
     hls_playlist_t *playlist = CreatePlaylist(stream);
 
+    playlist->access = CreateAccessOut(stream, playlist);
+    if (unlikely(playlist->access == NULL))
+        goto error;
+
+    playlist->config = &sys->config;
+
+    hls_segment_queue_Init(&playlist->segments, fmt->i_id, &sys->config);
+
+    ResetSegmentBuffer(&playlist->ongoing_segment_data);
+
     vlc_list_append(&playlist->node, &sys->playlists);
 
     return playlist;
+error:
+    free(playlist);
+    return NULL;
 }
 
 static void Del(sout_stream_t *stream, void *id)
 {
     hls_playlist_t *playlist = id;
+
+    sout_AccessOutDelete(playlist->access);
+
+    block_ChainRelease(playlist->ongoing_segment_data.begin);
+    hls_segment_queue_Clear(&playlist->segments);
 
     vlc_list_remove(&playlist->node);
     free(playlist);
