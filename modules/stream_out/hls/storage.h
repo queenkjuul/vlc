@@ -31,6 +31,8 @@ typedef struct hls_storage
     ssize_t (*get_content)(struct hls_storage *, uint8_t **dest);
 } hls_storage_t;
 
+hls_storage_t *hls_storage_FromBlocks(block_t *content, enum hls_storage_type);
+
 void hls_storage_Destroy(hls_storage_t *);
 
 #endif
