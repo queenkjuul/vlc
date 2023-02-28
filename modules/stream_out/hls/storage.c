@@ -55,6 +55,17 @@ static ssize_t mem_storage_GetContent(const hls_storage_t *storage,
     return priv->size;
 }
 
+static hls_storage_t *mem_storage_FromBlock(block_t *content)
+{
+    struct mem_storage_priv *priv = malloc(sizeof(*priv));
+
+    priv->storage.type = HLS_STORAGE_TYPE_MEMORY;
+    priv->storage.get_content = mem_storage_GetContent;
+    priv->content = content;
+    block_ChainProperties(content, NULL, &priv->size, NULL);
+    return &priv->storage;
+}
+
 static void mem_storage_Destroy(hls_storage_t *storage)
 {
     struct mem_storage_priv *priv =
@@ -62,6 +73,18 @@ static void mem_storage_Destroy(hls_storage_t *storage)
 
     block_ChainRelease(priv->content);
     free(priv);
+}
+
+hls_storage_t *hls_storage_FromBlocks(block_t *content,
+                                      enum hls_storage_type type)
+{
+    switch (type)
+    {
+        case HLS_STORAGE_TYPE_MEMORY:
+            return mem_storage_FromBlock(content);
+        default:
+            vlc_assert_unreachable();
+    }
 }
 
 void hls_storage_Destroy(hls_storage_t *storage)
