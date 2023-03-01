@@ -292,6 +292,19 @@ static size_t httpd_HtmlError (char **body, int code, const char *url)
     return (size_t)res;
 }
 
+static inline int httpd_UrlCatchCall(httpd_client_t *client)
+{
+    httpd_url_t *url = client->url;
+    uint8_t msg = client->query.i_type;
+
+    vlc_mutex_lock(&url->lock);
+    const int status = url->catch[msg].cb(
+        url->catch[msg].p_sys, client, &client->answer, &client->query);
+    vlc_mutex_unlock(&url->lock);
+
+    return status;
+}
+
 
 /*****************************************************************************
  * High Level Functions: httpd_file_t
@@ -1644,8 +1657,7 @@ static int httpd_ClientSend(httpd_client_t *cl)
             httpd_MsgClean(&cl->answer);
             cl->answer.i_body_offset = i_offset;
 
-            cl->url->catch[i_msg].cb(cl->url->catch[i_msg].p_sys, cl,
-                                     &cl->answer, &cl->query);
+            httpd_UrlCatchCall(cl);
         }
 
         if (cl->answer.i_body > 0) {
@@ -1864,8 +1876,13 @@ static void httpdLoop(httpd_host_t *host)
                         vlc_list_foreach(url, &host->urls, node) {
                             if (strcmp(url->psz_url, query->psz_url))
                                 continue;
+
+                            vlc_mutex_lock(&url->lock);
                             if (!url->catch[i_msg].cb)
+                            {
+                                vlc_mutex_unlock(&url->lock);
                                 continue;
+                            }
 
                             if (answer) {
                                 b_auth_failed = !httpdAuthOk(url->psz_user,
@@ -1875,7 +1892,7 @@ static void httpdLoop(httpd_host_t *host)
                                    break;
                             }
 
-                            if (url->catch[i_msg].cb(url->catch[i_msg].p_sys, cl, answer, query))
+                            if (httpd_UrlCatchCall(cl))
                                 continue;
 
                             if (answer->i_proto == HTTPD_PROTO_NONE)
