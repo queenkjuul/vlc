@@ -253,6 +253,22 @@ static int Send(sout_stream_t *stream, void *id, vlc_frame_t *frame)
     return sout_MuxSendBuffer(playlist->mux, playlist->input, frame);
 }
 
+static int Control(sout_stream_t *stream, int query, va_list args)
+{
+    const sout_stream_sys_t *sys = stream->p_sys;
+    switch (query)
+    {
+        case SOUT_STREAM_IS_SYNCHRONOUS:
+            *va_arg(args, bool *) = sys->config.pace;
+            break;
+
+        default:
+            return VLC_EGENERIC;
+    }
+
+    return VLC_SUCCESS;
+}
+
 #define SOUT_CFG_PREFIX "sout-hls-"
 
 static int Open(vlc_object_t *this)
@@ -264,12 +280,13 @@ static int Open(vlc_object_t *this)
         return VLC_ENOMEM;
 
     static const char *const options[] = {
-        "base-url", "numsegs", "seglen", NULL};
+        "base-url", "numsegs", "pace", "seglen", NULL};
     config_ChainParse(stream, SOUT_CFG_PREFIX, options, stream->p_cfg);
 
     sys->config.base_url = var_GetString(stream, SOUT_CFG_PREFIX "base-url");
     sys->config.max_segments =
         var_GetInteger(stream, SOUT_CFG_PREFIX "numsegs");
+    sys->config.pace = var_GetBool(stream, SOUT_CFG_PREFIX "pace");
     sys->config.segment_length =
         VLC_TICK_FROM_SEC(var_GetInteger(stream, SOUT_CFG_PREFIX "seglen"));
 
@@ -279,6 +296,7 @@ static int Open(vlc_object_t *this)
         .add = Add,
         .del = Del,
         .send = Send,
+        .control = Control,
     };
     stream->ops = &ops;
     stream->p_sys = sys;
@@ -299,6 +317,9 @@ static void Close(vlc_object_t *this)
 #define BASEURL_TEXT N_("Base URL/Path")
 #define NUMSEGS_LONGTEXT N_("Number of segments to include in index")
 #define NUMSEGS_TEXT N_("Number of segments")
+#define PACE_LONGTEXT                                                          \
+    N_("Enable input pacing, the media will play at a playbak rate")
+#define PACE_TEXT N_("Enable pacing")
 #define SEGLEN_LONGTEXT N_("Length of segments in seconds")
 #define SEGLEN_TEXT N_("Segment length (sec)")
 
@@ -312,6 +333,7 @@ vlc_module_begin()
 
     add_string(SOUT_CFG_PREFIX "base-url", "", BASEURL_TEXT, BASEURL_TEXT)
     add_integer(SOUT_CFG_PREFIX "numsegs", 5, NUMSEGS_TEXT, NUMSEGS_LONGTEXT)
+    add_bool(SOUT_CFG_PREFIX "pace", true, PACE_TEXT, PACE_LONGTEXT)
     add_integer(SOUT_CFG_PREFIX "seglen", 4, SEGLEN_TEXT, SEGLEN_LONGTEXT)
 
     set_callbacks(Open, Close)

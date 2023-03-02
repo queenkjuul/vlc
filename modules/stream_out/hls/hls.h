@@ -24,6 +24,7 @@ struct hls_config
 {
     char *base_url;
     unsigned int max_segments;
+    bool pace;
     vlc_tick_t segment_length;
 };
 
