@@ -30,6 +30,7 @@ typedef struct hls_segment
     vlc_tick_t length;
 
     struct hls_storage *storage;
+    httpd_url_t *http_url;
 
     struct vlc_list priv_node;
 } hls_segment_t;
@@ -42,6 +43,8 @@ typedef struct
     unsigned int max_segments;
     const char *base_url;
 
+    httpd_host_t *host_ref;
+
     struct vlc_list segments;
 } hls_segment_queue_t;
 
@@ -52,6 +55,7 @@ typedef struct
 
 void hls_segment_queue_Init(hls_segment_queue_t *queue,
                             unsigned int id,
+                            httpd_host_t *host_ref,
                             const struct hls_config *config);
 void hls_segment_queue_Clear(hls_segment_queue_t *);
 int hls_segment_queue_NewSegment(hls_segment_queue_t *,
