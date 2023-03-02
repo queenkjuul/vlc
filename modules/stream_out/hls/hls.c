@@ -24,6 +24,7 @@
 #include <vlc_common.h>
 
 #include <vlc_block.h>
+#include <vlc_httpd.h>
 #include <vlc_list.h>
 #include <vlc_memstream.h>
 #include <vlc_plugin.h>
@@ -37,6 +38,7 @@ typedef struct
 {
     struct hls_config config;
     struct vlc_list playlists;
+    httpd_host_t *http_host;
 } sout_stream_sys_t;
 
 typedef struct
@@ -55,7 +57,9 @@ typedef struct
     } ongoing_segment_data;
     hls_segment_queue_t segments;
 
+    char *url;
     struct hls_storage *manifest;
+    httpd_url_t *http_manifest;
 
     struct vlc_list node;
 } hls_playlist_t;
@@ -65,6 +69,41 @@ static inline void ResetSegmentBuffer(struct segment_buffer *buffer)
     buffer->begin = NULL;
     buffer->end = &buffer->begin;
     buffer->length = 0u;
+}
+
+static int HTTPCallback(httpd_callback_sys_t *sys,
+                        httpd_client_t *client,
+                        httpd_message_t *answer,
+                        const httpd_message_t *query)
+{
+    if (answer == NULL || query == NULL || client == NULL)
+        return VLC_SUCCESS;
+
+    const struct hls_storage *storage = (struct hls_storage *)sys;
+
+    printf("fetching %s\n", query->psz_url);
+
+    httpd_MsgAdd(answer, "Content-Type", "%s", storage->mime);
+    httpd_MsgAdd(answer, "Cache-Control", "no-cache");
+
+    answer->i_proto = HTTPD_PROTO_HTTP;
+    answer->i_version = 0;
+    answer->i_type = HTTPD_MSG_ANSWER;
+
+    const ssize_t size = storage->get_content(storage, &answer->p_body);
+    if (size != -1)
+    {
+        answer->i_body = size;
+        answer->i_status = 200;
+    }
+    else
+        answer->i_status = 500;
+
+    if (httpd_MsgGet(query, "Connection") != NULL)
+        httpd_MsgAdd(answer, "Connection", "close");
+    httpd_MsgAdd(answer, "Content-Length", "%d", answer->i_body);
+
+    return VLC_SUCCESS;
 }
 
 static struct hls_storage *
@@ -137,6 +176,11 @@ static ssize_t AccessOutWrite(sout_access_out_t *access, block_t *block)
             if (unlikely(new_manifest == NULL))
                 goto error;
 
+            httpd_UrlCatch(playlist->http_manifest,
+                           HTTPD_MSG_GET,
+                           HTTPCallback,
+                           (httpd_callback_sys_t *)new_manifest);
+
             if (playlist->manifest != NULL)
                 hls_storage_Destroy(playlist->manifest);
             playlist->manifest = new_manifest;
@@ -189,6 +233,18 @@ static hls_playlist_t *CreatePlaylist(sout_stream_t *stream)
     return playlist;
 }
 
+static inline char *FormatPlaylistManifestURL(const hls_playlist_t *playlist)
+{
+    char *ret;
+    const int status = asprintf(&ret,
+                                "%s/playlist-%u-index.m3u8",
+                                playlist->config->base_url,
+                                playlist->input->fmt.i_id);
+    if (unlikely(status == -1))
+        return NULL;
+    return ret;
+}
+
 static void *Add(sout_stream_t *stream, const es_format_t *fmt)
 {
     sout_stream_sys_t *sys = stream->p_sys;
@@ -209,11 +265,19 @@ static void *Add(sout_stream_t *stream, const es_format_t *fmt)
 
     playlist->config = &sys->config;
 
+    playlist->url = FormatPlaylistManifestURL(playlist);
+    if (unlikely(playlist->url == NULL))
+        goto error;
+
     hls_segment_queue_Init(&playlist->segments, fmt->i_id, &sys->config);
 
     ResetSegmentBuffer(&playlist->ongoing_segment_data);
 
     playlist->manifest = NULL;
+    playlist->http_manifest =
+        httpd_UrlNew(sys->http_host, playlist->url, NULL, NULL);
+    if (playlist->http_manifest == NULL)
+        goto error;
 
     vlc_list_append(&playlist->node, &sys->playlists);
 
@@ -225,6 +289,7 @@ error:
         sout_MuxDeleteStream(playlist->mux, playlist->input);
     if (playlist->mux != NULL)
         sout_MuxDelete(playlist->mux);
+    free(playlist->url);
     free(playlist);
     return NULL;
 }
@@ -237,11 +302,16 @@ static void Del(sout_stream_t *stream, void *id)
     sout_MuxDelete(playlist->mux);
 
     sout_AccessOutDelete(playlist->access);
+
+    httpd_UrlDelete(playlist->http_manifest);
+
     if (playlist->manifest != NULL)
         hls_storage_Destroy(playlist->manifest);
 
     block_ChainRelease(playlist->ongoing_segment_data.begin);
     hls_segment_queue_Clear(&playlist->segments);
+    
+    free(playlist->url);
 
     vlc_list_remove(&playlist->node);
     free(playlist);
@@ -282,6 +352,13 @@ static int Open(vlc_object_t *this)
     static const char *const options[] = {
         "base-url", "numsegs", "pace", "seglen", NULL};
     config_ChainParse(stream, SOUT_CFG_PREFIX, options, stream->p_cfg);
+
+    sys->http_host = vlc_http_HostNew(this);
+    if (sys->http_host == NULL)
+    {
+        free(sys);
+        return VLC_EGENERIC;
+    }
 
     sys->config.base_url = var_GetString(stream, SOUT_CFG_PREFIX "base-url");
     sys->config.max_segments =
