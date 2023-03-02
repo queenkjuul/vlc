@@ -71,10 +71,10 @@ static inline void ResetSegmentBuffer(struct segment_buffer *buffer)
     buffer->length = 0u;
 }
 
-static int HTTPCallback(httpd_callback_sys_t *sys,
-                        httpd_client_t *client,
-                        httpd_message_t *answer,
-                        const httpd_message_t *query)
+int HTTPCallback(httpd_callback_sys_t *sys,
+                 httpd_client_t *client,
+                 httpd_message_t *answer,
+                 const httpd_message_t *query)
 {
     if (answer == NULL || query == NULL || client == NULL)
         return VLC_SUCCESS;
@@ -263,7 +263,8 @@ static void *Add(sout_stream_t *stream, const es_format_t *fmt)
     if (unlikely(playlist->url == NULL))
         goto error;
 
-    hls_segment_queue_Init(&playlist->segments, fmt->i_id, &sys->config);
+    hls_segment_queue_Init(
+        &playlist->segments, fmt->i_id, sys->http_host, &sys->config);
 
     ResetSegmentBuffer(&playlist->ongoing_segment_data);
 

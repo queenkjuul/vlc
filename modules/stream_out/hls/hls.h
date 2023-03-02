@@ -33,4 +33,9 @@ static inline void hls_config_Clean(struct hls_config *config)
     free(config->base_url);
 }
 
+int HTTPCallback(httpd_callback_sys_t *sys,
+                 httpd_client_t *client,
+                 httpd_message_t *answer,
+                 const httpd_message_t *query);
+
 #endif
