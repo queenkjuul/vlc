@@ -35,6 +35,8 @@
 
 #include "codecs.h"
 #include "hls.h"
+#include "segments.h"
+#include "storage.h"
 
 typedef struct
 {

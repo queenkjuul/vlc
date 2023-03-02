@@ -94,27 +94,42 @@ static void mem_storage_Destroy(hls_storage_t *storage)
 }
 
 hls_storage_t *hls_storage_FromBlocks(block_t *content,
+                                      const char *mime,
                                       enum hls_storage_type type)
 {
+    hls_storage_t *storage;
     switch (type)
     {
         case HLS_STORAGE_TYPE_MEMORY:
-            return mem_storage_FromBlock(content);
+            storage = mem_storage_FromBlock(content);
+            break;
         default:
             vlc_assert_unreachable();
     }
+
+    if (storage != NULL)
+        storage->mime = mime;
+    return storage;
 }
 
-hls_storage_t *
-hls_storage_FromBytes(void *data, size_t size, enum hls_storage_type type)
+hls_storage_t *hls_storage_FromBytes(void *data,
+                                     size_t size,
+                                     const char *mime,
+                                     enum hls_storage_type type)
 {
+    hls_storage_t *storage;
     switch (type)
     {
         case HLS_STORAGE_TYPE_MEMORY:
-            return mem_storage_FromBytes(data, size);
+            storage = mem_storage_FromBytes(data, size);
+            break;
         default:
             vlc_assert_unreachable();
     }
+
+    if (storage != NULL)
+        storage->mime = mime;
+    return storage;
 }
 
 void hls_storage_Destroy(hls_storage_t *storage)
