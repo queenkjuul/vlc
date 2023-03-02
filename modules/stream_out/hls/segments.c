@@ -63,7 +63,8 @@ int hls_segment_queue_NewSegment(hls_segment_queue_t *queue,
     if (unlikely(segment == NULL))
         return VLC_ENOMEM;
 
-    segment->storage = hls_storage_FromBlocks(content, HLS_STORAGE_TYPE_MEMORY);
+    segment->storage =
+        hls_storage_FromBlocks(content, "video/MP2T", HLS_STORAGE_TYPE_MEMORY);
     if (unlikely(segment->storage == NULL))
         goto nomem;
 

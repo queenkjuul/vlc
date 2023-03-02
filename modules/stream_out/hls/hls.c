@@ -104,7 +104,10 @@ GeneratePlaylistManifest(const hls_playlist_t *playlist)
     if (vlc_memstream_close(&out) != 0)
         return NULL;
     printf("%.*s\n", (int)out.length, out.ptr);
-    return hls_storage_FromBytes(out.ptr, out.length, HLS_STORAGE_TYPE_MEMORY);
+    return hls_storage_FromBytes(out.ptr,
+                                 out.length,
+                                 "application/vnd.apple.mpegurl",
+                                 HLS_STORAGE_TYPE_MEMORY);
 error:
     if (vlc_memstream_close(&out) != 0)
         return NULL;
