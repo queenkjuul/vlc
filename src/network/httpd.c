@@ -293,9 +293,8 @@ static size_t httpd_HtmlError (char **body, int code, const char *url)
     return (size_t)res;
 }
 
-static inline int httpd_UrlCatchCall(httpd_client_t *client)
+static inline int httpd_UrlCatchCall(httpd_url_t *url, httpd_client_t *client)
 {
-    httpd_url_t *url = client->url;
     uint8_t msg = client->query.i_type;
 
     vlc_mutex_lock(&url->lock);
@@ -1657,7 +1656,7 @@ static int httpd_ClientSend(httpd_client_t *cl)
             httpd_MsgClean(&cl->answer);
             cl->answer.i_body_offset = i_offset;
 
-            httpd_UrlCatchCall(cl);
+            httpd_UrlCatchCall(cl->url, cl);
         }
 
         if (cl->answer.i_body > 0) {
@@ -1878,11 +1877,10 @@ static void httpdLoop(httpd_host_t *host)
                                 continue;
 
                             vlc_mutex_lock(&url->lock);
-                            if (!url->catch[i_msg].cb)
-                            {
-                                vlc_mutex_unlock(&url->lock);
+                            const bool has_cb = url->catch[i_msg].cb != NULL;
+                            vlc_mutex_unlock(&url->lock);
+                            if (!has_cb)
                                 continue;
-                            }
 
                             if (answer) {
                                 b_auth_failed = !httpdAuthOk(url->psz_user,
@@ -1892,7 +1890,7 @@ static void httpdLoop(httpd_host_t *host)
                                    break;
                             }
 
-                            if (httpd_UrlCatchCall(cl))
+                            if (httpd_UrlCatchCall(url, cl))
                                 continue;
 
                             if (answer->i_proto == HTTPD_PROTO_NONE)
