@@ -53,3 +53,4 @@ build*/
 contrib-*
 install-*
 !extras/package/apple/build.sh
+po/*

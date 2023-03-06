@@ -29,35 +29,51 @@
 #include <vlc_memstream.h>
 #include <vlc_plugin.h>
 #include <vlc_sout.h>
+#include <vlc_vector.h>
 
+#include "../codec/hxxx_helper.h"
 #include "hls.h"
 #include "segments.h"
 #include "storage.h"
 
+/**
+ * Represent one HLS playlist as in RFC 8216 section 4.
+ */
 typedef struct
 {
-    struct hls_config config;
-    struct vlc_list playlists;
-    httpd_host_t *http_host;
-} sout_stream_sys_t;
+    unsigned int id;
 
-typedef struct
-{
     const struct hls_config *config;
 
     sout_access_out_t *access;
     sout_mux_t *mux;
-    sout_input_t *input;
+    /** Every ES muxed in this playlist. */
+    struct vlc_list tracks;
 
+    /**
+     * Current unfinished segment buffer.
+     */
     struct segment_buffer
     {
         block_t *begin;
         block_t **end;
         vlc_tick_t length;
     } ongoing_segment_data;
+
+    /**
+     * Completed segments queue.
+     *
+     * The queue is generally max-sized (configurable by the user). Which means
+     * that, when the max size is reached, pushing in the queue erase the first
+     * segment.
+     */
     hls_segment_queue_t segments;
 
     char *url;
+
+    /**
+     * Current playlist manifest as in RFC 8216 section 4.3.3.
+     */
     struct hls_storage *manifest;
     httpd_url_t *http_manifest;
 
@@ -69,6 +85,78 @@ static inline void ResetSegmentBuffer(struct segment_buffer *buffer)
     buffer->begin = NULL;
     buffer->end = &buffer->begin;
     buffer->length = 0u;
+}
+
+/**
+ * Represent one ES.
+ *
+ * Returned from `pf_add` to have both the sout_input context and the owning
+ * playlist reference.
+ */
+typedef struct
+{
+    sout_input_t *input;
+    hls_playlist_t *playlist_ref;
+    struct vlc_list node;
+} hls_track_t;
+
+/**
+ * Represent parsed user-specification of "EXT-X-STREAM-INF" (As in RFC 8216
+ * section 4.3.4.2) renditions.
+ *
+ * They basically are groups of tracks muxed together. Each one of these
+ * represent one rendition of the main stream.
+ */
+struct stream_inf_desc
+{
+    /** Es id list specified by the plugin user. */
+    struct VLC_VECTOR(unsigned int) es_list;
+    /**
+     * Reference on the playlist associated with this list of es. Having a
+     * reference here after the playlist creation ease subsequent searches of
+     * the playlist.
+     */
+    hls_playlist_t *playlist_ref;
+};
+
+typedef struct
+{
+    /** All the plugin constants. */
+    struct hls_config config;
+
+    httpd_host_t *http_host;
+
+    struct VLC_VECTOR(struct stream_inf_desc *) stream_inf_descriptors;
+    /**
+     * All the created "EXT-X-STREAM-INF" (As in RFC 8216 section 4.3.4.2)
+     * playlists.
+     */
+    struct vlc_list stream_inf_playlists;
+    /**
+     * All the created "EXT-X-MEDIA" (As in RFC 8216 section 4.3.4.1) playlists.
+     */
+    struct vlc_list media_playlists;
+
+    /**
+     * Total number of playlist created by the plugin.
+     *
+     * Notably used to create unique playlists IDs.
+     */
+    unsigned int playlist_created_count;
+
+    /**
+     * Current "Master" Playlist manifest (As in RFC 8216 4.3.4).
+     */
+    struct hls_storage *manifest;
+    httpd_url_t *http_manifest;
+} sout_stream_sys_t;
+
+static inline hls_track_t *MediaGetTrack(const hls_playlist_t *media_playlist)
+{
+    hls_track_t *track = vlc_list_first_entry_or_null(
+        &media_playlist->tracks, hls_track_t, node);
+    assert(track != NULL);
+    return track;
 }
 
 int HTTPCallback(httpd_callback_sys_t *sys,
@@ -104,6 +192,225 @@ int HTTPCallback(httpd_callback_sys_t *sys,
     httpd_MsgAdd(answer, "Content-Length", "%d", answer->i_body);
 
     return VLC_SUCCESS;
+}
+
+static bool isTrackSupported(const es_format_t *fmt)
+{
+    return fmt->i_codec == VLC_CODEC_H264 || fmt->i_codec == VLC_CODEC_MP4A;
+}
+
+static int FormatCodecInfo(struct vlc_memstream *ms, const es_format_t *fmt)
+{
+
+    int wrote;
+    switch (fmt->i_codec)
+    {
+        case VLC_CODEC_H264:
+        {
+            /* Parse the h264 constraint flag. */
+            uint8_t constraints = 0;
+            struct hxxx_helper hh;
+            hxxx_helper_init(&hh, NULL, fmt->i_codec, 0, 0);
+            if (hxxx_helper_set_extra(&hh, fmt->p_extra, fmt->i_extra) ==
+                VLC_SUCCESS)
+                h264_helper_get_constraint_flag(&hh, &constraints);
+            hxxx_helper_clean(&hh);
+
+            wrote = vlc_memstream_printf(ms,
+                                         "avc1.%02X%02X%02X",
+                                         fmt->i_profile,
+                                         constraints,
+                                         fmt->i_level);
+            break;
+        }
+        case VLC_CODEC_MP4A:
+            wrote = vlc_memstream_printf(
+                ms,
+                "mp4a.40.%02u",
+                (fmt->i_profile == -1) ? 2u : fmt->i_profile + 1u);
+            break;
+        default:
+            return VLC_ENOTSUP;
+    }
+    return (wrote == -1) ? VLC_ENOMEM : VLC_SUCCESS;
+}
+
+typedef struct VLC_VECTOR(const es_format_t *) es_format_vec_t;
+
+static inline bool IsCodecAlreadyDescribed(const es_format_vec_t *vec,
+                                           const es_format_t *fmt)
+{
+    const es_format_t *it;
+    vlc_vector_foreach (it, vec)
+    {
+        if (es_format_IsSimilar(it, (fmt)))
+            return true;
+    }
+    return false;
+}
+
+static char *GeneratePlaylistCodecInfo(const struct vlc_list *media_list,
+                                       const hls_playlist_t *playlist)
+{
+    es_format_vec_t already_described = VLC_VECTOR_INITIALIZER;
+
+    bool is_stream_empty = true;
+    struct vlc_memstream out;
+    vlc_memstream_open(&out);
+
+    /* Describe codecs from the playlist. */
+    const hls_track_t *track;
+    vlc_list_foreach (track, &playlist->tracks, node)
+    {
+        if (IsCodecAlreadyDescribed(&already_described, &track->input->fmt))
+            continue;
+
+        if (!is_stream_empty)
+            vlc_memstream_putc(&out, ',');
+        if (FormatCodecInfo(&out, &track->input->fmt) != VLC_SUCCESS)
+            goto error;
+        is_stream_empty = false;
+        vlc_vector_push(&already_described, &track->input->fmt);
+    }
+
+    /* Describe codecs from all the EXT-X-MEDIA tracks. */
+    hls_playlist_t *media;
+    vlc_list_foreach (media, media_list, node)
+    {
+        track = MediaGetTrack(media);
+
+        if (IsCodecAlreadyDescribed(&already_described, &track->input->fmt))
+            continue;
+
+        if (!is_stream_empty)
+            vlc_memstream_putc(&out, ',');
+        if (FormatCodecInfo(&out, &track->input->fmt) != VLC_SUCCESS)
+            goto error;
+        is_stream_empty = false;
+        vlc_vector_push(&already_described, &track->input->fmt);
+    }
+
+    vlc_vector_destroy(&already_described);
+
+    vlc_memstream_putc(&out, '\0');
+    if (vlc_memstream_close(&out) != 0)
+        return NULL;
+    return out.ptr;
+error:
+    if (vlc_memstream_close(&out) != 0)
+        return NULL;
+    free(out.ptr);
+    vlc_vector_destroy(&already_described);
+    return NULL;
+}
+
+static struct hls_storage *GenerateMainManifest(const sout_stream_sys_t *sys)
+{
+    struct vlc_memstream out;
+    vlc_memstream_open(&out);
+
+#define MANIFEST_START_TAG(tag)                                                \
+    do                                                                         \
+    {                                                                          \
+        bool first_attribute = true;                                           \
+        vlc_memstream_puts(&out, tag);
+
+#define MANIFEST_ADD_ATTRIBUTE(attribute, ...)                                 \
+    do                                                                         \
+    {                                                                          \
+        if (vlc_memstream_printf(&out,                                         \
+                                 "%s" attribute,                               \
+                                 first_attribute ? ":" : ",",                  \
+                                 ##__VA_ARGS__) < 0)                           \
+            goto error;                                                        \
+        first_attribute = false;                                               \
+    } while (0)
+
+#define MANIFEST_END_TAG                                                       \
+    vlc_memstream_putc(&out, '\n');                                            \
+    }                                                                          \
+    while (0)                                                                  \
+        ;
+
+    vlc_memstream_puts(&out, "#EXTM3U\n");
+
+    static const char *const TRACK_TYPES[] = {
+        [VIDEO_ES] = "VIDEO",
+        [AUDIO_ES] = "AUDIO",
+    };
+    static const char *const GROUP_IDS[] = {
+        [VIDEO_ES] = "video",
+        [AUDIO_ES] = "audio",
+    };
+
+    const hls_playlist_t *playlist;
+    vlc_list_foreach (playlist, &sys->media_playlists, node)
+    {
+        const hls_track_t *track = MediaGetTrack(playlist);
+        const es_format_t *fmt = &track->input->fmt;
+        assert(fmt->i_cat == VIDEO_ES || fmt->i_cat == AUDIO_ES);
+
+        MANIFEST_START_TAG("#EXT-X-MEDIA")
+
+            const char *track_type = TRACK_TYPES[fmt->i_cat];
+            MANIFEST_ADD_ATTRIBUTE("TYPE=%s", track_type);
+
+            const char *group_id = GROUP_IDS[fmt->i_cat];
+            MANIFEST_ADD_ATTRIBUTE("GROUP-ID=\"%s\"", group_id);
+
+            MANIFEST_ADD_ATTRIBUTE("NAME=\"%d\"", fmt->i_id);
+
+            if (fmt->psz_language != NULL)
+                MANIFEST_ADD_ATTRIBUTE("LANGUAGE=\"%s\"", fmt->psz_language);
+
+            MANIFEST_ADD_ATTRIBUTE("URI=\"%s\"", playlist->url);
+
+        MANIFEST_END_TAG
+    }
+
+    /* Format EXT-X-STREAM-INF */
+    vlc_list_foreach (playlist, &sys->stream_inf_playlists, node)
+    {
+        MANIFEST_START_TAG("#EXT-X-STREAM-INF")
+
+            unsigned int bandwidth = 0;
+            const hls_track_t *track;
+            vlc_list_foreach (track, &playlist->tracks, node)
+                bandwidth += track->input->fmt.i_bitrate;
+            MANIFEST_ADD_ATTRIBUTE("BANDWIDTH=%u", bandwidth);
+
+            char *codecs =
+                GeneratePlaylistCodecInfo(&sys->media_playlists, playlist);
+            if (unlikely(codecs == NULL))
+                goto error;
+            MANIFEST_ADD_ATTRIBUTE("CODECS=\"%s\"", codecs);
+            free(codecs);
+
+            MANIFEST_ADD_ATTRIBUTE("VIDEO=\"%s\"", GROUP_IDS[VIDEO_ES]);
+            MANIFEST_ADD_ATTRIBUTE("AUDIO=\"%s\"", GROUP_IDS[AUDIO_ES]);
+
+        MANIFEST_END_TAG
+
+        if (vlc_memstream_printf(&out, "%s\n", playlist->url) < 0)
+            goto error;
+    }
+
+#undef MANIFEST_START_TAG
+#undef MANIFEST_ADD_ATTRIBUTE
+#undef MANIFEST_END_TAG
+
+    if (vlc_memstream_close(&out) != 0)
+        return NULL;
+    printf("%.*s\n", (int)out.length, out.ptr);
+    return hls_storage_FromBytes(out.ptr,
+                                 out.length,
+                                 "application/vnd.apple.mpegurl",
+                                 HLS_STORAGE_TYPE_MEMORY);
+error:
+    if (vlc_memstream_close(&out) != 0)
+        return NULL;
+    free(out.ptr);
+    return NULL;
 }
 
 static struct hls_storage *
@@ -227,17 +534,15 @@ static sout_access_out_t *CreateAccessOut(sout_stream_t *stream,
 
 static inline char *FormatPlaylistManifestURL(const hls_playlist_t *playlist)
 {
-    char *ret;
-    const int status = asprintf(&ret,
-                                "%s/playlist-%u-index.m3u8",
-                                playlist->config->base_url,
-                                playlist->input->fmt.i_id);
+    char *url;
+    const int status = asprintf(
+        &url, "%s/playlist-%u-index.m3u8", playlist->config->base_url, playlist->id);
     if (unlikely(status == -1))
         return NULL;
-    return ret;
+    return url;
 }
 
-static void *Add(sout_stream_t *stream, const es_format_t *fmt)
+static hls_playlist_t *CreatePlaylist(sout_stream_t *stream)
 {
     sout_stream_sys_t *sys = stream->p_sys;
 
@@ -253,10 +558,7 @@ static void *Add(sout_stream_t *stream, const es_format_t *fmt)
     if (unlikely(playlist->mux == NULL))
         goto error;
 
-    playlist->input = sout_MuxAddStream(playlist->mux, fmt);
-    if (playlist->input == NULL)
-        goto error;
-
+    playlist->id = sys->playlist_created_count;
     playlist->config = &sys->config;
 
     playlist->url = FormatPlaylistManifestURL(playlist);
@@ -264,7 +566,7 @@ static void *Add(sout_stream_t *stream, const es_format_t *fmt)
         goto error;
 
     hls_segment_queue_Init(
-        &playlist->segments, fmt->i_id, sys->http_host, &sys->config);
+        &playlist->segments, playlist->id, sys->http_host, &sys->config);
 
     ResetSegmentBuffer(&playlist->ongoing_segment_data);
 
@@ -274,14 +576,12 @@ static void *Add(sout_stream_t *stream, const es_format_t *fmt)
     if (playlist->http_manifest == NULL)
         goto error;
 
-    vlc_list_append(&playlist->node, &sys->playlists);
+    vlc_list_init(&playlist->tracks);
 
     return playlist;
 error:
     if (playlist->access != NULL)
         sout_AccessOutDelete(playlist->access);
-    if (playlist->input != NULL)
-        sout_MuxDeleteStream(playlist->mux, playlist->input);
     if (playlist->mux != NULL)
         sout_MuxDelete(playlist->mux);
     free(playlist->url);
@@ -289,11 +589,28 @@ error:
     return NULL;
 }
 
-static void Del(sout_stream_t *stream, void *id)
+static hls_playlist_t* NewStreamInf(sout_stream_t *stream)
 {
-    hls_playlist_t *playlist = id;
+    sout_stream_sys_t *sys = stream->p_sys;
 
-    sout_MuxDeleteStream(playlist->mux, playlist->input);
+    hls_playlist_t *stream_inf = CreatePlaylist(stream);
+    if(stream_inf != NULL)
+        vlc_list_append(&stream_inf->node, &sys->stream_inf_playlists);
+    return stream_inf;
+}
+
+static hls_playlist_t* NewMedia(sout_stream_t *stream)
+{
+    sout_stream_sys_t *sys = stream->p_sys;
+
+    hls_playlist_t *media = CreatePlaylist(stream);
+    if(media != NULL)
+        vlc_list_append(&media->node, &sys->media_playlists);
+    return media;
+}
+
+static void DeletePlaylist(hls_playlist_t *playlist)
+{
     sout_MuxDelete(playlist->mux);
 
     sout_AccessOutDelete(playlist->access);
@@ -305,17 +622,135 @@ static void Del(sout_stream_t *stream, void *id)
 
     block_ChainRelease(playlist->ongoing_segment_data.begin);
     hls_segment_queue_Clear(&playlist->segments);
-    
-    free(playlist->url);
 
     vlc_list_remove(&playlist->node);
+
+    free(playlist->url);
+
     free(playlist);
+}
+
+static struct stream_inf_desc *DescInfFromID(sout_stream_sys_t *sys,
+                                          unsigned int id)
+{
+
+    struct stream_inf_desc *it;
+    vlc_vector_foreach (it, &sys->stream_inf_descriptors)
+    {
+        unsigned int es_id;
+        vlc_vector_foreach (es_id, &it->es_list)
+        {
+            if (es_id == id)
+                return it;
+        }
+    }
+    return NULL;
+}
+
+static struct stream_inf_desc *DescFromPlaylist(sout_stream_sys_t *sys,
+                                                hls_playlist_t *playlist)
+{
+    struct stream_inf_desc *it;
+    vlc_vector_foreach (it, &sys->stream_inf_descriptors)
+    {
+        if (it->playlist_ref == playlist)
+            return it;
+    }
+    return NULL;
+}
+
+static void *Add(sout_stream_t *stream, const es_format_t *fmt)
+{
+
+    if (!isTrackSupported(fmt))
+        return NULL;
+
+    sout_stream_sys_t *sys = stream->p_sys;
+
+    // Either retrieve the already created playlist in StreamInf or create it.
+    struct stream_inf_desc *desc = DescInfFromID(sys, fmt->i_id);
+    hls_playlist_t *playlist;
+    if (desc != NULL)
+    {
+        if (desc->playlist_ref == NULL)
+            desc->playlist_ref = NewStreamInf(stream);
+        playlist = desc->playlist_ref;
+    }
+    else
+        playlist = NewMedia(stream);
+
+    if (playlist == NULL)
+        return NULL;
+
+    ++sys->playlist_created_count;
+
+    sout_input_t *input = sout_MuxAddStream(playlist->mux, fmt);
+    if (input == NULL)
+        goto error;
+
+    hls_track_t *track = malloc(sizeof(*track));
+    if (unlikely(track == NULL))
+        goto error;
+
+    track->input = input;
+    track->playlist_ref = playlist;
+
+    vlc_list_append(&track->node, &playlist->tracks);
+
+    struct hls_storage *new_manifest = GenerateMainManifest(sys);
+    if (unlikely(new_manifest == NULL))
+    {
+        vlc_list_remove(&track->node);
+        free(track);
+        goto error;
+    }
+
+    httpd_UrlCatch(sys->http_manifest,
+                   HTTPD_MSG_GET,
+                   HTTPCallback,
+                   (httpd_callback_sys_t *)new_manifest);
+
+    if (sys->manifest != NULL)
+        hls_storage_Destroy(sys->manifest);
+    sys->manifest = new_manifest;
+
+    if (desc != NULL && desc->playlist_ref == NULL)
+        desc->playlist_ref = playlist;
+
+    return track;
+error:
+    if (input != NULL)
+        sout_MuxDeleteStream(playlist->mux, input);
+    if (vlc_list_is_empty(&playlist->tracks))
+        DeletePlaylist(playlist);
+    return NULL;
+}
+
+static void Del(sout_stream_t *stream, void *id)
+{
+    sout_stream_sys_t *sys = stream->p_sys;
+    hls_track_t *track = id;
+
+    sout_MuxDeleteStream(track->playlist_ref->mux, track->input);
+    vlc_list_remove(&track->node);
+
+    if (vlc_list_is_empty(&track->playlist_ref->tracks))
+    {
+        struct stream_inf_desc *stream_inf =
+            DescFromPlaylist(sys, track->playlist_ref);
+        if (stream_inf != NULL)
+            stream_inf->playlist_ref = NULL;
+
+        DeletePlaylist(track->playlist_ref);
+    }
+
+    free(track);
 }
 
 static int Send(sout_stream_t *stream, void *id, vlc_frame_t *frame)
 {
-    hls_playlist_t *playlist = id;
-    return sout_MuxSendBuffer(playlist->mux, playlist->input, frame);
+    hls_track_t *track = id;
+    return sout_MuxSendBuffer(track->playlist_ref->mux, track->input, frame);
 }
 
 static int Control(sout_stream_t *stream, int query, va_list args)
@@ -350,10 +785,16 @@ static int Open(vlc_object_t *this)
 
     sys->http_host = vlc_http_HostNew(this);
     if (sys->http_host == NULL)
+        goto error;
+
+    sys->http_manifest =
+        httpd_UrlNew(sys->http_host, "/stream.m3u8", NULL, NULL);
+    if (sys->http_manifest == NULL)
     {
-        free(sys);
-        return VLC_EGENERIC;
+        httpd_HostDelete(sys->http_host);
+        goto error;
     }
+    sys->manifest = NULL;
 
     sys->config.base_url = var_GetString(stream, SOUT_CFG_PREFIX "base-url");
     sys->config.max_segments =
@@ -362,7 +803,16 @@ static int Open(vlc_object_t *this)
     sys->config.segment_length =
         VLC_TICK_FROM_SEC(var_GetInteger(stream, SOUT_CFG_PREFIX "seglen"));
 
-    vlc_list_init(&sys->playlists);
+    vlc_vector_init(&sys->stream_inf_descriptors);
+    struct stream_inf_desc *inf = calloc(1, sizeof(*inf));
+    vlc_vector_init(&inf->es_list);
+    vlc_vector_push(&inf->es_list, 1);
+    //vlc_vector_push(&inf->es_list, 2);
+    vlc_vector_push(&sys->stream_inf_descriptors, inf);
+    sys->playlist_created_count = 0;
+
+    vlc_list_init(&sys->stream_inf_playlists);
+    vlc_list_init(&sys->media_playlists);
 
     static const struct sout_stream_operations ops = {
         .add = Add,
@@ -374,6 +824,9 @@ static int Open(vlc_object_t *this)
     stream->p_sys = sys;
 
     return VLC_SUCCESS;
+error:
+    free(sys);
+    return VLC_EGENERIC;
 }
 
 static void Close(vlc_object_t *this)
