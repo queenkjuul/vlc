@@ -34,6 +34,10 @@ libstream_out_udp_plugin_la_SOURCES = \
 	stream_out/udp.c
 libstream_out_udp_plugin_la_LIBADD = $(SOCKET_LIBS)
 
+libstream_out_hls_plugin_la_SOURCES = \
+	stream_out/hls/hls.h \
+	stream_out/hls/hls.c
+
 sout_LTLIBRARIES = \
 	libstream_out_dummy_plugin.la \
 	libstream_out_cycle_plugin.la \
@@ -51,6 +55,7 @@ sout_LTLIBRARIES = \
 	libstream_out_smem_plugin.la \
 	libstream_out_setid_plugin.la \
 	libstream_out_transcode_plugin.la \
+	libstream_out_hls_plugin.la \
 	libstream_out_udp_plugin.la
 
 if HAVE_DECKLINK
