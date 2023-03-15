@@ -66,6 +66,24 @@ static hls_storage_t *mem_storage_FromBlock(block_t *content)
     return &priv->storage;
 }
 
+static hls_storage_t *mem_storage_FromBytes(void *bytes, size_t size)
+{
+    struct mem_storage_priv *priv = malloc(sizeof(*priv));
+
+    block_t *content = block_heap_Alloc(bytes, size);
+    if (unlikely(content == NULL))
+    {
+        free(priv);
+        return NULL;
+    }
+
+    priv->storage.type = HLS_STORAGE_TYPE_MEMORY;
+    priv->storage.get_content = mem_storage_GetContent;
+    priv->content = content;
+    priv->size = size;
+    return &priv->storage;
+}
+
 static void mem_storage_Destroy(hls_storage_t *storage)
 {
     struct mem_storage_priv *priv =
@@ -82,6 +100,18 @@ hls_storage_t *hls_storage_FromBlocks(block_t *content,
     {
         case HLS_STORAGE_TYPE_MEMORY:
             return mem_storage_FromBlock(content);
+        default:
+            vlc_assert_unreachable();
+    }
+}
+
+hls_storage_t *
+hls_storage_FromBytes(void *data, size_t size, enum hls_storage_type type)
+{
+    switch (type)
+    {
+        case HLS_STORAGE_TYPE_MEMORY:
+            return mem_storage_FromBytes(data, size);
         default:
             vlc_assert_unreachable();
     }

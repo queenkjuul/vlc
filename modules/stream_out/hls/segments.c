@@ -25,9 +25,10 @@
 
 #include <vlc_common.h>
 
+#include <vlc_httpd.h>
 #include <vlc_list.h>
+#include <vlc_tick.h>
 
-#include "hls.h"
 #include "segments.h"
 #include "storage.h"
 
@@ -39,13 +40,9 @@ static void hls_segment_Destroy(hls_segment_t *segment)
 }
 
 void hls_segment_queue_Init(hls_segment_queue_t *queue,
-                            unsigned int id,
-                            const struct hls_config *config)
+                            const struct hls_segment_queue_config *config)
 {
-    queue->id = id;
-    queue->total_segments = 0;
-    queue->max_segments = config->max_segments;
-    queue->base_url = config->base_url;
+    memcpy(&queue->config, config, sizeof(*config));
     vlc_list_init(&queue->segments);
 }
 
@@ -72,18 +69,31 @@ int hls_segment_queue_NewSegment(hls_segment_queue_t *queue,
 
     if (asprintf(&segment->url,
                  "%s/playlist-%u-%u.ts",
-                 queue->base_url,
-                 queue->id,
+                 queue->config.base_url,
+                 queue->config.id,
                  segment->id) == -1)
         goto nomem;
 
-    if (queue->max_segments <= queue->total_segments)
+    segment->http_url =
+        httpd_UrlNew(queue->config.httpd_ref, segment->url, NULL, NULL);
+    if (segment->http_url == NULL)
+    {
+        free(segment->url);
+        goto nomem;
+    }
+
+    if (queue->config.max_segments <= queue->total_segments)
     {
         hls_segment_t *old = hls_segment_GetFirst(queue);
         assert(old != NULL);
         vlc_list_remove(&old->priv_node);
         hls_segment_Destroy(old);
     }
+
+    httpd_UrlCatch(segment->http_url,
+                   HTTPD_MSG_GET,
+                   queue->config.httpd_callback,
+                   (httpd_callback_sys_t *)segment->storage);
 
     ++queue->total_segments;
     vlc_list_append(&segment->priv_node, &queue->segments);

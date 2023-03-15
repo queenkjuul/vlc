@@ -40,7 +40,16 @@ libstream_out_hls_plugin_la_SOURCES = \
 	stream_out/hls/segments.h \
 	stream_out/hls/segments.c \
 	stream_out/hls/storage.h \
-	stream_out/hls/storage.c
+	stream_out/hls/storage.c \
+	stream_out/hls/codecs.h \
+	stream_out/hls/codecs.c \
+    codec/hxxx_helper.h \
+    codec/hxxx_helper.c \
+    packetizer/hxxx_nal.c \
+    packetizer/h264_slice.c \
+    packetizer/h264_nal.c \
+    packetizer/hevc_nal.c
+
 
 sout_LTLIBRARIES = \
 	libstream_out_dummy_plugin.la \
