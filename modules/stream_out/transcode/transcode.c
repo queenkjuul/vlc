@@ -878,7 +878,7 @@ static void SetPCR( sout_stream_t *stream, vlc_tick_t pcr )
          * After the first inputs, the pcr_helper and pcr_sync tools will handle
          * pcr forwarding and re-synthesization.
          */
-        if( sys->first_pcr_sent )
+        if( !sys->first_pcr_sent )
         {
             sout_StreamSetPCR( stream->p_next, VLC_TICK_0 );
             sys->first_pcr_sent = true;
