@@ -175,6 +175,8 @@ static vlc_frame_t *EncodeVideo(encoder_t *enc, picture_t *pic)
 
     assert(pic->format.i_chroma == enc->fmt_in.video.i_chroma);
     vlc_frame_t *frame = vlc_frame_Alloc(4);
+    frame->i_dts = pic->date;
+    frame->i_pts = pic->date;
 
     struct transcode_scenario *scenario = &transcode_scenarios[current_scenario];
     if (scenario->encoder_encode != NULL)

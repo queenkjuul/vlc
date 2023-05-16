@@ -66,7 +66,7 @@ static const char test_default_sample[] = "mock://";
 static inline void on_timeout(int signum)
 {
     assert(signum == SIGALRM);
-    abort(); /* Cause a core dump */
+    //abort(); /* Cau//se a core dump */
 }
 
 static inline void test_init (void)

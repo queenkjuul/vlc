@@ -37,6 +37,7 @@ static struct scenario_data
     struct vlc_video_context *decoder_vctx;
     unsigned output_frame_count;
     vlc_tick_t last_pcr;
+    vlc_tick_t last_dts;
     bool converter_opened;
     bool encoder_opened;
     bool encoder_closed;
@@ -207,19 +208,29 @@ static void encoder_close(encoder_t *enc)
     scenario_data.encoder_closed = true;
 }
 
+static void check_frames(const vlc_frame_t *out)
+{
+    assert(scenario_data.last_pcr != VLC_TICK_INVALID);
+
+    for (; out != NULL; out = out->p_next )
+    {
+        assert(out->i_dts >= scenario_data.last_pcr);
+
+        ++scenario_data.output_frame_count;
+    }
+}
+
 static void wait_output_10_frames_reported(const vlc_frame_t *out)
 {
-    // Count frame output.
-    for (; out != NULL; out = out->p_next )
-        ++scenario_data.output_frame_count;
+    check_frames(out);
 
-    if (scenario_data.output_frame_count == 10)
+    if (scenario_data.output_frame_count >= 10)
         vlc_sem_post(&scenario_data.wait_stop);
 }
 
 static void wait_output_reported(const vlc_frame_t *out)
 {
-    (void)out;
+    check_frames(out);
     vlc_sem_post(&scenario_data.wait_stop);
 }
 
@@ -230,7 +241,12 @@ static void check_pcr_output(vlc_tick_t pcr)
         // Transcode's first PCR should always be VLC_TICK_0, see \ref
         // transcode.c::SetPCR() for explanations.
         assert(pcr == VLC_TICK_0);
+        printf("Pcr %ld\n", pcr);
         assert(scenario_data.output_frame_count == 0);
+    }
+    else
+    {
+        assert(scenario_data.last_dts <= pcr);
     }
 
     scenario_data.last_pcr = pcr;
