@@ -36,6 +36,7 @@ static struct scenario_data
     vlc_sem_t wait_stop;
     struct vlc_video_context *decoder_vctx;
     unsigned output_frame_count;
+    vlc_tick_t last_pcr;
     bool converter_opened;
     bool encoder_opened;
     bool encoder_closed;
@@ -222,6 +223,19 @@ static void wait_output_reported(const vlc_frame_t *out)
     vlc_sem_post(&scenario_data.wait_stop);
 }
 
+static void check_pcr_output(vlc_tick_t pcr)
+{
+    if (scenario_data.last_pcr == VLC_TICK_INVALID)
+    {
+        // Transcode's first PCR should always be VLC_TICK_0, see \ref
+        // transcode.c::SetPCR() for explanations.
+        assert(pcr == VLC_TICK_0);
+        assert(scenario_data.output_frame_count == 0);
+    }
+
+    scenario_data.last_pcr = pcr;
+}
+
 static void converter_fixed_size(filter_t *filter, vlc_fourcc_t chroma_in,
         vlc_fourcc_t chroma_out, unsigned width, unsigned height)
 {
@@ -270,6 +284,7 @@ struct transcode_scenario transcode_scenarios[] =
     .encoder_encode = encoder_encode_dummy,
     .encoder_close = encoder_close,
     .report_output = wait_output_reported,
+    .report_pcr = check_pcr_output,
 },{
     .source = source_800_600,
     .sout = "sout=#transcode:output_checker",
@@ -279,6 +294,7 @@ struct transcode_scenario transcode_scenarios[] =
     .encoder_encode = encoder_encode_dummy,
     .encoder_close = encoder_close,
     .report_output = wait_output_reported,
+    .report_pcr = check_pcr_output,
 },{
     .source = source_800_600,
     .sout = "sout=#transcode:output_checker",
@@ -289,6 +305,7 @@ struct transcode_scenario transcode_scenarios[] =
     .encoder_close = encoder_close,
     .converter_setup = converter_i420_to_nv12_800_600,
     .report_output = wait_output_reported,
+    .report_pcr = check_pcr_output,
 },{
     .source = source_800_600,
     .sout = "sout=#transcode:output_checker",
@@ -299,6 +316,7 @@ struct transcode_scenario transcode_scenarios[] =
     .encoder_close = encoder_close,
     .converter_setup = converter_nv12_to_i420_800_600,
     .report_output = wait_output_reported,
+    .report_pcr = check_pcr_output,
 },{
     .source = source_800_600,
     .sout = "sout=#transcode:output_checker",
@@ -308,6 +326,7 @@ struct transcode_scenario transcode_scenarios[] =
     .encoder_encode = encoder_encode_dummy,
     .encoder_close = encoder_close,
     .report_output = wait_output_reported,
+    .report_pcr = check_pcr_output,
 },{
     .source = source_800_600,
     .sout = "sout=#transcode:output_checker",
@@ -318,6 +337,7 @@ struct transcode_scenario transcode_scenarios[] =
     .encoder_close = encoder_close,
     .converter_setup = converter_i420_to_nv12_800_600,
     .report_output = wait_output_reported,
+    .report_pcr = check_pcr_output,
 },{
     /* Make sure fps filter in transcode will forward the video context */
     .source = source_800_600,
@@ -328,6 +348,7 @@ struct transcode_scenario transcode_scenarios[] =
     .encoder_encode = encoder_encode_dummy,
     .encoder_close = encoder_close,
     .report_output = wait_output_reported,
+    .report_pcr = check_pcr_output,
 },{
     // - Decoder format with video context
     // - Encoder format request a different chroma
@@ -343,6 +364,7 @@ struct transcode_scenario transcode_scenarios[] =
     .encoder_close = encoder_close,
     .converter_setup = converter_i420_to_nv12_800_600_vctx,
     .report_output = wait_output_reported,
+    .report_pcr = check_pcr_output,
 },{
     /* Make sure a change in format will lead to the addition of a converter.
      * Here, decoder_decode_vctx_update will change format after the first
@@ -356,6 +378,7 @@ struct transcode_scenario transcode_scenarios[] =
     .encoder_close = encoder_close,
     .converter_setup = converter_nv12_to_i420_800_600_vctx,
     .report_output = wait_output_10_frames_reported,
+    .report_pcr = check_pcr_output,
 },{
     /* Ensure that error are correctly forwarded back to the stream output
      * pipeline. */
@@ -365,6 +388,7 @@ struct transcode_scenario transcode_scenarios[] =
     .decoder_decode = decoder_decode_error,
     .report_error = wait_error_reported,
     .encoder_close = encoder_close,
+    .report_pcr = check_pcr_output,
 }};
 size_t transcode_scenarios_count = ARRAY_SIZE(transcode_scenarios);
 
@@ -372,6 +396,7 @@ void transcode_scenario_init(void)
 {
     scenario_data.decoder_vctx = NULL;
     scenario_data.output_frame_count = 0;
+    scenario_data.last_pcr = VLC_TICK_INVALID;
     scenario_data.converter_opened = false;
     scenario_data.encoder_opened = false;
     vlc_sem_init(&scenario_data.wait_stop, 0);
