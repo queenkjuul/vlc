@@ -224,6 +224,9 @@ static int ErrorCheckerSend(sout_stream_t *stream, void *id, vlc_frame_t *f)
     return VLC_SUCCESS;
 }
 
+static void ErrorCheckerSetPCR(sout_stream_t *stream, vlc_tick_t pcr)
+    { return sout_StreamSetPCR(stream->p_next, pcr); }
+
 static void* ErrorCheckerAdd(sout_stream_t *stream, const es_format_t *fmt)
     { return sout_StreamIdAdd(stream->p_next, fmt); }
 
@@ -237,6 +240,7 @@ static int OpenErrorChecker(vlc_object_t *obj)
         .add = ErrorCheckerAdd,
         .del = ErrorCheckerDel,
         .send = ErrorCheckerSend,
+        .set_pcr = ErrorCheckerSetPCR,
     };
     stream->ops = &ops;
     return VLC_SUCCESS;
@@ -253,6 +257,15 @@ static int OutputCheckerSend(sout_stream_t *stream, void *id, vlc_frame_t *f)
     vlc_frame_ChainRelease(f);
 
     return VLC_SUCCESS;
+}
+
+static void OutputCheckerSetPCR(sout_stream_t *stream, vlc_tick_t pcr)
+{
+    (void)stream;
+    struct transcode_scenario *scenario = &transcode_scenarios[current_scenario];
+
+    if (scenario->report_pcr != NULL)
+        scenario->report_pcr(pcr);
 }
 
 static void *OutputCheckerAdd(sout_stream_t *stream, const es_format_t *fmt)
@@ -272,6 +285,7 @@ static int OpenOutputChecker(vlc_object_t *obj)
         .add = OutputCheckerAdd,
         .del = OutputCheckerDel,
         .send = OutputCheckerSend,
+        .set_pcr = OutputCheckerSetPCR,
     };
     stream->ops = &ops;
     return VLC_SUCCESS;
