@@ -39,6 +39,9 @@ typedef struct
     struct hls_config config;
     struct vlc_list playlists;
     httpd_host_t *http_host;
+
+    vlc_tick_t first_pcr;
+    vlc_tick_t last_segment;
 } sout_stream_sys_t;
 
 typedef struct
@@ -161,32 +164,32 @@ static ssize_t AccessOutWrite(sout_access_out_t *access, block_t *block)
     ssize_t wrote = 0;
     while (block != NULL)
     {
-        if (playlist->ongoing_segment_data.length + block->i_length >=
-            playlist->config->segment_length)
-        {
-            const int status = hls_segment_queue_NewSegment(
-                &playlist->segments,
-                playlist->ongoing_segment_data.begin,
-                playlist->ongoing_segment_data.length);
-            if (unlikely(status != VLC_SUCCESS))
-                goto error;
+        //if (playlist->ongoing_segment_data.length + block->i_length >=
+        //    playlist->config->segment_length)
+        //{
+        //    const int status = hls_segment_queue_NewSegment(
+        //        &playlist->segments,
+        //        playlist->ongoing_segment_data.begin,
+        //        playlist->ongoing_segment_data.length);
+        //    if (unlikely(status != VLC_SUCCESS))
+        //        goto error;
 
-            struct hls_storage *new_manifest =
-                GeneratePlaylistManifest(playlist);
-            if (unlikely(new_manifest == NULL))
-                goto error;
+        //    struct hls_storage *new_manifest =
+        //        GeneratePlaylistManifest(playlist);
+        //    if (unlikely(new_manifest == NULL))
+        //        goto error;
 
-            httpd_UrlCatch(playlist->http_manifest,
-                           HTTPD_MSG_GET,
-                           HTTPCallback,
-                           (httpd_callback_sys_t *)new_manifest);
+        //    httpd_UrlCatch(playlist->http_manifest,
+        //                   HTTPD_MSG_GET,
+        //                   HTTPCallback,
+        //                   (httpd_callback_sys_t *)new_manifest);
 
-            if (playlist->manifest != NULL)
-                hls_storage_Destroy(playlist->manifest);
-            playlist->manifest = new_manifest;
+        //    if (playlist->manifest != NULL)
+        //        hls_storage_Destroy(playlist->manifest);
+        //    playlist->manifest = new_manifest;
 
-            ResetSegmentBuffer(&playlist->ongoing_segment_data);
-        }
+        //    ResetSegmentBuffer(&playlist->ongoing_segment_data);
+        //}
 
         wrote += block->i_buffer;
 
@@ -324,6 +327,51 @@ static int Send(sout_stream_t *stream, void *id, vlc_frame_t *frame)
     return sout_MuxSendBuffer(playlist->mux, playlist->input, frame);
 }
 
+static void SetPCR(sout_stream_t *stream, vlc_tick_t pcr)
+{
+    sout_stream_sys_t *sys = stream->p_sys;
+    
+    if (sys->first_pcr == VLC_TICK_INVALID)
+    {
+        sys->first_pcr = pcr;
+        return;
+    }
+
+    const vlc_tick_t stream_time =  pcr- sys->first_pcr;
+    printf("fpcr = %ld\n", sys->first_pcr);
+    printf("st = %ld\n", stream_time);
+    if (stream_time - sys->last_segment >= sys->config.segment_length) 
+    {
+        hls_playlist_t *playlist;
+        vlc_list_foreach(playlist, &sys->playlists, node)
+        {
+            const int status = hls_segment_queue_NewSegment(
+                &playlist->segments,
+                playlist->ongoing_segment_data.begin,
+                playlist->ongoing_segment_data.length);
+            if (unlikely(status != VLC_SUCCESS))
+                return;
+
+            struct hls_storage *new_manifest =
+                GeneratePlaylistManifest(playlist);
+            if (unlikely(new_manifest == NULL))
+                return;
+
+            httpd_UrlCatch(playlist->http_manifest,
+                           HTTPD_MSG_GET,
+                           HTTPCallback,
+                           (httpd_callback_sys_t *)new_manifest);
+
+            if (playlist->manifest != NULL)
+                hls_storage_Destroy(playlist->manifest);
+            playlist->manifest = new_manifest;
+
+            ResetSegmentBuffer(&playlist->ongoing_segment_data);
+        }
+        sys->last_segment = stream_time;
+    }
+}
+
 static int Control(sout_stream_t *stream, int query, va_list args)
 {
     const sout_stream_sys_t *sys = stream->p_sys;
@@ -368,12 +416,16 @@ static int Open(vlc_object_t *this)
     sys->config.segment_length =
         VLC_TICK_FROM_SEC(var_GetInteger(stream, SOUT_CFG_PREFIX "seglen"));
 
+    sys->first_pcr = VLC_TICK_INVALID;
+    sys->last_segment = 0;
+
     vlc_list_init(&sys->playlists);
 
     static const struct sout_stream_operations ops = {
         .add = Add,
         .del = Del,
         .send = Send,
+        .set_pcr = SetPCR, 
         .control = Control,
     };
     stream->ops = &ops;
