@@ -2,7 +2,10 @@
 NFS_VERSION := 5.0.2
 NFS_URL := $(GITHUB)/sahlberg/libnfs/archive/libnfs-$(NFS_VERSION).tar.gz
 
+ifndef HAVE_EMSCRIPTEN
 PKGS += nfs
+endif
+
 ifeq ($(call need_pkg,"libnfs >= 1.10"),)
 PKGS_FOUND += nfs
 endif

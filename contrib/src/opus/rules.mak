@@ -4,7 +4,10 @@ OPUS_VERSION := 1.4
 
 OPUS_URL := $(XIPH)/opus/opus-$(OPUS_VERSION).tar.gz
 
+ifndef HAVE_EMSCRIPTEN
 PKGS += opus
+endif
+
 ifeq ($(call need_pkg,"opus >= 0.9.14"),)
 PKGS_FOUND += opus
 endif
