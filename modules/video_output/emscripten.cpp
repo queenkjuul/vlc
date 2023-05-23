@@ -101,9 +101,10 @@ static void Close (vlc_gl_t *gl)
     free(gl->sys);
 }
 
-static int Open (vlc_gl_t *gl, unsigned width, unsigned height)
+static int Open (vlc_gl_t *gl, unsigned width, unsigned height, const struct vlc_gl_cfg *cfg)
 {
-    VLC_UNUSED(width), VLC_UNUSED(height);
+    (void)width, (void)height;
+    (void)cfg;
 
     EmscriptenWebGLContextAttributes attr;
 
