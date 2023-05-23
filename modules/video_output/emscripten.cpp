@@ -127,63 +127,23 @@ static void Resize(vlc_gl_t *gl, unsigned w, unsigned h)
     VLC_UNUSED(h);
 }
 
-EM_JS(emscripten::EM_VAL, registerVoutMessagePort, (), {
+EM_ASYNC_JS(void, getVoutMessagePort, (), {
     let p = new Promise((resolve, reject) => {
         let listener = function(e) {
             let msg = e.data;
-            if (msg.cmd == 'getVoutMessagePortResult') {
+            if (msg.customCmd == 'getVoutMessagePortResult') {
                 Module.voutMsgPort = msg['msgPort'];
-                self.removeEventListener('message', listener);
                 resolve();
+                self.removeEventListener('message', listener);
             };
         };
         self.addEventListener('message', listener);
+        self.postMessage({
+            customCmd: 'getVoutMessagePort'
+        });
     });
-    return Emval.toHandle(p);
+    await p;
 });
-
-static void getVoutMessagePort(vlc_window_t *wnd) {
-    emscripten::val p = emscripten::val::take_ownership(
-            registerVoutMessagePort());
-
-    const char *canvasName = wnd->handle.canvas ?
-        wnd->handle.canvas : "canvas";
-
-    MAIN_THREAD_ASYNC_EM_ASM({
-      let w = Module.PThread.pthreads[$0];
-
-      let msgChannel
-          = w.voutMessagePort
-          = new MessageChannel();
-
-      let canvasName = UTF8ToString($1);
-      var canvas = Module.canvasCtx[canvasName];
-  
-      function onVoutMessage(msg) {
-          let data = msg['data'];
-          if (data.cmd == 'commitFrame') {
-              let bmp = data['bitmap'];
-              canvas.drawImage(bmp, 0, 0);
-              bmp.close();
-          }
-          else if(msg.cmd == 'releaseVoutMessagePort') {
-              self.voutMessagePort.close();
-              self.voutMessagePort = undefined;
-              console.log('RELEASED MESSAGE PORT');
-          }
-      }
-
-      msgChannel.port1.onmessage = onVoutMessage.bind(w);
-      w.postMessage({
-          cmd: 'getVoutMessagePortResult',
-          msgPort: msgChannel.port2,
-      }, [msgChannel.port2]);
-    }, pthread_self(), canvasName);
-
-    p.await();
-}
-
-
 
 EM_JS(int, createGlContext, (int width, int height), {
     Module.offscreenCanvas = new OffscreenCanvas(width, height);
@@ -224,18 +184,33 @@ static int Open (vlc_gl_t *gl, unsigned width, unsigned height, const struct vlc
         return VLC_ENOMEM;
 
     MAIN_THREAD_EM_ASM({
-        if (Module.canvasCtx === undefined)
-            Module.canvasCtx = {};
+        if (Module.canvasCtx === undefined) {
+            let canvasName = UTF8ToString($1);
+            Module.canvasCtx = document.getElementById(canvasName).getContext('2d');
+        }
+        function onVoutMessage(msg) {
+            let data = msg['data'];
+            if (data.customCmd == 'commitFrame') {
+                let bmp = data['bitmap'];
+                Module.canvasCtx.drawImage(bmp, 0, 0);
+                bmp.close();
+            }
+        }
+        let w = Module.PThread.pthreads[$0];
+        w.addEventListener('message', function (e) {
+            let msg = e['data'];
+            if (msg.customCmd == 'getVoutMessagePort') {
+                let msgChannel = new MessageChannel();
+                msgChannel.port1.onmessage = onVoutMessage;
+                w.postMessage({
+                    customCmd: 'getVoutMessagePortResult',
+                    msgPort: msgChannel.port2,
+                }, [msgChannel.port2]);
+            }
+        });
+    }, pthread_self(), wnd->handle.canvas ? wnd->handle.canvas : "canvas");
 
-        let canvasName = UTF8ToString($0);
-        if (Module.canvasCtx[canvasName] === undefined)
-            Module.canvasCtx[canvasName] =
-                document.getElementById(canvasName).getContext('2d');
-
-        var canvas = Module.canvasCtx[canvasName];
-      }, wnd->handle.canvas ? wnd->handle.canvas : "canvas");
-
-    getVoutMessagePort(wnd);
+    getVoutMessagePort();
     sys->context = createGlContext(width, height);
 
     if (!sys->context) {
