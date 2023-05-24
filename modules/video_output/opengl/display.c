@@ -200,6 +200,9 @@ static void PictureRender(vlc_gl_t *gl)
     vout_display_t *vd = gl->owner.sys;
     vout_display_sys_t *sys = vd->sys;
 
+    if (sys->latch.picture == NULL)
+        return;
+
     picture_t *pic = sys->latch.picture;
     const vlc_render_subpicture *subpicture = sys->latch.subpicture;
 
@@ -214,6 +217,8 @@ static void PictureRender(vlc_gl_t *gl)
     }
     vout_display_opengl_Display(sys->vgl);
     sys->vt.Flush();
+
+    sys->is_dirty = true;
 }
 
 static void PicturePrepare(vout_display_t *vd, picture_t *pic,
@@ -319,7 +324,11 @@ static int Open(vout_display_t *vd,
     }
 #endif
 
-    sys->gl = vlc_gl_Create(vd->cfg, API, gl_name, NULL, NULL, NULL);
+    static const struct vlc_gl_callbacks gl_cbs = {
+        .render = PictureRender
+    };
+
+    sys->gl = vlc_gl_Create(vd->cfg, API, gl_name, NULL, &gl_cbs, vd);
     free(gl_name);
     if (sys->gl == NULL)
         goto error;
