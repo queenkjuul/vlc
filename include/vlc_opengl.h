@@ -82,16 +82,55 @@ typedef int (*vlc_gl_activate)(vlc_gl_t *, unsigned width, unsigned height,
     set_callback_opengl_common(activate) \
     set_capability("opengl es2 offscreen", priority)
 
+/**
+ * OpenGL provider implementation callbacks.
+ *
+ * Those callbacks are meant to be implemented by OpenGL provider modules
+ * and are called indirectly by the OpenGL clients.
+ */
 struct vlc_gl_operations
 {
     union {
+        /**
+         * Swap the rendering buffer and present the rendered buffer
+         * on-screen. This must only be implemented by on-screen OpenGL
+         * providers.
+         */
         void (*swap)(vlc_gl_t *);
+
+        /**
+         * Swap the rendering buffer and return the rendered buffer
+         * as a picture_t to the client. This must only be implemented
+         * by offcreen OpenGL providers. */
         picture_t *(*swap_offscreen)(vlc_gl_t *);
     };
+
     int  (*make_current)(vlc_gl_t *gl);
     void (*release_current)(vlc_gl_t *gl);
+
+    /**
+     * Resize the OpenGL buffers from the provider.
+     *
+     * Resize the buffers and default framebuffer to match the given
+     * size. It won't re-render the buffer, so the behaviour of the
+     * content in the new buffer is implementation-defined.
+     */
     void (*resize)(vlc_gl_t *gl, unsigned width, unsigned height);
+
+    /**
+     * Return a named pointer function from the OpenGL provider.
+     *
+     * Request the OpenGL provider to return a pointer to either an
+     * OpenGL client function or a function from the provider itself.
+     * Note that the pointer return might not be valid if the function
+     * doesn't match the provider.
+     * \param symbol the name of the function to retrieve
+     * \return an implementation-defined function pointer */
     void*(*get_proc_address)(vlc_gl_t *gl, const char *symbol);
+
+    /**
+     * Destroy the OpenGL provider resources.
+     */
     void (*close)(vlc_gl_t *gl);
 };
 
