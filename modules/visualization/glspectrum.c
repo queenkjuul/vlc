@@ -48,6 +48,7 @@
  *****************************************************************************/
 static int Open(vlc_object_t *);
 static void Close(filter_t *);
+static void RenderFrame(vlc_gl_t *gl);
 
 #define WIDTH_TEXT N_("Video width")
 #define WIDTH_LONGTEXT N_("The width of the visualization window, in pixels.")
@@ -56,6 +57,11 @@ static void Close(filter_t *);
 #define HEIGHT_LONGTEXT N_("The height of the visualization window, in pixels.")
 
 #define LOG_OFFSET 0.1
+#define SPECTRUM_WIDTH 4.f
+#define NB_BANDS 20
+#define ROTATION_INCREMENT .1f
+#define BAR_DECREMENT .075f
+#define ROTATION_MAX 20
 
 vlc_module_begin()
     set_shortname(N_("glSpectrum"))
@@ -96,6 +102,7 @@ typedef void (APIENTRY *PFNGLDISABLECLIENTSTATEPROC)(GLenum);
     F(PFNGLDEPTHMASKPROC           , DepthMask) \
     F(PFNGLBLENDFUNCPROC           , BlendFunc) \
     F(PFNGLVIEWPORTPROC            , Viewport) \
+    F(PFNGLFLUSHPROC               , Flush) \
     /* Legacy fixed pipeline functions */ \
     F(PFNGLMATRIXMODEPROC          , MatrixMode ) \
     F(PFNGLPUSHMATRIXPROC          , PushMatrix) \
@@ -143,6 +150,8 @@ typedef struct
     float f_rotationAngle;
     float f_rotationIncrement;
 
+    float height[NB_BANDS];
+
     /* FFT window parameters */
     window_param wind_param;
 } filter_sys_t;
@@ -150,12 +159,6 @@ typedef struct
 
 static block_t *DoWork(filter_t *, block_t *);
 static void *Thread(void *);
-
-#define SPECTRUM_WIDTH 4.f
-#define NB_BANDS 20
-#define ROTATION_INCREMENT .1f
-#define BAR_DECREMENT .075f
-#define ROTATION_MAX 20
 
 const GLfloat lightZeroColor[] = {1.0f, 1.0f, 1.0f, 1.0f};
 const GLfloat lightZeroPosition[] = {0.0f, 3.0f, 10.0f, 0.0f};
@@ -186,6 +189,7 @@ static int Open(vlc_object_t * p_this)
 
     p_sys->f_rotationAngle = 0;
     p_sys->f_rotationIncrement = ROTATION_INCREMENT;
+    memset(p_sys->height, 0, sizeof p_sys->height);
 
     /* Fetch the FFT window parameters */
     window_get_param( VLC_OBJECT( p_filter ), &p_sys->wind_param );
@@ -201,7 +205,11 @@ static int Open(vlc_object_t * p_this)
         .height = var_InheritInteger(p_filter, "glspectrum-height"),
     };
 
-    p_sys->gl = vlc_gl_surface_Create(p_this, &cfg, NULL, NULL, NULL, NULL);
+    static const struct vlc_gl_callbacks gl_ops = {
+        .render = RenderFrame
+    };
+
+    p_sys->gl = vlc_gl_surface_Create(p_this, &cfg, NULL, NULL, &gl_ops, p_filter);
     if (p_sys->gl == NULL)
         return VLC_EGENERIC;
 
@@ -419,6 +427,23 @@ static void drawBars(filter_t *p_filter, float heights[])
     vt->PopMatrix();
 }
 
+static void RenderFrame(vlc_gl_t *gl)
+{
+    filter_t *filter = gl->owner.sys;
+    filter_sys_t *sys = filter->p_sys;
+
+    struct glspectrum_opengl_vtable *vt = &sys->vt;
+
+    /* Render the frame. */
+    vt->Clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    vt->PushMatrix();
+        vt->Rotatef(sys->f_rotationAngle, 0, 1, 0);
+        drawBars(filter, sys->height);
+    vt->PopMatrix();
+    vt->Flush();
+}
+
 
 /**
  * Update thread which do the rendering
@@ -442,12 +467,14 @@ static void *Thread( void *p_data )
     struct glspectrum_opengl_vtable *vt = &p_sys->vt;
 
     initOpenGLScene(p_filter);
-    float height[NB_BANDS] = {0};
+    vlc_gl_ReleaseCurrent(gl);
 
+    float *height = p_sys->height;
     while ((block = vlc_queue_DequeueKillable(&p_sys->queue, &p_sys->dead)))
     {
         unsigned win_width, win_height;
 
+        // TODO
         if (vlc_gl_surface_CheckSize(gl, &win_width, &win_height))
             vt->Viewport(0, 0, win_width, win_height);
 
@@ -561,15 +588,8 @@ static void *Thread( void *p_data )
         else if (p_sys->f_rotationAngle >= ROTATION_MAX)
             p_sys->f_rotationIncrement = -ROTATION_INCREMENT;
 
-        /* Render the frame. */
-        vt->Clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-        vt->PushMatrix();
-            vt->Rotatef(p_sys->f_rotationAngle, 0, 1, 0);
-            drawBars(p_filter, height);
-        vt->PopMatrix();
-
-        /* Wait to swapp the frame on time. */
+        /* Wait to swap the frame on time. */
+        vlc_gl_RenderNext(gl);
         vlc_tick_wait(block->i_pts + (block->i_length / 2));
         vlc_gl_Swap(gl);
 
@@ -578,7 +598,6 @@ release:
         fft_close(p_state);
         block_Release(block);
     }
-    vlc_gl_ReleaseCurrent(gl);
 
     return NULL;
 }
