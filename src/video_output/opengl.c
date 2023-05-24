@@ -123,7 +123,9 @@ vlc_gl_t *vlc_gl_CreateOffscreen(vlc_object_t *parent,
                                  struct vlc_decoder_device *device,
                                  unsigned width, unsigned height,
                                  unsigned flags, const char *name,
-                                 const struct vlc_gl_cfg *gl_cfg)
+                                 const struct vlc_gl_cfg *gl_cfg,
+                                 const struct vlc_gl_callbacks *cbs,
+                                 void *owner)
 {
     struct vlc_gl_priv_t *glpriv;
     const char *type;
@@ -160,6 +162,8 @@ vlc_gl_t *vlc_gl_CreateOffscreen(vlc_object_t *parent,
 
     gl->offscreen_chroma_out = VLC_CODEC_UNKNOWN;
     gl->offscreen_vctx_out = NULL;
+    gl->owner.sys = owner;
+    gl->owner.cbs = cbs;
 
     gl->surface = NULL;
     gl->device = device ? vlc_decoder_device_Hold(device) : NULL;

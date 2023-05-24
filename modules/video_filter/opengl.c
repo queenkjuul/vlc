@@ -169,7 +169,8 @@ static vlc_gl_t *CreateGL(vlc_object_t *obj, struct vlc_decoder_device *device,
 #ifdef USE_OPENGL_ES2
     char *opengles_name = var_InheritString(obj, "opengl-gles");
     vlc_gl_t *gl = vlc_gl_CreateOffscreen(obj, device, width, height,
-                                         VLC_OPENGL_ES2, opengles_name, NULL);
+                                          VLC_OPENGL_ES2, opengles_name, NULL,
+                                          NULL, NULL);
     free(opengles_name);
     return gl;
 #else
@@ -209,13 +210,15 @@ static vlc_gl_t *CreateGL(vlc_object_t *obj, struct vlc_decoder_device *device,
 
     if (gl_module != NULL)
         gl = vlc_gl_CreateOffscreen(obj, device, width, height,
-                                         VLC_OPENGL, gl_module, NULL);
+                                    VLC_OPENGL, gl_module, NULL,
+                                    NULL, NULL);
     if (gl != NULL)
         goto end;
 
     if (gles_module != NULL)
         gl = vlc_gl_CreateOffscreen(obj, device, width, height,
-                                         VLC_OPENGL_ES2, opengles_name, NULL);
+                                    VLC_OPENGL_ES2, opengles_name, NULL,
+                                    NULL, NULL);
 end:
     free(opengl_name);
     free(opengles_name);

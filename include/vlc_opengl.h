@@ -200,7 +200,9 @@ VLC_API vlc_gl_t *vlc_gl_CreateOffscreen(vlc_object_t *parent,
                                          struct vlc_decoder_device *device,
                                          unsigned width, unsigned height,
                                          unsigned flags, const char *name,
-                                         const struct vlc_gl_cfg *gl_cfg);
+                                         const struct vlc_gl_cfg *gl_cfg,
+                                         const struct vlc_gl_callbacks *cbs,
+                                         void *owner);
 
 VLC_API void vlc_gl_Delete(vlc_gl_t *);
 
