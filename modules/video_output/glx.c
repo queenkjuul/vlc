@@ -141,6 +141,13 @@ static bool CheckGLXext (Display *dpy, unsigned snum, const char *ext)
     return false;
 }
 
+static void RenderNext(vlc_gl_t *gl)
+{
+    MakeCurrent(gl);
+    vlc_gl_ReportRender(gl);
+    ReleaseCurrent(gl);
+}
+
 static void Close(vlc_gl_t *gl)
 {
     vlc_gl_sys_t *sys = gl->sys;
@@ -269,6 +276,7 @@ static int Open(vlc_gl_t *gl, unsigned width, unsigned height,
         .make_current = MakeCurrent,
         .release_current = ReleaseCurrent,
         .resize = Resize,
+        .render_next = RenderNext,
         .swap = SwapBuffers,
         .get_proc_address = GetSymbol,
         .close = Close,
