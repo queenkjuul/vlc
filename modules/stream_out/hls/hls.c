@@ -29,6 +29,7 @@
 #include <vlc_memstream.h>
 #include <vlc_plugin.h>
 #include <vlc_sout.h>
+#include <vlc_tracer.h>
 
 #include "hls.h"
 #include "segments.h"
@@ -41,8 +42,12 @@ typedef struct
     httpd_host_t *http_host;
 
     vlc_tick_t first_pcr;
+    vlc_tick_t last_pcr;
     vlc_tick_t last_segment;
 } sout_stream_sys_t;
+
+static vlc_tick_t total_out_len = 0;
+static vlc_tick_t total_in_len = 0;
 
 typedef struct
 {
@@ -64,6 +69,11 @@ typedef struct
     struct hls_storage *manifest;
     httpd_url_t *http_manifest;
 
+    vlc_tick_t last_dts;
+    vlc_tick_t first_dts;
+    vlc_tick_t last_len;
+    vlc_tick_t len;
+    const char *name;
     struct vlc_list node;
 } hls_playlist_t;
 
@@ -157,42 +167,70 @@ error:
     return NULL;
 }
 
+//static ssize_t AccessOutWrite(sout_access_out_t *access, block_t *block)
+//{
+//    hls_playlist_t *playlist = access->p_sys;
+//
+//    ssize_t wrote = 0;
+//    while (block != NULL)
+//    {
+//        if (playlist->ongoing_segment_data.length + block->i_length >=
+//            playlist->config->segment_length)
+//        {
+//            const int status = hls_segment_queue_NewSegment(
+//                &playlist->segments,
+//                playlist->ongoing_segment_data.begin,
+//                playlist->ongoing_segment_data.length);
+//            if (unlikely(status != VLC_SUCCESS))
+//                goto error;
+//
+//            struct hls_storage *new_manifest =
+//                GeneratePlaylistManifest(playlist);
+//            if (unlikely(new_manifest == NULL))
+//                goto error;
+//
+//            httpd_UrlCatch(playlist->http_manifest,
+//                           HTTPD_MSG_GET,
+//                           HTTPCallback,
+//                           (httpd_callback_sys_t *)new_manifest);
+//
+//            if (playlist->manifest != NULL)
+//                hls_storage_Destroy(playlist->manifest);
+//            playlist->manifest = new_manifest;
+//
+//            ResetSegmentBuffer(&playlist->ongoing_segment_data);
+//        }
+//
+//        wrote += block->i_buffer;
+//
+//        block_t *next = block->p_next;
+//
+//        block->p_next = NULL;
+//        playlist->ongoing_segment_data.length += block->i_length;
+//        block_ChainLastAppend(&playlist->ongoing_segment_data.end, block);
+//
+//        block = next;
+//    }
+//
+//    return wrote;
+//error:
+//    block_ChainRelease(block);
+//    return -1;
+//}
+
 static ssize_t AccessOutWrite(sout_access_out_t *access, block_t *block)
 {
     hls_playlist_t *playlist = access->p_sys;
 
+    if (playlist->first_dts == VLC_TICK_INVALID)
+        playlist->first_dts = block->i_dts;
+
     ssize_t wrote = 0;
     while (block != NULL)
     {
-        //if (playlist->ongoing_segment_data.length + block->i_length >=
-        //    playlist->config->segment_length)
-        //{
-        //    const int status = hls_segment_queue_NewSegment(
-        //        &playlist->segments,
-        //        playlist->ongoing_segment_data.begin,
-        //        playlist->ongoing_segment_data.length);
-        //    if (unlikely(status != VLC_SUCCESS))
-        //        goto error;
-
-        //    struct hls_storage *new_manifest =
-        //        GeneratePlaylistManifest(playlist);
-        //    if (unlikely(new_manifest == NULL))
-        //        goto error;
-
-        //    httpd_UrlCatch(playlist->http_manifest,
-        //                   HTTPD_MSG_GET,
-        //                   HTTPCallback,
-        //                   (httpd_callback_sys_t *)new_manifest);
-
-        //    if (playlist->manifest != NULL)
-        //        hls_storage_Destroy(playlist->manifest);
-        //    playlist->manifest = new_manifest;
-
-        //    ResetSegmentBuffer(&playlist->ongoing_segment_data);
-        //}
-
         wrote += block->i_buffer;
 
+        total_out_len += block->i_length;
         block_t *next = block->p_next;
 
         block->p_next = NULL;
@@ -203,9 +241,6 @@ static ssize_t AccessOutWrite(sout_access_out_t *access, block_t *block)
     }
 
     return wrote;
-error:
-    block_ChainRelease(block);
-    return -1;
 }
 
 static sout_access_out_t *CreateAccessOut(sout_stream_t *stream,
@@ -252,6 +287,9 @@ static void *Add(sout_stream_t *stream, const es_format_t *fmt)
 {
     sout_stream_sys_t *sys = stream->p_sys;
 
+    if (fmt->i_cat == AUDIO_ES)
+        return NULL;
+
     hls_playlist_t *playlist = CreatePlaylist(stream);
 
     playlist->access = CreateAccessOut(stream, playlist);
@@ -284,6 +322,19 @@ static void *Add(sout_stream_t *stream, const es_format_t *fmt)
         goto error;
 
     vlc_list_append(&playlist->node, &sys->playlists);
+
+    playlist->last_dts = VLC_TICK_INVALID;
+    playlist->last_len = VLC_TICK_INVALID;
+    playlist->first_dts = VLC_TICK_INVALID;
+    playlist->len = 0;
+     static const char *const track_types[] = {
+            [VIDEO_ES] = "VIDEO",
+            [AUDIO_ES] = "AUDIO",
+            [SPU_ES] = "SUBTITLES",
+        };
+     playlist->name = track_types[fmt->i_cat];
+
+     printf("%s IS %d\n", track_types[fmt->i_cat], fmt->i_id);
 
     return playlist;
 error:
@@ -324,31 +375,93 @@ static void Del(sout_stream_t *stream, void *id)
 static int Send(sout_stream_t *stream, void *id, vlc_frame_t *frame)
 {
     hls_playlist_t *playlist = id;
+    for (vlc_frame_t *f = frame; f != NULL; f = f->p_next)
+    {
+        playlist->last_dts = f->i_dts;
+        playlist->last_len = f->i_length;
+        playlist->len += f->i_length;
+        total_in_len += f->i_length;
+
+        struct vlc_tracer *tracer = vlc_object_get_tracer(VLC_OBJECT(stream));
+        if (tracer != NULL)
+        {
+            vlc_tracer_TraceStreamDTS(
+                tracer, "HLS", playlist->name, "IN", f->i_pts, f->i_dts);
+            if (f->i_flags & BLOCK_FLAG_TYPE_I)
+            {
+                char *n;
+                asprintf(&n, "%s-iframe", playlist->name);
+                vlc_tracer_TraceStreamDTS(
+                    tracer, "HLS", n, "OUT", f->i_pts, f->i_dts);
+                free(n);
+            }
+        }
+    }
     return sout_MuxSendBuffer(playlist->mux, playlist->input, frame);
 }
 
 static void SetPCR(sout_stream_t *stream, vlc_tick_t pcr)
 {
     sout_stream_sys_t *sys = stream->p_sys;
-    
+
+    struct vlc_tracer *tracer = vlc_object_get_tracer(VLC_OBJECT(stream));
+    if (tracer != NULL)
+    {
+        vlc_tracer_TracePCR(tracer, "HLS", "IN", pcr);
+    }
     if (sys->first_pcr == VLC_TICK_INVALID)
     {
         sys->first_pcr = pcr;
+        sys->last_pcr = pcr;
         return;
     }
 
+    printf("INTERVAL %ld\n", MS_FROM_VLC_TICK(pcr - sys->last_pcr));
+    sys->last_pcr = pcr;
     const vlc_tick_t stream_time =  pcr- sys->first_pcr;
-    printf("fpcr = %ld\n", sys->first_pcr);
+    //printf("fpcr = %ld\n", sys->first_pcr);
     printf("st = %ld\n", stream_time);
-    if (stream_time - sys->last_segment >= sys->config.segment_length) 
+    if (stream_time - sys->last_segment > sys->config.segment_length) 
     {
+    struct vlc_tracer *tracer = vlc_object_get_tracer(VLC_OBJECT(stream));
+    if (tracer != NULL)
+    {
+        vlc_tracer_TracePCR(tracer, "SEGMENT", "IN", pcr);
+    }
         hls_playlist_t *playlist;
         vlc_list_foreach(playlist, &sys->playlists, node)
         {
-            const int status = hls_segment_queue_NewSegment(
-                &playlist->segments,
-                playlist->ongoing_segment_data.begin,
-                playlist->ongoing_segment_data.length);
+            //printf("last %d: %ld %ld %ld\n",
+            //       playlist->input->fmt.i_id,
+            //       playlist->last_dts,
+            //       playlist->last_dts + playlist->last_len,
+            //       playlist->len);
+
+            block_t *chain = playlist->ongoing_segment_data.begin;
+            block_t *begin = playlist->ongoing_segment_data.begin;
+            vlc_tick_t s = 0;
+            block_t *last = NULL;
+            int i = 0;
+            for (; chain != NULL; chain = chain->p_next)
+            {
+                //if (i % 100 == 0)
+                //    printf("s = %ld dts = %ld\n", s, chain->i_dts - playlist->first_dts);
+                const vlc_tick_t u = ((chain->i_dts + chain->i_length) - playlist->first_dts) - sys->last_segment; 
+                if (u > sys->config.segment_length)
+                {
+                    playlist->ongoing_segment_data.begin = chain;
+                    if (last != NULL)
+                        last->p_next = NULL;
+                    break;
+                }
+                s = u;
+                last = chain;
+            }
+
+            if (chain == NULL)
+                ResetSegmentBuffer(&playlist->ongoing_segment_data);
+
+            const int status = hls_segment_queue_NewSegment( &playlist->segments, begin,s);
             if (unlikely(status != VLC_SUCCESS))
                 return;
 
@@ -366,7 +479,16 @@ static void SetPCR(sout_stream_t *stream, vlc_tick_t pcr)
                 hls_storage_Destroy(playlist->manifest);
             playlist->manifest = new_manifest;
 
-            ResetSegmentBuffer(&playlist->ongoing_segment_data);
+            vlc_tick_t size;
+            int count;
+            block_ChainProperties(playlist->ongoing_segment_data.begin, &count, NULL, &size);
+            printf("size %d: %zu\n", playlist->input->fmt.i_id, MS_FROM_VLC_TICK(size));
+            printf("count %d: %d\n", playlist->input->fmt.i_id, count);
+
+            size = block_FifoSize((*playlist->mux->pp_inputs)->p_fifo );
+            block_t *b = vlc_fifo_Show((*playlist->mux->pp_inputs)->p_fifo);
+            printf("fifo size %d: %zu\n", playlist->input->fmt.i_id, b->i_length);
+            //ResetSegmentBuffer(&playlist->ongoing_segment_data);
         }
         sys->last_segment = stream_time;
     }
@@ -439,6 +561,10 @@ static void Close(vlc_object_t *this)
     sout_stream_t *stream = (sout_stream_t *)this;
     sout_stream_sys_t *sys = stream->p_sys;
 
+    printf("stats: in %ld out %ld st %ld\n",
+           MS_FROM_VLC_TICK(total_in_len),
+           MS_FROM_VLC_TICK(total_out_len),
+           MS_FROM_VLC_TICK(sys->last_segment));
     hls_config_Clean(&sys->config);
 
     free(sys);

@@ -22,6 +22,9 @@
 #endif
 
 #include <assert.h>
+#include <unistd.h>
+#include <stdio.h>
+#include <fcntl.h>
 
 #include <vlc_common.h>
 
@@ -34,6 +37,20 @@
 
 static void hls_segment_Destroy(hls_segment_t *segment)
 {
+
+    char *path;
+    asprintf(&path, "/tmp%s",segment->url);
+    printf("%s\n", path);
+
+    int fd  = open(path, O_CREAT | O_TRUNC | O_WRONLY, 0666);
+    free(path);
+
+    uint8_t *p;
+    ssize_t c = segment->storage->get_content(segment->storage, &p);
+    write(fd, p, c);
+    write(fd, "bite", 5);
+    close(fd);
+
     hls_storage_Destroy(segment->storage);
 
     httpd_UrlDelete(segment->http_url);

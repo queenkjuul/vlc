@@ -36,6 +36,7 @@
 #include <vlc_sout.h>
 #include <vlc_spu.h>
 
+#include <vlc_tracer.h>
 #include "transcode.h"
 
 /*****************************************************************************
@@ -369,6 +370,9 @@ static int Control( sout_stream_t *p_stream, int i_query, va_list args )
                                            id->downstream_id, spu_hl );
             break;
         }
+        case SOUT_STREAM_IS_SYNCHRONOUS:
+            *va_arg(args, bool *) = true;
+            return VLC_SUCCESS;
     }
     return VLC_EGENERIC;
 }
@@ -641,6 +645,12 @@ static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt )
         default:
             break;
     }
+     static const char *const track_types[] = {
+            [VIDEO_ES] = "VIDEO",
+            [AUDIO_ES] = "AUDIO",
+            [SPU_ES] = "SUBTITLES",
+        };
+     id->type = track_types[p_fmt->i_cat];
 
     bool success;
 
@@ -765,7 +775,19 @@ static int Send( sout_stream_t *p_stream, void *_id, block_t *p_buffer )
     if( !id->b_transcode )
     {
         if( id->downstream_id )
+        {
+            for (block_t *it = p_buffer; it != NULL; it = it->p_next)
+            {
+            struct vlc_tracer *tracer =
+                vlc_object_get_tracer(VLC_OBJECT(p_stream));
+            if (tracer != NULL)
+            {
+                vlc_tracer_TraceStreamDTS(
+                    tracer, "TRANSCODE", id->type, "OUT", it->i_pts, it->i_dts);
+            }
+            }
             return sout_StreamIdSend( p_stream->p_next, id->downstream_id, p_buffer );
+        }
         else
             goto error;
     }
@@ -823,6 +845,13 @@ static int Send( sout_stream_t *p_stream, void *_id, block_t *p_buffer )
                          "Disabling PCR forwarding..." );
                 sys->pcr_forwarding_enabled = false;
             }
+        }
+
+        struct vlc_tracer *tracer = vlc_object_get_tracer(VLC_OBJECT(p_stream));
+        if (tracer != NULL)
+        {
+            vlc_tracer_TraceStreamDTS(
+                tracer, "TRANSCODE", id->type, "OUT", it->i_pts, it->i_dts);
         }
 
         if( sout_StreamIdSend( p_stream->p_next, id->downstream_id, it ) != VLC_SUCCESS )
