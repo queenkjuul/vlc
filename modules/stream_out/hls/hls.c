@@ -589,6 +589,9 @@ static struct stream_inf_desc *DescFromPlaylist(sout_stream_sys_t *sys,
 
 static void *Add(sout_stream_t *stream, const es_format_t *fmt)
 {
+    if (!hls_codec_IsSupported(fmt))
+        return NULL;
+
     sout_stream_sys_t *sys = stream->p_sys;
 
     // Either retrieve the already created playlist in StreamInf or create it.
