@@ -86,6 +86,8 @@ typedef struct
      * Current playlist manifest as in RFC 8216 section 4.3.3.
      */
     struct hls_storage *manifest;
+    httpd_url_t *http_manifest;
+
     vlc_tick_t first_output_dts;
 
     bool ended;
@@ -130,6 +132,8 @@ typedef struct
     /** All the plugin constants. */
     struct hls_config config;
 
+    httpd_host_t *http_host;
+
     struct VLC_VECTOR(struct stream_inf_desc *) stream_inf_descriptors;
     /**
      * All the created "EXT-X-STREAM-INF" (As in RFC 8216 section 4.3.4.2)
@@ -152,9 +156,44 @@ typedef struct
      * Current "Master" Playlist manifest (As in RFC 8216 4.3.4).
      */
     struct hls_storage *manifest;
+    httpd_url_t *http_manifest;
+
     vlc_tick_t first_pcr;
     vlc_tick_t last_segment;
 } sout_stream_sys_t;
+
+static int HTTPCallback(httpd_callback_sys_t *sys,
+                        httpd_client_t *client,
+                        httpd_message_t *answer,
+                        const httpd_message_t *query)
+{
+    if (answer == NULL || query == NULL || client == NULL)
+        return VLC_SUCCESS;
+
+    struct hls_storage *storage = (struct hls_storage *)sys;
+
+    httpd_MsgAdd(answer, "Content-Type", "%s", storage->mime);
+    httpd_MsgAdd(answer, "Cache-Control", "no-cache");
+
+    answer->i_proto = HTTPD_PROTO_HTTP;
+    answer->i_version = 0;
+    answer->i_type = HTTPD_MSG_ANSWER;
+
+    const ssize_t size = storage->get_content(storage, &answer->p_body);
+    if (size != -1)
+    {
+        answer->i_body = size;
+        answer->i_status = 200;
+    }
+    else
+        answer->i_status = 500;
+
+    if (httpd_MsgGet(query, "Connection") != NULL)
+        httpd_MsgAdd(answer, "Connection", "close");
+    httpd_MsgAdd(answer, "Content-Length", "%d", answer->i_body);
+
+    return VLC_SUCCESS;
+}
 
 typedef struct VLC_VECTOR(const es_format_t *) es_format_vec_t;
 
@@ -413,6 +452,14 @@ static int UpdatePlaylistManifest(hls_playlist_t *playlist)
     if (unlikely(new_manifest == NULL))
         return VLC_EGENERIC;
 
+    if (playlist->http_manifest != NULL)
+    {
+        httpd_UrlCatch(playlist->http_manifest,
+                       HTTPD_MSG_GET,
+                       HTTPCallback,
+                       (httpd_callback_sys_t *)new_manifest);
+    }
+
     if (playlist->manifest != NULL)
         hls_storage_Destroy(playlist->manifest);
     playlist->manifest = new_manifest;
@@ -505,6 +552,16 @@ static hls_playlist_t *CreatePlaylist(sout_stream_t *stream)
 
     hls_block_chain_Reset(&playlist->muxed_output);
 
+    if (sys->http_host != NULL)
+    {
+        playlist->http_manifest =
+            httpd_UrlNew(sys->http_host, playlist->url, NULL, NULL);
+        if (playlist->http_manifest == NULL)
+            goto error;
+    }
+    else
+        playlist->http_manifest = NULL;
+
     if (UpdatePlaylistManifest(playlist) != VLC_SUCCESS)
         goto error;
 
@@ -512,6 +569,8 @@ static hls_playlist_t *CreatePlaylist(sout_stream_t *stream)
 
     return playlist;
 error:
+    if (playlist->http_manifest != NULL)
+        httpd_UrlDelete(playlist->http_manifest);
     if (playlist->access != NULL)
         sout_AccessOutDelete(playlist->access);
     if (playlist->mux != NULL)
@@ -546,6 +605,9 @@ static void DeletePlaylist(hls_playlist_t *playlist)
     sout_MuxDelete(playlist->mux);
 
     sout_AccessOutDelete(playlist->access);
+
+    if (playlist->http_manifest != NULL)
+        httpd_UrlDelete(playlist->http_manifest);
 
     if (playlist->manifest != NULL)
         hls_storage_Destroy(playlist->manifest);
@@ -631,6 +693,14 @@ static void *Add(sout_stream_t *stream, const es_format_t *fmt)
         vlc_list_remove(&track->node);
         free(track);
         goto error;
+    }
+
+    if (sys->http_host != NULL)
+    {
+        httpd_UrlCatch(sys->http_manifest,
+                       HTTPD_MSG_GET,
+                       HTTPCallback,
+                       (httpd_callback_sys_t *)new_manifest);
     }
 
     if (sys->manifest != NULL)
@@ -774,6 +844,27 @@ static int Control(sout_stream_t *stream, int query, va_list args)
     return VLC_SUCCESS;
 }
 
+static int InitHTTP(sout_stream_t *stream)
+{
+    sout_stream_sys_t *sys = stream->p_sys;
+    sys->http_host = vlc_http_HostNew(VLC_OBJECT(stream));
+    if (sys->http_host == NULL)
+        return VLC_EGENERIC;
+
+    char *mainfest_url;
+    if (asprintf(&mainfest_url, "%s/stream.m3u8", sys->config.base_url) == -1)
+        goto error;
+
+    sys->http_manifest = httpd_UrlNew(sys->http_host, mainfest_url, NULL, NULL);
+    free(mainfest_url);
+    if (sys->http_manifest == NULL)
+        goto error;
+    return VLC_SUCCESS;
+error:
+    httpd_HostDelete(sys->http_host);
+    return VLC_EGENERIC;
+}
+
 #define SOUT_CFG_PREFIX "sout-hls-"
 
 static int Open(vlc_object_t *this)
@@ -785,11 +876,14 @@ static int Open(vlc_object_t *this)
         return VLC_ENOMEM;
     stream->p_sys = sys;
 
-    static const char *const options[] = {
-        "base-url", "num-seg", "out-dir", "pace", "seg-len", NULL};
+    static const char *const options[] = {"base-url",
+                                          "host-http",
+                                          "num-seg",
+                                          "out-dir",
+                                          "pace",
+                                          "seg-len",
+                                          NULL};
     config_ChainParse(stream, SOUT_CFG_PREFIX, options, stream->p_cfg);
-
-    sys->manifest = NULL;
 
     sys->config.base_url = var_GetString(stream, SOUT_CFG_PREFIX "base-url");
     sys->config.outdir =
@@ -799,6 +893,23 @@ static int Open(vlc_object_t *this)
     sys->config.pace = var_GetBool(stream, SOUT_CFG_PREFIX "pace");
     sys->config.segment_length =
         VLC_TICK_FROM_SEC(var_GetInteger(stream, SOUT_CFG_PREFIX "seg-len"));
+
+    if (var_GetBool(stream, SOUT_CFG_PREFIX "host-http"))
+    {
+        if (InitHTTP(stream) != VLC_SUCCESS)
+        {
+            hls_config_Clean(&sys->config);
+            free(sys);
+            return VLC_EGENERIC;
+        }
+    }
+    else
+    {
+        sys->http_host = NULL;
+        sys->http_manifest = NULL;
+    }
+
+    sys->manifest = NULL;
 
     vlc_vector_init(&sys->stream_inf_descriptors);
 
@@ -839,6 +950,12 @@ static void Close(vlc_object_t *this)
     sout_stream_t *stream = (sout_stream_t *)this;
     sout_stream_sys_t *sys = stream->p_sys;
 
+    if (sys->http_host != NULL)
+    {
+        httpd_UrlDelete(sys->http_manifest);
+        httpd_HostDelete(sys->http_host);
+    }
+
     if (sys->manifest != NULL)
         hls_storage_Destroy(sys->manifest);
 
@@ -848,6 +965,13 @@ static void Close(vlc_object_t *this)
 }
 
 #define BASEURL_TEXT N_("Base of the URL")
+#define HOSTHTTP_LONGTEXT                                                      \
+    N_("The internal HTTP server will share the HLS output. This is "          \
+       "unadvised for the common use case where a specific HTTP server "       \
+       "implementation will be way more efficient. This can be useful for "    \
+       "quick testing in networks with a small load.")
+#define HOSTHTTP_TEXT                                                          \
+    N_("Enable hosting the HLS output on the internal HTTP server")
 #define NUMSEG_TEXT N_("Number of maximum segment exposed")
 #define OUTDIR_TEXT N_("Output directory path")
 #define OUTDIR_LONGTEXT                                                        \
@@ -867,6 +991,7 @@ vlc_module_begin()
     set_subcategory(SUBCAT_SOUT_STREAM)
 
     add_string(SOUT_CFG_PREFIX "base-url", "", BASEURL_TEXT, BASEURL_TEXT)
+    add_bool(SOUT_CFG_PREFIX "host-http", false, HOSTHTTP_TEXT, HOSTHTTP_LONGTEXT)
     add_integer(SOUT_CFG_PREFIX "num-seg", 0, NUMSEG_TEXT, NUMSEG_TEXT)
     add_string(SOUT_CFG_PREFIX "out-dir", NULL, OUTDIR_TEXT, OUTDIR_LONGTEXT)
     add_bool(SOUT_CFG_PREFIX "pace", false, PACE_TEXT, PACE_LONGTEXT)
