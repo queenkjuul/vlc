@@ -34,6 +34,7 @@ struct input_decoder_scenario {
     void (*decoder_setup)(decoder_t *);
     void (*decoder_destroy)(decoder_t *);
     int (*decoder_decode)(decoder_t *, picture_t *);
+    vlc_frame_t * (*packetizer_getcc)(decoder_t *);
     void (*decoder_flush)(decoder_t *);
     void (*display_prepare)(vout_display_t *vd, picture_t *pic);
     void (*interface_setup)(intf_thread_t *intf);

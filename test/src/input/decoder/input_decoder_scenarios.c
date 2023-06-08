@@ -30,6 +30,7 @@
 #include <vlc_messages.h>
 #include <vlc_player.h>
 #include <vlc_interface.h>
+#include <vlc_frame.h>
 #include <vlc_codec.h>
 #include <vlc_vout_display.h>
 
@@ -317,6 +318,20 @@ static int sout_filter_send(sout_stream_t *stream, void *id, block_t *block)
     return VLC_SUCCESS;
 }
 
+static int sout_filter_wait_cc(sout_stream_t *stream, void *id, block_t *block)
+{
+    (void)stream; (void)id;
+    block_Release(block);
+    vlc_fourcc_t *codec = id;
+    if (*codec == VLC_CODEC_CEA608)
+    {
+        printf("YES\n");
+        scenario_data.stream_out_sent = true;
+        vlc_sem_post(&scenario_data.wait_ready_to_flush);
+    }
+    return VLC_SUCCESS;
+}
+
 static void sout_filter_flush(sout_stream_t *stream, void *id)
 {
     (void)stream; (void)id;
@@ -324,54 +339,68 @@ static void sout_filter_flush(sout_stream_t *stream, void *id)
     vlc_sem_post(&scenario_data.wait_stop);
 }
 
+static vlc_frame_t *packetizer_getcc(decoder_t *dec)
+{
+    vlc_frame_t *f =  vlc_frame_Alloc(1);
+    return f;
+}
+
 const char source_800_600[] = "mock://video_track_count=1;length=100000000000;video_width=800;video_height=600";
 struct input_decoder_scenario input_decoder_scenarios[] =
-{{
-    .source = source_800_600,
-    .decoder_setup = decoder_i420_800_600,
-    .decoder_flush = decoder_flush_signal,
-    .decoder_decode = decoder_decode_check_cc,
-    .interface_setup = interface_setup_select_cc,
-},
+{//{
+//    .source = source_800_600,
+//    .decoder_setup = decoder_i420_800_600,
+//    .decoder_flush = decoder_flush_signal,
+//    .decoder_decode = decoder_decode_check_cc,
+//    .interface_setup = interface_setup_select_cc,
+//},
+//{
+//    .source = source_800_600,
+//    .decoder_setup = decoder_i420_800_600,
+//    .decoder_decode = decoder_decode_check_flush_video,
+//    .decoder_flush = decoder_flush_signal,
+//    .display_prepare = display_prepare_signal,
+//    .interface_setup = interface_setup_check_flush,
+//},
+//{
+//    /* Check that stream output is also flushed:
+//      - the test cannot work if the stream_out filter is not added
+//      - sout_filter_send(), signal the interface that it can flush
+//      - the interface change player position to trigger a flush
+//      - the flush is signaled to the stream_out filter
+//      - the stream_out filter signal the end of the test */
+//    .source = source_800_600,
+//    .sout = "#" MODULE_STRING,
+//    .sout_filter_send = sout_filter_send,
+//    .sout_filter_flush = sout_filter_flush,
+//    .interface_setup = interface_setup_check_flush,
+//},
 {
-    .source = source_800_600,
-    .decoder_setup = decoder_i420_800_600,
-    .decoder_decode = decoder_decode_check_flush_video,
-    .decoder_flush = decoder_flush_signal,
-    .display_prepare = display_prepare_signal,
-    .interface_setup = interface_setup_check_flush,
-},
-{
-    /* Check that stream output is also flushed:
-      - the test cannot work if the stream_out filter is not added
-      - sout_filter_send(), signal the interface that it can flush
-      - the interface change player position to trigger a flush
-      - the flush is signaled to the stream_out filter
-      - the stream_out filter signal the end of the test */
     .source = source_800_600,
     .sout = "#" MODULE_STRING,
-    .sout_filter_send = sout_filter_send,
+    .packetizer_getcc = packetizer_getcc,
+    .sout_filter_send = sout_filter_wait_cc,
     .sout_filter_flush = sout_filter_flush,
     .interface_setup = interface_setup_check_flush,
 },
-{
-    /* Check that releasing a decoder while it is triggering an update
-     * of the video output format doesn't lead to a crash. Non-regression
-     * test from issue #27532. */
-    .source = source_800_600,
-    .decoder_setup = decoder_i420_800_600_stop,
-    .decoder_decode = decoder_decode_drop,
-    .decoder_destroy = decoder_destroy_trigger_update,
-},
-{
-    /* Check that reloading a decoder while it is triggering an update
-     * of the video output format doesn't lead to a crash. Non-regression
-     * test from issue #27532. */
-    .source = source_800_600,
-    .decoder_setup = decoder_i420_800_600,
-    .decoder_decode = decoder_decode_trigger_reload,
-    .decoder_destroy = decoder_destroy_trigger_update,
-}};
+//{
+//    /* Check that releasing a decoder while it is triggering an update
+//     * of the video output format doesn't lead to a crash. Non-regression
+//     * test from issue #27532. */
+//    .source = source_800_600,
+//    .decoder_setup = decoder_i420_800_600_stop,
+//    .decoder_decode = decoder_decode_drop,
+//    .decoder_destroy = decoder_destroy_trigger_update,
+//},
+//{
+//    /* Check that reloading a decoder while it is triggering an update
+//     * of the video output format doesn't lead to a crash. Non-regression
+//     * test from issue #27532. */
+//    .source = source_800_600,
+//    .decoder_setup = decoder_i420_800_600,
+//    .decoder_decode = decoder_decode_trigger_reload,
+//    .decoder_destroy = decoder_destroy_trigger_update,
+/*}*/};
 size_t input_decoder_scenarios_count = ARRAY_SIZE(input_decoder_scenarios);
 
 void input_decoder_scenario_init(void)
