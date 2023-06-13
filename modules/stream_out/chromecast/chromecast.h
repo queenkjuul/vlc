@@ -192,6 +192,7 @@ struct intf_sys_t
     vlc_tick_t getPauseDelay();
 
     unsigned int getHttpStreamPort() const;
+    std::string getHttpStreamRoot() const;
     std::string getHttpStreamPath() const;
     std::string getHttpArtRoot() const;
 
