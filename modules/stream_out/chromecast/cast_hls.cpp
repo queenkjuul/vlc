@@ -51,9 +51,9 @@ struct SoutStreamSys
 static sout_stream_t *CreateSoutChain( sout_stream_t *stream, SoutStreamSys &sys )
 {
     std::stringstream sstream;
-    sstream << "transcode{acodec=aac}:"
-            << "hls{is-http,"
-            << ",path=" << sys.intf->getHttpStreamRoot() << "}";
+    sstream << "transcode{vcodec=h264,venc=ffmpeg}:"
+            << "hls{host-http,num-seg=4,base-url="
+            << sys.intf->getHttpStreamRoot() << "}";
 
     return sout_StreamChainNew( VLC_OBJECT( stream ), sstream.str().c_str(), nullptr );
 }
@@ -164,7 +164,7 @@ static int Send( sout_stream_t *stream, void *id, vlc_frame_t *frame )
         return result;
 
     const auto hls_segcount = var_GetInteger( sys->hls->p_next, "seg-count" );
-    if ( hls_segcount >= 2 && !sys->start_command_sent )
+    if ( hls_segcount >= 3 && !sys->start_command_sent )
     {
         printf( "START\n" );
         sys->intf->setHasInput( "application/vnd.apple.mpegurl" );

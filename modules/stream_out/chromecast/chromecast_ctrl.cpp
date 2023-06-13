@@ -892,20 +892,20 @@ void intf_sys_t::processMediaMessage( const castchannel::CastMessage& msg )
 
                 if ( !m_has_forced_tracks )
                 {
-                    const json_value media = status[0]["media"];
-                    const json_value tracks = media["tracks"];
-                    std::vector<int64_t> trackIds;
-                    for ( auto i = 0u; i < tracks.u.array.length; ++i )
-                    {
-                        const json_value *it = tracks.u.array.values[i];
-                        const std::string mime = ( *it )["type"].u.string.ptr;
-                        if ( mime == "TEXT" || mime == "AUDIO" )
-                        {
-                            trackIds.push_back( ( *it )["trackId"].u.integer );
-                        }
-                    }
-                    m_communication->msgPlayerEnableTracks( m_appTransportId, m_mediaSessionId,
-                                                            trackIds );
+                    //const json_value media = status[0]["media"];
+                    //const json_value tracks = media["tracks"];
+                    //std::vector<int64_t> trackIds;
+                    //for ( auto i = 0u; i < tracks.u.array.length; ++i )
+                    //{
+                    //    const json_value *it = tracks.u.array.values[i];
+                    //    const std::string mime = ( *it )["type"].u.string.ptr;
+                    //    if ( mime == "TEXT" || mime == "AUDIO" )
+                    //    {
+                    //        trackIds.push_back( ( *it )["trackId"].u.integer );
+                    //    }
+                    //}
+                    //m_communication->msgPlayerEnableTracks( m_appTransportId, m_mediaSessionId,
+                    //                                        trackIds );
                     m_has_forced_tracks = true;
                 }
                 else
