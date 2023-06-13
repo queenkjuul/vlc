@@ -28,6 +28,7 @@
 #include <vlc_httpd.h>
 #include <vlc_list.h>
 #include <vlc_tick.h>
+#include <vlc_threads.h>
 
 #include "hls.h"
 #include "segments.h"
