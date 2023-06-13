@@ -2,18 +2,20 @@
 #include "config.h"
 #endif
 
-#include "../renderer_common.hpp"
+#include <algorithm>
+#include <memory>
+
 #include "chromecast.h"
 
+#include <vlc_common.h>
 
-#include "../hls/hls.h"
-
+#include <vlc_configuration.h>
 #include <vlc_cxx_helpers.hpp>
 #include <vlc_frame.h>
 #include <vlc_sout.h>
 
-#include <memory>
-#include <algorithm>
+#include "../hls/hls.h"
+#include "../renderer_common.hpp"
 
 #define SOUT_CFG_PREFIX "sout-chromecast-"
 
