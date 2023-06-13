@@ -179,6 +179,8 @@ static int HTTPCallback(httpd_callback_sys_t *sys,
 
     httpd_MsgAdd(answer, "Content-Type", "%s", storage->mime);
     httpd_MsgAdd(answer, "Cache-Control", "no-cache");
+    httpd_MsgAdd(answer, "Access-Control-Allow-Origin", "*");
+    httpd_MsgAdd(answer, "Access-Control-Expose-Headers", "Content-Length");
 
     answer->i_proto = HTTPD_PROTO_HTTP;
     answer->i_version = 0;
@@ -884,6 +886,8 @@ static void SetPCR(sout_stream_t *stream, vlc_tick_t pcr)
             hls_pacer_Pace(pacer, pace_duration);
         }
         sys->last_segment = stream_time;
+        printf("YEAD\n");
+        var_IncInteger( stream, "seg-count" );
     }
 }
 
@@ -906,7 +910,10 @@ static int Control(sout_stream_t *stream, int query, va_list args)
 static int InitHTTP(sout_stream_t *stream)
 {
     sout_stream_sys_t *sys = stream->p_sys;
-    sys->http_host = vlc_http_HostNew(VLC_OBJECT(stream));
+    sys->http_host = var_InheritAddress( stream, "httpd-host" );
+    if ( sys->http_host == NULL )
+        sys->http_host = vlc_http_HostNew( VLC_OBJECT(stream) );
+
     if (sys->http_host == NULL)
         return VLC_EGENERIC;
 
@@ -986,6 +993,8 @@ static int Open(vlc_object_t *this)
     vlc_vector_push(&inf->es_list, 1);
     vlc_vector_push(&inf->es_list, 2);
     vlc_vector_push(&sys->stream_inf_descriptors, inf);
+        
+    var_Create( this, "seg-count", VLC_VAR_INTEGER );
 
     sys->playlist_created_count = 0;
 
