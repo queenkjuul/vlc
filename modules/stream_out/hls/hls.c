@@ -30,6 +30,7 @@
 #include <vlc_iso_lang.h>
 #include <vlc_list.h>
 #include <vlc_memstream.h>
+#include <vlc_messages.h>
 #include <vlc_plugin.h>
 #include <vlc_sout.h>
 #include <vlc_tick.h>
@@ -82,6 +83,7 @@ typedef struct hls_playlist
 
     char *url;
     const char *name;
+    struct vlc_logger *logger;
 
     /**
      * Current playlist manifest as in RFC 8216 section 4.3.3.
@@ -532,6 +534,10 @@ static hls_playlist_t *CreatePlaylist(sout_stream_t *stream)
 
     playlist->name = playlist->url + strlen(sys->config.base_url) + 1;
 
+    playlist->logger = vlc_LogHeaderCreate(stream->obj.logger, playlist->name);
+    if (unlikely(playlist->logger == NULL))
+        goto error;
+
     struct hls_segment_queue_config config = {
         .playlist_id = playlist->id,
         .httpd_ref = sys->http_host,
@@ -556,10 +562,14 @@ static hls_playlist_t *CreatePlaylist(sout_stream_t *stream)
 
     vlc_list_init(&playlist->tracks);
 
+    vlc_info(playlist->logger, "Playlist created");
+
     return playlist;
 error:
     if (playlist->http_manifest != NULL)
         httpd_UrlDelete(playlist->http_manifest);
+    if (playlist->logger != NULL)
+        vlc_LogDestroy(playlist->logger);
     if (playlist->access != NULL)
         sout_AccessOutDelete(playlist->access);
     if (playlist->mux != NULL)
@@ -586,6 +596,7 @@ static void DeletePlaylist(hls_playlist_t *playlist)
 
     vlc_list_remove(&playlist->node);
 
+    vlc_LogDestroy(playlist->logger);
     free(playlist->url);
 
     free(playlist);
@@ -704,7 +715,16 @@ static void ExtractAndAddSegment(hls_playlist_t *playlist,
     const int status = hls_segment_queue_NewSegment(
         &playlist->segments, segment.begin, segment.length);
     if (unlikely(status != VLC_SUCCESS))
+    {
+        vlc_error(playlist->logger,
+                  "Segment '%u' creation failed",
+                  playlist->segments.total_segments + 1);
         return;
+    }
+
+    vlc_debug(playlist->logger,
+              "Segment '%u' created",
+              playlist->segments.total_segments);
 
     UpdatePlaylistManifest(playlist);
 }
