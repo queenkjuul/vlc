@@ -230,7 +230,7 @@ struct sout_stream_operations {
      *
      * \note Mandatory callback.
      */
-    void *(*add)(sout_stream_t *, const es_format_t *);
+    void *(*add)(sout_stream_t *, const es_format_t *, const char *);
     /**
      * Implementation of ::sout_StreamIdDel().
      *
@@ -285,11 +285,14 @@ VLC_API sout_stream_t *sout_StreamChainNew(vlc_object_t *parent,
  * The returned opaque identifier should be released by ::sout_StreamIdDel().
  *
  * \param fmt A non-NULL es-format descriptor.
+ * \param es_id A non-NULL unique string describing the ES.
  *
  * \return An opaque pointer identifying the ES.
  * \retval NULL In case of error.
  */
-VLC_API void *sout_StreamIdAdd(sout_stream_t *, const es_format_t *fmt) VLC_USED;
+VLC_API void *sout_StreamIdAdd(sout_stream_t *,
+                               const es_format_t *fmt,
+                               const char *es_id) VLC_USED;
 
 /**
  * Delete an ES from the stream output.

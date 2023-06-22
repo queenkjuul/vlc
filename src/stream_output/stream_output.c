@@ -122,7 +122,8 @@ struct sout_packetizer_input_t
 };
 
 sout_packetizer_input_t *sout_InputNew( sout_stream_t *p_sout,
-                                        const es_format_t *p_fmt )
+                                        const es_format_t *p_fmt,
+                                        const char *es_id)
 {
     sout_packetizer_input_t *p_input;
 
@@ -136,7 +137,7 @@ sout_packetizer_input_t *sout_InputNew( sout_stream_t *p_sout,
             (char *)&p_fmt->i_codec, (void *)p_input);
 
     /* *** add it to the stream chain */
-    p_input->id = sout_StreamIdAdd( p_sout, p_fmt );
+    p_input->id = sout_StreamIdAdd( p_sout, p_fmt, es_id);
 
     if( p_input->id == NULL )
     {
@@ -695,12 +696,12 @@ static void sout_StreamUnlock(sout_stream_t *s)
     vlc_mutex_unlock(&sout_stream_priv(s)->lock);
 }
 
-void *sout_StreamIdAdd(sout_stream_t *s, const es_format_t *fmt)
+void *sout_StreamIdAdd(sout_stream_t *s, const es_format_t *fmt, const char *es_id)
 {
     void *id;
 
     sout_StreamLock(s);
-    id = s->ops->add(s, fmt);
+    id = s->ops->add(s, fmt, es_id);
     sout_StreamUnlock(s);
     return id;
 }
