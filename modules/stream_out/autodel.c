@@ -59,7 +59,7 @@ typedef struct
     struct vlc_list ids;
 } sout_stream_sys_t;
 
-static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt )
+static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt, const char *es_id )
 {
     sout_stream_sys_t *p_sys = (sout_stream_sys_t *)p_stream->p_sys;
     sout_stream_id_sys_t *p_es = malloc( sizeof(sout_stream_id_sys_t) );
@@ -96,7 +96,8 @@ static int Send( sout_stream_t *p_stream, void *_p_es, block_t *p_buffer )
                                                            : p_sys->last_pcr;
     if ( !p_es->id && !p_es->b_error )
     {
-        p_es->id = sout_StreamIdAdd( p_stream->p_next, &p_es->fmt );
+        // TODO(Alaric): store and pass the es_id.
+        p_es->id = sout_StreamIdAdd( p_stream->p_next, &p_es->fmt, NULL );
         if ( p_es->id == NULL )
         {
             p_es->b_error = true;

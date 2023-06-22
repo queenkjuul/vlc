@@ -58,7 +58,7 @@ vlc_module_end ()
 /*****************************************************************************
  * Exported prototypes
  *****************************************************************************/
-static void *Add( sout_stream_t *, const es_format_t * );
+static void *Add( sout_stream_t *, const es_format_t *, const char * );
 static void  Del( sout_stream_t *, void * );
 static int   Send( sout_stream_t *, void *, vlc_frame_t * );
 static void  SetPCR( sout_stream_t *, vlc_tick_t );
@@ -214,7 +214,8 @@ static void Close( vlc_object_t * p_this )
 /*****************************************************************************
  * Add:
  *****************************************************************************/
-static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt )
+static void *
+Add( sout_stream_t *p_stream, const es_format_t *p_fmt, const char *es_id )
 {
     sout_stream_sys_t *p_sys = p_stream->p_sys;
     sout_stream_id_sys_t  *id;
@@ -235,7 +236,9 @@ static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt )
 
         if( ESSelected(p_stream->obj.logger, p_fmt, dup_stream->select_chain) )
         {
-            void *next_id = sout_StreamIdAdd( dup_stream->stream, p_fmt );
+            /* TODO(Alaric): suffix the string id with the duplicated track
+             * count. */
+            void *next_id = sout_StreamIdAdd( dup_stream->stream, p_fmt, NULL );
             if( next_id != NULL )
             {
                 msg_Dbg( p_stream, "    - added for output %zu", idx );
