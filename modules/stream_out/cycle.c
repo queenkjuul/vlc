@@ -80,17 +80,17 @@ Add(sout_stream_t *stream, const es_format_t *fmt, const char *es_id)
         return NULL;
 
     if (es_format_Copy(&id->fmt, fmt))
-    {
-        es_format_Clean(&id->fmt);
-        free(id);
-        return NULL;
-    }
+        goto err;
 
     if (sys->stream != NULL)
         id->id = sout_StreamIdAdd(sys->stream, &id->fmt, es_id);
 
     vlc_list_append(&id->node, &sys->ids);
     return id;
+err:
+    es_format_Clean(&id->fmt);
+    free(id);
+    return NULL;
 }
 
 static void Del(sout_stream_t *stream, void *_id)
