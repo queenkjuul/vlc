@@ -515,6 +515,7 @@ static void Close( vlc_object_t * p_this )
 
 static void DeleteSoutStreamID( sout_stream_id_sys_t *id )
 {
+    free( id->es_id );
     free( id );
 }
 
@@ -570,7 +571,8 @@ static int ValidateDrift( void *cbdata, vlc_tick_t i_drift )
 
 static void *transcode_downstream_Add( sout_stream_t *p_stream,
                                        const es_format_t *fmt_orig,
-                                       const es_format_t *fmt)
+                                       const es_format_t *fmt,
+                                       const char *es_id )
 {
     sout_stream_sys_t *p_sys = p_stream->p_sys;
 
@@ -591,8 +593,7 @@ static void *transcode_downstream_Add( sout_stream_t *p_stream,
     if( tmp.i_group != fmt_orig->i_group )
         tmp.i_group = fmt_orig->i_group;
 
-    // TODO(Alaric): Pass es_id through the pipeline.
-    void *downstream = sout_StreamIdAdd( p_stream->p_next, &tmp, NULL );
+    void *downstream = sout_StreamIdAdd( p_stream->p_next, &tmp, es_id );
     es_format_Clean( &tmp );
     return downstream;
 }
@@ -620,6 +621,10 @@ Add( sout_stream_t *p_stream, const es_format_t *p_fmt, const char *es_id )
     decoder_Init( id->p_decoder, &p_owner->fmt_in, p_fmt );
 
     es_format_SetMeta( &id->p_decoder->fmt_out, id->p_decoder->fmt_in );
+
+    id->es_id = strdup( es_id );
+    if( unlikely(id->es_id == NULL) )
+        goto error;
 
     switch( p_fmt->i_cat )
     {
@@ -674,7 +679,7 @@ Add( sout_stream_t *p_stream, const es_format_t *p_fmt, const char *es_id )
     {
         msg_Dbg( p_stream, "not transcoding a stream (fcc=`%4.4s')",
                  (char*)&p_fmt->i_codec );
-        id->downstream_id = transcode_downstream_Add( p_stream, p_fmt, p_fmt );
+        id->downstream_id = transcode_downstream_Add( p_stream, p_fmt, p_fmt, es_id );
         id->b_transcode = false;
 
         success = id->downstream_id;
