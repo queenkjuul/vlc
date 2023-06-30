@@ -52,6 +52,7 @@ namespace DLNA
 struct sout_stream_id_sys_t
 {
     es_format_t           fmt;
+    std::string           es_id;
     sout_stream_id_sys_t  *p_sub_id;
 };
 
@@ -193,9 +194,8 @@ bool sout_stream_sys_t::startSoutChain(sout_stream_t *p_stream,
             it != out_streams.end(); )
     {
         sout_stream_id_sys_t *p_sys_id = *it;
-        // TODO(Alaric): store es-id and pass it to the substream's chain.
         p_sys_id->p_sub_id = static_cast<sout_stream_id_sys_t *>(
-                sout_StreamIdAdd( p_out, &p_sys_id->fmt, nullptr ) );
+            sout_StreamIdAdd( p_out, &p_sys_id->fmt, p_sys_id->es_id.c_str()) );
         if ( p_sys_id->p_sub_id == nullptr )
         {
             msg_Err( p_stream, "can't handle %4.4s stream",
@@ -768,7 +768,7 @@ int MediaRenderer::SetAVTransportURI(const char* uri, const protocol_info_t& pro
 }
 
 static void *
-Add(sout_stream_t *p_stream, const es_format_t *p_fmt, const char *)
+Add(sout_stream_t *p_stream, const es_format_t *p_fmt, const char *es_id)
 {
     sout_stream_sys_t *p_sys = static_cast<sout_stream_sys_t *>( p_stream->p_sys );
 
@@ -782,6 +782,7 @@ Add(sout_stream_t *p_stream, const es_format_t *p_fmt, const char *)
     if(p_sys_id != nullptr)
     {
         es_format_Copy(&p_sys_id->fmt, p_fmt);
+        p_sys_id->es_id = es_id;
         p_sys_id->p_sub_id = nullptr;
         p_sys->streams.push_back(p_sys_id);
         p_sys->es_changed = true;
