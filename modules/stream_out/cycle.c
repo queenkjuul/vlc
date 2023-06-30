@@ -52,6 +52,7 @@ struct sout_stream_id_sys_t
 {
     struct vlc_list node;
     es_format_t fmt;
+    char *es_id;
     void *id;
 };
 
@@ -82,8 +83,12 @@ Add(sout_stream_t *stream, const es_format_t *fmt, const char *es_id)
     if (es_format_Copy(&id->fmt, fmt))
         goto err;
 
+    id->es_id = strdup(es_id);
+    if (unlikely(id->es_id == NULL))
+        goto err;
+
     if (sys->stream != NULL)
-        id->id = sout_StreamIdAdd(sys->stream, &id->fmt, es_id);
+        id->id = sout_StreamIdAdd(sys->stream, &id->fmt, id->es_id);
 
     vlc_list_append(&id->node, &sys->ids);
     return id;
@@ -104,6 +109,7 @@ static void Del(sout_stream_t *stream, void *_id)
         sout_StreamIdDel(sys->stream, id->id);
 
     es_format_Clean(&id->fmt);
+    free(id->es_id);
     free(id);
 }
 
@@ -119,9 +125,8 @@ static int AddStream(sout_stream_t *stream, char *chain)
     if (sys->stream == NULL)
         return -1;
 
-    // TODO(Alaric): store es_ids and pass them to the substream chain.
     vlc_list_foreach (id, &sys->ids, node)
-        id->id = sout_StreamIdAdd(sys->stream, &id->fmt, NULL);
+        id->id = sout_StreamIdAdd(sys->stream, &id->fmt, id->es_id);
 
     return 0;
 }
