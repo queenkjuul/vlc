@@ -47,6 +47,7 @@ struct sout_stream_id_sys_t
 {
     sout_stream_id_sys_t *id;
     es_format_t fmt;
+    char *es_id;
     vlc_tick_t i_last;
     bool b_error;
     struct vlc_list node;
@@ -66,6 +67,12 @@ static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt, const char 
     if( unlikely(p_es == NULL) )
         return NULL;
 
+    p_es->es_id = strdup(es_id);
+    if (unlikely(p_es->es_id == NULL))
+    {
+        free(p_es);
+        return NULL;
+    }
     es_format_Copy( &p_es->fmt, p_fmt );
 
     p_es->id = NULL;
@@ -84,6 +91,7 @@ static void Del( sout_stream_t *p_stream, void *_p_es )
 
     vlc_list_remove(&p_es->node);
     es_format_Clean( &p_es->fmt );
+    free( p_es->es_id );
     free( p_es );
 }
 
@@ -96,8 +104,7 @@ static int Send( sout_stream_t *p_stream, void *_p_es, block_t *p_buffer )
                                                            : p_sys->last_pcr;
     if ( !p_es->id && !p_es->b_error )
     {
-        // TODO(Alaric): store and pass the es_id.
-        p_es->id = sout_StreamIdAdd( p_stream->p_next, &p_es->fmt, NULL );
+        p_es->id = sout_StreamIdAdd( p_stream->p_next, &p_es->fmt, p_es->es_id );
         if ( p_es->id == NULL )
         {
             p_es->b_error = true;
