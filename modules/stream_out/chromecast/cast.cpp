@@ -165,6 +165,7 @@ private:
 struct sout_stream_id_sys_t
 {
     es_format_t           fmt;
+    std::string           es_id;
     sout_stream_id_sys_t  *p_sub_id;
     bool                  flushed;
 };
@@ -657,7 +658,8 @@ static void AccessClose(vlc_object_t *p_this)
 /*****************************************************************************
  * Sout callbacks
  *****************************************************************************/
-static void *Add(sout_stream_t *p_stream, const es_format_t *p_fmt, const char *)
+static void *
+Add( sout_stream_t *p_stream, const es_format_t *p_fmt, const char *es_id )
 {
     sout_stream_sys_t *p_sys = reinterpret_cast<sout_stream_sys_t *>( p_stream->p_sys );
     vlc_mutex_locker locker(&p_sys->lock);
@@ -672,6 +674,7 @@ static void *Add(sout_stream_t *p_stream, const es_format_t *p_fmt, const char *
     if (p_sys_id != NULL)
     {
         es_format_Copy( &p_sys_id->fmt, p_fmt );
+        p_sys_id->es_id = es_id;
         p_sys_id->p_sub_id = NULL;
         p_sys_id->flushed = false;
 
@@ -849,8 +852,8 @@ bool sout_stream_sys_t::startSoutChain(sout_stream_t *p_stream,
          it != out_streams.end(); )
     {
         sout_stream_id_sys_t *p_sys_id = *it;
-        // TODO(Alaric): store es_id and pass it here.
-        p_sys_id->p_sub_id = reinterpret_cast<sout_stream_id_sys_t *>( sout_StreamIdAdd( p_out, &p_sys_id->fmt, nullptr ) );
+        p_sys_id->p_sub_id = reinterpret_cast<sout_stream_id_sys_t *>(
+            sout_StreamIdAdd(p_out, &p_sys_id->fmt, p_sys_id->es_id.c_str()) );
         if ( p_sys_id->p_sub_id == NULL )
         {
             msg_Err( p_stream, "can't handle %4.4s stream", (char *)&p_sys_id->fmt.i_codec );
