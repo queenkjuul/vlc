@@ -148,7 +148,8 @@ static int Open( vlc_object_t *p_this )
 
             if( dup_stream.stream != NULL )
             {
-                vlc_vector_push( &p_sys->streams, dup_stream );
+                if( !vlc_vector_push(&p_sys->streams, dup_stream) )
+                    goto nomem;
                 ppsz_select = &vlc_vector_last( &p_sys->streams )->select_chain;
             }
         }
@@ -166,6 +167,8 @@ static int Open( vlc_object_t *p_this )
                 {
                     msg_Dbg( p_stream, " * apply selection `%s'", psz );
                     *ppsz_select = strdup( psz );
+                    if( unlikely(*ppsz_select == NULL) )
+                        goto nomem;
                     ppsz_select = NULL;
                 }
             }
@@ -187,6 +190,10 @@ static int Open( vlc_object_t *p_this )
     p_stream->p_sys = p_sys;
     p_stream->ops = &ops;
     return VLC_SUCCESS;
+nomem:
+    p_stream->p_sys = p_sys;
+    Close( p_this );
+    return VLC_ENOMEM;
 }
 
 /*****************************************************************************
@@ -253,16 +260,15 @@ static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt )
 
         /* Append failed attempts as well to keep track of which pp_id
          * belongs to which duplicated stream */
-        vlc_vector_push( &id->dup_ids, dup_id );
+        if( !vlc_vector_push( &id->dup_ids, dup_id ) )
+            goto error;
     }
 
-    if( i_valid_streams <= 0 )
-    {
-        Del( p_stream, id );
-        return NULL;
-    }
-
-    return id;
+    if( i_valid_streams > 0 )
+        return id;
+error:
+    Del( p_stream, id );
+    return NULL;
 }
 
 /*****************************************************************************
