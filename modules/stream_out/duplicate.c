@@ -211,6 +211,18 @@ static void Close( vlc_object_t * p_this )
     free( p_sys );
 }
 
+static char *CreateStringID( size_t idx, const char *es_id )
+{
+    /* The first ES is considered to be the original one and shouldn't have its
+     * string ID changed. */
+    if( idx == 0 )
+        return strdup( es_id );
+
+    char *dup_str_id;
+    if( asprintf(&dup_str_id, "%s/dup/%zu", es_id, idx) == -1 )
+        return NULL;
+    return dup_str_id;
+}
 /*****************************************************************************
  * Add:
  *****************************************************************************/
@@ -236,9 +248,13 @@ Add( sout_stream_t *p_stream, const es_format_t *p_fmt, const char *es_id )
 
         if( ESSelected(p_stream->obj.logger, p_fmt, dup_stream->select_chain) )
         {
-            /* TODO(Alaric): suffix the string id with the duplicated track
-             * count. */
-            void *next_id = sout_StreamIdAdd( dup_stream->stream, p_fmt, NULL );
+            char *dup_str_id = CreateStringID( idx, es_id );
+            if( unlikely(dup_str_id == NULL) )
+                goto error;
+
+            void *next_id = sout_StreamIdAdd( dup_stream->stream, p_fmt, dup_str_id );
+            free(dup_str_id);
+
             if( next_id != NULL )
             {
                 msg_Dbg( p_stream, "    - added for output %zu", idx );
