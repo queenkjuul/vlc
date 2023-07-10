@@ -66,6 +66,7 @@ static void  SetPCR( sout_stream_t *, vlc_tick_t );
 typedef struct {
     sout_stream_t *stream;
     char *select_chain;
+    char *name;
 } duplicated_stream_t;
 
 typedef struct
@@ -169,6 +170,25 @@ static int Open( vlc_object_t *p_this )
                 }
             }
         }
+        else if( !strncmp( p_cfg->psz_name, "name", strlen( "name" ) ) )
+        {
+            const char *value = p_cfg->psz_value;
+            if( value == NULL || value[0] == '\0' )
+                continue;
+
+            if( p_sys->streams.size == 0 )
+            {
+                msg_Err( p_stream, " * ignore name `%s'", value );
+            }
+            else
+            {
+                msg_Dbg( p_stream, " * apply name `%s'", value );
+                char *name = strdup( value );
+                if( unlikely(name == NULL) )
+                    goto nomem;
+                vlc_vector_last(&p_sys->streams)->name = name;
+            }
+        }
         else
         {
             msg_Err( p_stream, " * ignore unknown option `%s'", p_cfg->psz_name );
@@ -205,21 +225,24 @@ static void Close( vlc_object_t * p_this )
     {
         sout_StreamChainDelete( dup_stream->stream, p_stream->p_next );
         free( dup_stream->select_chain );
+        free( dup_stream->name );
     }
     vlc_vector_destroy( &p_sys->streams );
 
     free( p_sys );
 }
 
-static char *CreateStringID( size_t idx, const char *es_id )
+static char *CreateStringID( size_t idx, const char *dup_name, const char *es_id )
 {
     /* The first ES is considered to be the original one and shouldn't have its
      * string ID changed. */
-    if( idx == 0 )
+    if( idx == 0 && dup_name != NULL )
         return strdup( es_id );
 
+    dup_name = (dup_name == NULL) ? "dup" : dup_name;
+
     char *dup_str_id;
-    if( asprintf(&dup_str_id, "%s/dup/%zu", es_id, idx) == -1 )
+    if( asprintf(&dup_str_id, "%s/%s/%zu", es_id, dup_name, idx) == -1 )
         return NULL;
     return dup_str_id;
 }
@@ -248,7 +271,7 @@ Add( sout_stream_t *p_stream, const es_format_t *p_fmt, const char *es_id )
 
         if( ESSelected(p_stream->obj.logger, p_fmt, dup_stream->select_chain) )
         {
-            char *dup_str_id = CreateStringID( idx, es_id );
+            char *dup_str_id = CreateStringID( idx, dup_stream->name, es_id );
             if( unlikely(dup_str_id == NULL) )
                 goto error;
 
