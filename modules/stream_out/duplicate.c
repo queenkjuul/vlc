@@ -29,11 +29,12 @@
 #endif
 
 #include <vlc_common.h>
+
 #include <vlc_configuration.h>
+#include <vlc_frame.h>
 #include <vlc_plugin.h>
 #include <vlc_sout.h>
 #include <vlc_vector.h>
-#include <vlc_block.h>
 
 /*****************************************************************************
  * Module descriptor
@@ -59,7 +60,7 @@ vlc_module_end ()
  *****************************************************************************/
 static void *Add( sout_stream_t *, const es_format_t * );
 static void  Del( sout_stream_t *, void * );
-static int   Send( sout_stream_t *, void *, block_t * );
+static int   Send( sout_stream_t *, void *, vlc_frame_t * );
 static void  SetPCR( sout_stream_t *, vlc_tick_t );
 
 typedef struct {
@@ -282,7 +283,7 @@ static void Del( sout_stream_t *p_stream, void *_id )
 /*****************************************************************************
  * Send:
  *****************************************************************************/
-static int Send( sout_stream_t *p_stream, void *_id, block_t *p_buffer )
+static int Send( sout_stream_t *p_stream, void *_id, vlc_frame_t *frame )
 {
     sout_stream_id_sys_t *id = (sout_stream_id_sys_t *)_id;
 
@@ -293,10 +294,10 @@ static int Send( sout_stream_t *p_stream, void *_id, block_t *p_buffer )
     vlc_vector_foreach_ref( dup_id, &id->dup_ids )
     {
         const bool is_last = dup_id == vlc_vector_last( &id->dup_ids );
-        block_t *to_send = (is_last) ? p_buffer : block_Duplicate( p_buffer );
+        vlc_frame_t *to_send = (is_last) ? frame : vlc_frame_Duplicate( frame );
         if ( unlikely(to_send == NULL) )
         {
-            block_Release( p_buffer );
+            vlc_frame_Release( frame );
             return VLC_ENOMEM;
         }
             
