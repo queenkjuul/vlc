@@ -290,6 +290,9 @@ FileControl(stream_t *p_access, int i_query, va_list args)
             *va_arg(args, uint64_t *) = p_sys->stat.nfs_size;
             break;
         }
+        case STREAM_GET_MTIME:
+            *va_arg(args, uint64_t *) = p_sys->stat.nfs_mtime;
+            break;
 
         case STREAM_GET_PTS_DELAY:
             *va_arg(args, vlc_tick_t *) = VLC_TICK_FROM_MS(

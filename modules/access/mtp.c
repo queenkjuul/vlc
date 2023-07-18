@@ -213,15 +213,16 @@ static int Control( stream_t *p_access, int i_query, va_list args )
             break;
 
         case STREAM_GET_SIZE:
+        case STREAM_GET_MTIME:
         {
-            uint64_t *s = va_arg( args, uint64_t * );
+            uint64_t *val = va_arg( args, uint64_t * );
             struct stat st;
             if( fstat( fd, &st ) )
             {
                 msg_Err( p_access, "fstat error: %s", vlc_strerror_c(errno) );
                 return VLC_EGENERIC;
             }
-            *s = st.st_size;
+            *val = (i_query == STREAM_GET_SIZE) ? st.st_size : st.st_mtime;
             break;
         }
 

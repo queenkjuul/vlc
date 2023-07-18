@@ -121,6 +121,7 @@ struct access_sys
     struct smb2dir *        smb2dir;
     struct srvsvc_netshareenumall_rep *share_enum;
     uint64_t                smb2_size;
+    uint64_t                smb2_mtime;
     vlc_url_t               encoded_url;
     bool                    eof;
     bool                    smb2_connected;
@@ -364,10 +365,11 @@ FileControl(stream_t *access, int i_query, va_list args)
             break;
 
         case STREAM_GET_SIZE:
-        {
             *va_arg(args, uint64_t *) = sys->smb2_size;
             break;
-        }
+        case STREAM_GET_MTIME:
+            *va_arg(args, uint64_t *) = sys->smb2_mtime;
+            break;
 
         case STREAM_GET_PTS_DELAY:
             *va_arg(args, vlc_tick_t * ) = VLC_TICK_FROM_MS(
@@ -608,6 +610,7 @@ vlc_smb2_open_share(stream_t *access, struct smb2_context **smb2p,
             vlc_smb2_op_reset(&op, smb2p);
 
             sys->smb2_size = smb2_stat.smb2_size;
+            sys->smb2_mtime = smb2_stat.smb2_mtime;
             ret = smb2_open_async(op.smb2, smb2_url->path, O_RDONLY,
                                   smb2_open_cb, &op);
         }
