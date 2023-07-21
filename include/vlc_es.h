@@ -782,4 +782,7 @@ vlc_es_id_GetStrId(vlc_es_id_t *id);
 VLC_API enum es_format_category_e
 vlc_es_id_GetCat(vlc_es_id_t *id);
 
+VLC_API char *
+vlc_es_StrIdChangeEsID(const char *from, int new_id);
+
 #endif

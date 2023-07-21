@@ -2051,6 +2051,7 @@ static char *EsOutCreateStrId( es_out_id_t *es, bool stable, const char *id,
     return ms.ptr;
 }
 
+
 static es_out_id_t *EsOutAddLocked( es_out_t *out, input_source_t *source,
                                     const es_format_t *fmt,
                                     es_out_id_t *p_master )
