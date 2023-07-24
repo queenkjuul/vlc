@@ -94,7 +94,8 @@ typedef struct
     vlc_clock_t *clock;
 } sout_stream_id_sys_t;
 
-static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt, const char *es_id )
+static void *
+Add( sout_stream_t *p_stream, const es_format_t *p_fmt, const char *es_id )
 {
     sout_stream_sys_t *p_sys = p_stream->p_sys;
 
@@ -116,7 +117,7 @@ static void *Add( sout_stream_t *p_stream, const es_format_t *p_fmt, const char 
     }
 
     id->dec = vlc_input_decoder_Create(
-        VLC_OBJECT(p_stream), p_fmt, id->clock, p_sys->p_resource );
+        VLC_OBJECT(p_stream), p_fmt, es_id, id->clock, p_sys->p_resource );
     if( id->dec == NULL )
     {
         msg_Err( p_stream, "cannot create decoder for fcc=`%4.4s'",
