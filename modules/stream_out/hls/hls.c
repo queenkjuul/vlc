@@ -121,7 +121,7 @@ typedef struct
 struct stream_inf_desc
 {
     /** Es id list specified by the plugin user. */
-    struct VLC_VECTOR(unsigned int) es_list;
+    struct VLC_VECTOR(char *) es_list;
     /**
      * Reference on the playlist associated with this list of es. Having a
      * reference here after the playlist creation ease subsequent searches of
@@ -418,7 +418,7 @@ GeneratePlaylistManifest(const hls_playlist_t *playlist)
     const bool will_destroy_segments = playlist->config->max_segments == 0;
     if (playlist->ended)
         MANIFEST_ADD_TAG("#EXT-X-PLAYLIST-TYPE:VOD");
-    else if (!will_destroy_segments) 
+    else if (!will_destroy_segments)
         MANIFEST_ADD_TAG("#EXT-X-PLAYLIST-TYPE:EVENT");
 
     const hls_segment_t *first_seg = hls_segment_GetFirst(&playlist->segments);
@@ -657,15 +657,15 @@ static void DeletePlaylist(hls_playlist_t *playlist)
 }
 
 static struct stream_inf_desc *DescInfFromID(sout_stream_sys_t *sys,
-                                             unsigned int id)
+                                             const char *es_id)
 {
     struct stream_inf_desc *it;
     vlc_vector_foreach (it, &sys->stream_inf_descriptors)
     {
-        unsigned int es_id;
+        const char *es_id_it;
         vlc_vector_foreach (es_id, &it->es_list)
         {
-            if (es_id == id)
+            if (!strcmp(es_id_it, es_id))
                 return it;
         }
     }
@@ -684,7 +684,8 @@ static struct stream_inf_desc *DescFromPlaylist(sout_stream_sys_t *sys,
     return NULL;
 }
 
-static void *Add(sout_stream_t *stream, const es_format_t *fmt)
+static void *
+Add(sout_stream_t *stream, const es_format_t *fmt, const char *es_id)
 {
     if (!hls_codec_IsSupported(fmt))
         return NULL;
@@ -692,7 +693,7 @@ static void *Add(sout_stream_t *stream, const es_format_t *fmt)
     sout_stream_sys_t *sys = stream->p_sys;
 
     // Either retrieve the already created playlist in StreamInf or create it.
-    struct stream_inf_desc *desc = DescInfFromID(sys, fmt->i_id);
+    struct stream_inf_desc *desc = DescInfFromID(sys, es_id);
     hls_playlist_t *playlist;
     if (desc != NULL)
     {
@@ -935,12 +936,14 @@ static int Open(vlc_object_t *this)
                                           "out-dir",
                                           "pace",
                                           "seg-len",
+                                          "select",
                                           NULL};
     config_ChainParse(stream, SOUT_CFG_PREFIX, options, stream->p_cfg);
 
     sys->config.base_url = var_GetString(stream, SOUT_CFG_PREFIX "base-url");
     sys->config.outdir =
         var_GetNonEmptyString(stream, SOUT_CFG_PREFIX "out-dir");
+    printf("%s\n", var_GetNonEmptyString(stream, SOUT_CFG_PREFIX "select"));
     sys->config.max_segments =
         var_GetInteger(stream, SOUT_CFG_PREFIX "num-seg");
     sys->config.pace = var_GetBool(stream, SOUT_CFG_PREFIX "pace");
@@ -975,10 +978,10 @@ static int Open(vlc_object_t *this)
      * implemented.
      */
     struct stream_inf_desc *inf = calloc(1, sizeof(*inf));
-    vlc_vector_init(&inf->es_list);
-    vlc_vector_push(&inf->es_list, 1);
-    vlc_vector_push(&inf->es_list, 2);
-    vlc_vector_push(&sys->stream_inf_descriptors, inf);
+    //vlc_vector_init(&inf->es_list);
+    //vlc_vector_push(&inf->es_list, 1);
+    //vlc_vector_push(&inf->es_list, 2);
+    //vlc_vector_push(&sys->stream_inf_descriptors, inf);
 
     sys->playlist_created_count = 0;
 
@@ -1059,6 +1062,7 @@ vlc_module_begin()
     add_string(SOUT_CFG_PREFIX "out-dir", NULL, OUTDIR_TEXT, OUTDIR_LONGTEXT)
     add_bool(SOUT_CFG_PREFIX "pace", false, PACE_TEXT, PACE_LONGTEXT)
     add_integer(SOUT_CFG_PREFIX "seg-len", 4, SEGLEN_TEXT, SEGLEN_LONGTEXT)
+    add_string(SOUT_CFG_PREFIX "select", NULL, SEGLEN_TEXT, SEGLEN_LONGTEXT)
 
     set_callbacks(Open, Close)
 vlc_module_end()
