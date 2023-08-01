@@ -55,6 +55,28 @@ static int FormatMP4A(struct vlc_memstream *ms, const es_format_t *fmt)
     return (wrote == -1) ? VLC_ENOMEM : VLC_SUCCESS;
 }
 
+static int FormatH265(struct vlc_memstream *ms, const es_format_t *fmt)
+{
+    /* Parse the H.265/HEVC codec information. */
+    // uint8_t constraints = 0;
+    uint8_t profile = 0; 
+    uint8_t level = 0; 
+    struct hxxx_helper hh;
+    hxxx_helper_init(&hh, NULL, fmt->i_codec, 0, 0);
+
+    if (hxxx_helper_set_extra(&hh, fmt->p_extra, fmt->i_extra) == VLC_SUCCESS)
+    {
+        // hevc_helper_get_constraint_flag(&hh, &constraints);
+        hxxx_helper_get_current_profile_level(&hh, &profile, &level);
+    }
+    hxxx_helper_clean(&hh);
+
+    
+    const int wrote = vlc_memstream_printf(
+        ms, "hvc1.%d.4.L%d.B0", profile, level); 
+    return (wrote == -1) ? VLC_ENOMEM : VLC_SUCCESS;
+}
+
 int hls_codec_Format(struct vlc_memstream *ms, const es_format_t *fmt)
 {
     switch (fmt->i_codec)
@@ -63,6 +85,8 @@ int hls_codec_Format(struct vlc_memstream *ms, const es_format_t *fmt)
             return FormatAVC1(ms, fmt);
         case VLC_CODEC_MP4A:
             return FormatMP4A(ms, fmt);
+        case VLC_CODEC_HEVC:
+            return FormatH265(ms, fmt);
         default:
             return VLC_ENOTSUP;
     }
@@ -70,5 +94,5 @@ int hls_codec_Format(struct vlc_memstream *ms, const es_format_t *fmt)
 
 bool hls_codec_IsSupported(const es_format_t *fmt)
 {
-    return fmt->i_codec == VLC_CODEC_H264 || fmt->i_codec == VLC_CODEC_MP4A;
+    return fmt->i_codec == VLC_CODEC_H264 || fmt->i_codec == VLC_CODEC_MP4A || fmt->i_codec == VLC_CODEC_HEVC;
 }
