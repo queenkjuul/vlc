@@ -51,8 +51,8 @@ struct SoutStreamSys
 static sout_stream_t *CreateSoutChain( sout_stream_t *stream, SoutStreamSys &sys )
 {
     std::stringstream sstream;
-    sstream << "transcode{vcodec=h264,venc=ffmpeg}:"
-            << "hls{host-http,num-seg=4,base-url="
+    sstream << "transcode{}:"
+            << "hls{host-http,out-dir=/tmp/hls,seg-len=4,num-seg=0,base-url="
             << sys.intf->getHttpStreamRoot() << "}";
 
     return sout_StreamChainNew( VLC_OBJECT( stream ), sstream.str().c_str(), nullptr );
@@ -62,10 +62,10 @@ static void *Add( sout_stream_t *stream, const es_format_t *fmt )
 {
     SoutStreamSys *sys = static_cast<SoutStreamSys *>( stream->p_sys );
 
-    //if (fmt->i_cat != VIDEO_ES)
-    //{
-    //    return nullptr;
-    //}
+    if (fmt->i_cat != VIDEO_ES)
+    {
+        return nullptr;
+    }
 
     printf( "ADD %d\n", fmt->i_id );
     if ( !sys->is_video_supported && fmt->i_cat != AUDIO_ES )

@@ -374,7 +374,7 @@ std::string ChromecastCommunication::GetMedia( const std::string& mime,
 
     ss << "\"contentId\":\"" << chromecast_url.str() << "\""
        << ",\"streamType\":\"LIVE\""
-       << ",\"hlsSegmentFormat\":\"aac\""
+       << ",\"hlsVideoSegmentFormat\":\"fmp4\""
        << ",\"contentType\":\"" << mime << "\"";
 
     return ss.str();

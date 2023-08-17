@@ -72,7 +72,7 @@ int hls_segment_queue_NewSegment(hls_segment_queue_t *queue,
     segment->length = length;
 
     if (asprintf(&segment->url,
-                 "%s/playlist-%u-%u.ts",
+                 "%s/playlist-%u-%u.mp4",
                  queue->hls_config->base_url,
                  queue->config.playlist_id,
                  segment->id) == -1)
@@ -83,7 +83,7 @@ int hls_segment_queue_NewSegment(hls_segment_queue_t *queue,
 
     const struct hls_storage_config storage_conf = {
         .name = segment->url + strlen(queue->hls_config->base_url) + 1,
-        .mime = "video/MP2T",
+        .mime = "video/mp4",
     };
     segment->storage =
         hls_storage_FromBlocks(content, &storage_conf, queue->hls_config);

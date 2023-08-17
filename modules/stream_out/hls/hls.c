@@ -91,6 +91,10 @@ typedef struct
     struct hls_storage *manifest;
     httpd_url_t *http_manifest;
 
+    char *init_url;
+    httpd_url_t *init_manifest;
+
+
     vlc_tick_t first_output_dts;
 
     bool ended;
@@ -172,11 +176,14 @@ static int HTTPCallback(httpd_callback_sys_t *sys,
                         httpd_message_t *answer,
                         const httpd_message_t *query)
 {
+    if (sys == NULL)
+        assert(false);
     if (answer == NULL || query == NULL || client == NULL)
         return VLC_SUCCESS;
 
     struct hls_storage *storage = (struct hls_storage *)sys;
 
+    printf("Fetching %s\n", query->psz_url);
     httpd_MsgAdd(answer, "Content-Type", "%s", storage->mime);
     httpd_MsgAdd(answer, "Cache-Control", "no-cache");
     httpd_MsgAdd(answer, "Access-Control-Allow-Origin", "*");
@@ -422,6 +429,7 @@ GeneratePlaylistManifest(const hls_playlist_t *playlist)
         MANIFEST_ADD_TAG("#EXT-X-PLAYLIST-TYPE:VOD");
     else if (!will_destroy_segments) 
         MANIFEST_ADD_TAG("#EXT-X-PLAYLIST-TYPE:EVENT");
+    MANIFEST_ADD_TAG("#EXT-X-MAP:URI=\"%s/init.mp4\"", playlist->config->base_url);
 
     const hls_segment_t *first_seg = hls_segment_GetFirst(&playlist->segments);
     MANIFEST_ADD_TAG("#EXT-X-MEDIA-SEQUENCE:%u",
@@ -478,8 +486,13 @@ static ssize_t AccessOutWrite(sout_access_out_t *access, block_t *block)
     hls_playlist_t *playlist = access->p_sys;
 
     if (playlist->first_output_dts == VLC_TICK_INVALID)
+    {
         playlist->first_output_dts =
             (block->i_dts != VLC_TICK_INVALID) ? block->i_dts : block->i_pts;
+    }
+   if (block->i_flags & BLOCK_FLAG_HEADER)
+        printf("HEADER %ld %ld %ld\n", block->i_dts, block->i_pts, block->i_length);
+
 
     size_t size = 0;
     block_ChainProperties(block, NULL, &size, NULL);
@@ -554,7 +567,7 @@ static hls_playlist_t *CreatePlaylist(sout_stream_t *stream)
     if (unlikely(playlist->access == NULL))
         goto error;
 
-    playlist->mux = sout_MuxNew(playlist->access, "ts");
+    playlist->mux = sout_MuxNew(playlist->access, "mp4frag");
     if (unlikely(playlist->mux == NULL))
         goto error;
 
@@ -589,6 +602,14 @@ static hls_playlist_t *CreatePlaylist(sout_stream_t *stream)
             httpd_UrlNew(sys->http_host, playlist->url, NULL, NULL);
         if (playlist->http_manifest == NULL)
             goto error;
+
+        asprintf(&playlist->init_url, "%s/init.mp4", sys->config.base_url);
+        playlist->init_manifest =
+            httpd_UrlNew(sys->http_host, playlist->init_url, NULL, NULL);
+        httpd_UrlCatch(sys->http_manifest,
+                       HTTPD_MSG_GET,
+                       HTTPCallback,
+                       (httpd_callback_sys_t *)NULL);
     }
     else
         playlist->http_manifest = NULL;
