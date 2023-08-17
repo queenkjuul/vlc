@@ -507,22 +507,11 @@ static int gnutls_ClientHandshake(vlc_tls_t *tls,
     gnutls_free (desc.data);
 
     time_t expiry = 0;
-    switch (val)
-    {
-        case 1:
-            time (&expiry);
-            expiry += 24 * 60 * 60;
-            /* fall through */
-        case 2:
             val = gnutls_store_pubkey (NULL, NULL, host, service,
                                        GNUTLS_CRT_X509, datum, expiry, 0);
             if (val)
                 msg_Err(obj, "cannot store X.509 certificate: %s",
                          gnutls_strerror (val));
-            break;
-        default:
-            goto error;
-    }
     return 0;
 
 error:
