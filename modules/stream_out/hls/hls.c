@@ -468,6 +468,11 @@ static ssize_t AccessOutWrite(sout_access_out_t *access, block_t *block)
 
     size_t size = 0;
     block_ChainProperties(block, NULL, &size, NULL);
+    //if (block->i_flags & BLOCK_FLAG_HEADER)
+    //{
+    //    block_ChainRelease(block);
+    //    return size;
+    //}
 
     if (hls_config_IsMemStorageEnabled(playlist->config))
     {
@@ -634,6 +639,8 @@ static void *
 Add(sout_stream_t *stream, const es_format_t *fmt, const char *es_id)
 {
     if (!hls_codec_IsSupported(fmt))
+        return NULL;
+    if (fmt->i_cat == AUDIO_ES)
         return NULL;
 
     sout_stream_sys_t *sys = stream->p_sys;
@@ -1011,10 +1018,10 @@ static void Close(vlc_object_t *this)
 #define HOSTHTTP_TEXT                                                          \
     N_("Enable hosting the HLS output on the internal HTTP server")
 #define MAXMEMORY_LONGTEXT                                                     \
-    N_("Maximum allowed memory for segment storage in Kb. This option is "     \
+    N_("Maximum allowed memory for segment storage in KB. This option is "     \
        "only relevant when segments are stored in internal memory. If the "    \
        "value is bypassed, the HLS server will stop with an error")
-#define MAXMEMORY_TEXT N_("Maximum allowed memory for segment storage in Kb")
+#define MAXMEMORY_TEXT N_("Maximum allowed memory for segment storage in KB")
 #define NUMSEG_TEXT N_("Number of maximum segment exposed")
 #define OUTDIR_TEXT N_("Output directory path")
 #define OUTDIR_LONGTEXT                                                        \
@@ -1037,7 +1044,7 @@ vlc_module_begin()
 
     add_string(SOUT_CFG_PREFIX "base-url", "", BASEURL_TEXT, BASEURL_TEXT)
     add_bool(SOUT_CFG_PREFIX "host-http", false, HOSTHTTP_TEXT, HOSTHTTP_LONGTEXT)
-    add_integer(SOUT_CFG_PREFIX "max-memory", 20000, MAXMEMORY_TEXT, MAXMEMORY_LONGTEXT)
+    add_integer(SOUT_CFG_PREFIX "max-memory", 20480, MAXMEMORY_TEXT, MAXMEMORY_LONGTEXT)
     add_integer(SOUT_CFG_PREFIX "num-seg", 0, NUMSEG_TEXT, NUMSEG_TEXT)
     add_string(SOUT_CFG_PREFIX "out-dir", NULL, OUTDIR_TEXT, OUTDIR_LONGTEXT)
     add_bool(SOUT_CFG_PREFIX "pace", false, PACE_TEXT, PACE_LONGTEXT)

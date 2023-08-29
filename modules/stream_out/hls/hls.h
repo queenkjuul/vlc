@@ -30,8 +30,8 @@ struct hls_config
     size_t max_memory;
 };
 
-#define BYTES_FROM_KB(x) ((x) * 1000)
-#define BYTES_TO_KB(x) ((x) / 1000)
+#define BYTES_FROM_KB(x) ((x) * 1024)
+#define BYTES_TO_KB(x) ((x) / 1024)
 
 static inline void hls_config_Clean(struct hls_config *config)
 {

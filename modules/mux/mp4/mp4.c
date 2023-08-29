@@ -1350,7 +1350,9 @@ static void WriteFragments(sout_mux_t *p_mux, bool b_flush)
         msg_Dbg(p_mux, "writing moof @ %"PRId64, p_sys->i_pos);
         p_sys->i_pos += bo_size(moof);
         assert(moof->b->i_flags & BLOCK_FLAG_TYPE_I); /* http sout */
-        box_send(p_mux, moof);
+        bo_t *ftyp = mp4mux_GetFtyp(p_sys->muxh);
+        box_gather(ftyp, moof);
+        box_send(p_mux, ftyp);
         msg_Dbg(p_mux, "writing mdat @ %"PRId64, p_sys->i_pos);
         WriteFragmentMDAT(p_mux, i_mdat_size);
 
