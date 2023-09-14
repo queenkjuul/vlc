@@ -283,7 +283,7 @@ static int Process(intf_thread_t *intf, struct cli_client *cl, const char *line)
     intf_sys_t *sys = intf->p_sys;
     /* Skip heading spaces */
     const char *cmd = line + strspn(line, " ");
-    int ret;
+    int ret = VLC_EGENERIC;
 
     if (*cmd == '\0')
         return 0; /* Ignore empty line */
@@ -299,8 +299,6 @@ static int Process(intf_thread_t *intf, struct cli_client *cl, const char *line)
             ret = VLC_ENOMEM;
 error:      wordfree(&we);
         }
-        else
-            ret = VLC_EGENERIC;
 
         cli_printf(cl, N_("parse error"));
         return ret;
@@ -350,7 +348,6 @@ error:      wordfree(&we);
         {
             cli_printf(cl, _("Unknown command `%s'. Type `help' for help."),
                       args[0]);
-            ret = VLC_EGENERIC;
         }
     }
 
