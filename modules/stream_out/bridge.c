@@ -277,7 +277,7 @@ static int SendOut( sout_stream_t *p_stream, void *id, vlc_frame_t *frame )
 
     if ( (out_sout_stream_sys_t *)id != p_sys )
     {
-        vlc_frame_ChainRelease( frame );
+        vlc_frame_Release( frame );
         return VLC_SUCCESS;
     }
 
@@ -559,9 +559,10 @@ static int SendIn( sout_stream_t *p_stream, void *_id, vlc_frame_t *frame )
                             ( p_bridge->pp_es[i]->fmt.i_cat == VIDEO_ES &&
                               p_bridge->pp_es[i]->out_chain->i_flags & VLC_FRAME_FLAG_TYPE_I ) )
                         {
-                            sout_StreamIdSend( p_stream->p_next,
-                                       newid,
-                                       p_bridge->pp_es[i]->out_chain );
+                            sout_StreamIdSendChain(
+                                p_stream->p_next,
+                                newid,
+                                p_bridge->pp_es[i]->out_chain );
                             p_sys->i_state = placeholder_off;
                         }
                         break;
@@ -572,16 +573,17 @@ static int SendIn( sout_stream_t *p_stream, void *_id, vlc_frame_t *frame )
                         p_sys->i_last_audio = i_date;
                         /* fall through */
                     default:
-                        sout_StreamIdSend( p_stream->p_next,
-                                   newid?newid:p_bridge->pp_es[i]->id,
-                                   p_bridge->pp_es[i]->out_chain );
+                        sout_StreamIdSendChain( p_stream->p_next,
+                                                newid ? newid
+                                                      : p_bridge->pp_es[i]->id,
+                                                p_bridge->pp_es[i]->out_chain );
                         break;
                 }
             }
             else /* !b_placeholder */
-                sout_StreamIdSend( p_stream->p_next,
-                                       p_bridge->pp_es[i]->id,
-                                       p_bridge->pp_es[i]->out_chain );
+                sout_StreamIdSendChain( p_stream->p_next,
+                                        p_bridge->pp_es[i]->id,
+                                        p_bridge->pp_es[i]->out_chain );
         }
         else
         {
