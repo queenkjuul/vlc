@@ -142,8 +142,8 @@ typedef struct sout_stream_id_sys_t sout_stream_id_sys_t;
 typedef struct bridged_es_t
 {
     es_format_t fmt;
-    block_t *p_block;
-    block_t **pp_last;
+    block_t *out_chain;
+    block_t **out_chain_end;
     bool b_empty;
     char *es_id;
 
@@ -230,8 +230,8 @@ static void *AddOut( sout_stream_t *p_stream, const es_format_t *p_fmt, const ch
 
     p_es->fmt = *p_fmt;
     p_es->es_id = bridged_es_id;
-    p_es->p_block = NULL;
-    p_es->pp_last = &p_es->p_block;
+    p_es->out_chain = NULL;
+    p_es->out_chain_end = &p_es->out_chain;
     p_es->b_empty = false;
 
     p_es->id = NULL;
@@ -260,8 +260,8 @@ static void DelOut( sout_stream_t *p_stream, void *id )
     p_es = p_sys->p_es;
 
     p_es->b_empty = true;
-    block_ChainRelease( p_es->p_block );
-    p_es->p_block = NULL;
+    block_ChainRelease( p_es->out_chain );
+    p_es->out_chain = NULL;
 
     free( p_es->es_id );
 
@@ -285,10 +285,10 @@ static int SendOut( sout_stream_t *p_stream, void *id, block_t *p_buffer )
     vlc_mutex_lock( &lock );
 
     p_es = p_sys->p_es;
-    *p_es->pp_last = p_buffer;
+    *p_es->out_chain_end = p_buffer;
     while ( p_buffer != NULL )
     {
-        p_es->pp_last = &p_buffer->p_next;
+        p_es->out_chain_end = &p_buffer->p_next;
         p_buffer = p_buffer->p_next;
     }
 
@@ -470,23 +470,23 @@ static int SendIn( sout_stream_t *p_stream, void *_id, block_t *p_buffer )
         if ( !p_bridge->pp_es[i]->b_empty )
             b_no_es = false;
 
-        while ( p_bridge->pp_es[i]->p_block != NULL
-                 && (p_bridge->pp_es[i]->p_block->i_dts + p_sys->i_delay
+        while ( p_bridge->pp_es[i]->out_chain != NULL
+                 && (p_bridge->pp_es[i]->out_chain->i_dts + p_sys->i_delay
                        < i_date
-                      || p_bridge->pp_es[i]->p_block->i_dts + p_sys->i_delay
+                      || p_bridge->pp_es[i]->out_chain->i_dts + p_sys->i_delay
                           < p_bridge->pp_es[i]->i_last) )
         {
-            block_t *p_block = p_bridge->pp_es[i]->p_block;
+            block_t *p_block = p_bridge->pp_es[i]->out_chain;
             msg_Dbg( p_stream, "dropping a packet (%"PRId64 ")",
                      i_date - p_block->i_dts - p_sys->i_delay );
-            p_bridge->pp_es[i]->p_block
-                = p_bridge->pp_es[i]->p_block->p_next;
+            p_bridge->pp_es[i]->out_chain
+                = p_bridge->pp_es[i]->out_chain->p_next;
             block_Release( p_block );
         }
 
-        if ( p_bridge->pp_es[i]->p_block == NULL )
+        if ( p_bridge->pp_es[i]->out_chain == NULL )
         {
-            p_bridge->pp_es[i]->pp_last = &p_bridge->pp_es[i]->p_block;
+            p_bridge->pp_es[i]->out_chain_end = &p_bridge->pp_es[i]->out_chain;
         }
 
         if ( p_bridge->pp_es[i]->b_changed )
@@ -498,8 +498,8 @@ static int SendIn( sout_stream_t *p_stream, void *_id, block_t *p_buffer )
             else
             {
                 /* We need at least two packets to enter the mux. */
-                if ( p_bridge->pp_es[i]->p_block == NULL
-                      || p_bridge->pp_es[i]->p_block->p_next == NULL )
+                if ( p_bridge->pp_es[i]->out_chain == NULL
+                      || p_bridge->pp_es[i]->out_chain->p_next == NULL )
                 {
                     continue;
                 }
@@ -527,7 +527,7 @@ static int SendIn( sout_stream_t *p_stream, void *_id, block_t *p_buffer )
         if ( p_bridge->pp_es[i]->b_empty )
             continue;
 
-        if ( p_bridge->pp_es[i]->p_block == NULL )
+        if ( p_bridge->pp_es[i]->out_chain == NULL )
         {
             if ( p_bridge->pp_es[i]->id != NULL
                   && p_bridge->pp_es[i]->i_last < i_date )
@@ -543,7 +543,7 @@ static int SendIn( sout_stream_t *p_stream, void *_id, block_t *p_buffer )
 
         if ( p_bridge->pp_es[i]->id != NULL || p_sys->b_placeholder)
         {
-            block_t *p_block = p_bridge->pp_es[i]->p_block;
+            block_t *p_block = p_bridge->pp_es[i]->out_chain;
             while ( p_block != NULL )
             {
                 p_bridge->pp_es[i]->i_last = p_block->i_dts;
@@ -564,11 +564,11 @@ static int SendIn( sout_stream_t *p_stream, void *_id, block_t *p_buffer )
                         if( !p_sys->b_switch_on_iframe ||
                             p_sys->i_state == placeholder_off ||
                             ( p_bridge->pp_es[i]->fmt.i_cat == VIDEO_ES &&
-                              p_bridge->pp_es[i]->p_block->i_flags & BLOCK_FLAG_TYPE_I ) )
+                              p_bridge->pp_es[i]->out_chain->i_flags & BLOCK_FLAG_TYPE_I ) )
                         {
                             sout_StreamIdSend( p_stream->p_next,
                                        newid,
-                                       p_bridge->pp_es[i]->p_block );
+                                       p_bridge->pp_es[i]->out_chain );
                             p_sys->i_state = placeholder_off;
                         }
                         break;
@@ -581,22 +581,22 @@ static int SendIn( sout_stream_t *p_stream, void *_id, block_t *p_buffer )
                     default:
                         sout_StreamIdSend( p_stream->p_next,
                                    newid?newid:p_bridge->pp_es[i]->id,
-                                   p_bridge->pp_es[i]->p_block );
+                                   p_bridge->pp_es[i]->out_chain );
                         break;
                 }
             }
             else /* !b_placeholder */
                 sout_StreamIdSend( p_stream->p_next,
                                        p_bridge->pp_es[i]->id,
-                                       p_bridge->pp_es[i]->p_block );
+                                       p_bridge->pp_es[i]->out_chain );
         }
         else
         {
-            block_ChainRelease( p_bridge->pp_es[i]->p_block );
+            block_ChainRelease( p_bridge->pp_es[i]->out_chain );
         }
 
-        p_bridge->pp_es[i]->p_block = NULL;
-        p_bridge->pp_es[i]->pp_last = &p_bridge->pp_es[i]->p_block;
+        p_bridge->pp_es[i]->out_chain = NULL;
+        p_bridge->pp_es[i]->out_chain_end = &p_bridge->pp_es[i]->out_chain;
     }
 
     if( b_no_es )
