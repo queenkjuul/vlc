@@ -727,6 +727,23 @@ int sout_StreamIdSend(sout_stream_t *s, void *id, vlc_frame_t *f)
     return val;
 }
 
+int sout_StreamIdSendChain(sout_stream_t *stream, void *id, vlc_frame_t *chain)
+{
+    while (chain != NULL)
+    {
+        vlc_frame_t *next = chain->p_next;
+        chain->p_next = NULL;
+        const int ret = sout_StreamIdSend(stream, id, chain);
+        if (ret != VLC_SUCCESS)
+        {
+            vlc_frame_ChainRelease(next);
+            return ret;
+        }
+        chain = next;
+    }
+    return VLC_SUCCESS;
+}
+
 void sout_StreamFlush(sout_stream_t *s, void *id)
 {
     if (s->ops->flush != NULL)

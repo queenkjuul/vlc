@@ -363,6 +363,8 @@ VLC_API void sout_StreamIdDel(sout_stream_t *s, void *id);
  */
 VLC_API int sout_StreamIdSend(sout_stream_t *s, void *id, vlc_frame_t *f);
 
+VLC_API int sout_StreamIdSendChain(sout_stream_t *, void *id, vlc_frame_t *);
+
 /**
  * Signal a flush of an ES to the stream output.
  *

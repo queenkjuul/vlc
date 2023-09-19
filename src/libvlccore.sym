@@ -364,6 +364,7 @@ sout_StreamChainNew
 sout_StreamIdAdd
 sout_StreamIdDel
 sout_StreamIdSend
+sout_StreamIdSendChain
 sout_StreamFlush
 sout_StreamSetPCR
 sout_StreamControlVa
