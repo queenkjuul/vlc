@@ -230,6 +230,7 @@ var_Read_float(const char *psz)
     X(can_record, bool, add_bool, Bool, true) \
     X(error, bool, add_bool, Bool, false) \
     X(pts_delay, vlc_tick_t, add_integer, Unsigned, DEFAULT_PTS_DELAY) \
+    X(pts_shift, unsigned, add_integer, Unsigned, 0) \
     X(config, char *, add_string, String, NULL )
 
 #define DECLARE_OPTION(var_name, type, module_header_type, getter, default_value)\
@@ -391,7 +392,8 @@ Control(demux_t *demux, int query, va_list args)
                 if (new_title >= sys->title_count)
                     return VLC_EGENERIC;
                 sys->current_title = new_title;
-                sys->pts = sys->audio_pts = sys->video_pts = VLC_TICK_0;
+                sys->pts = sys->audio_pts = sys->video_pts =
+                    VLC_TICK_0 + sys->pts_shift;
                 sys->updates |= INPUT_UPDATE_TITLE;
                 return VLC_SUCCESS;
             }
@@ -403,7 +405,7 @@ Control(demux_t *demux, int query, va_list args)
                 if (seekpoint_idx < sys->chapter_count)
                 {
                     sys->pts = sys->audio_pts = sys->video_pts =
-                        (seekpoint_idx * sys->chapter_gap) + VLC_TICK_0;
+                        (seekpoint_idx * sys->chapter_gap) + VLC_TICK_0 + sys->pts_shift;
                     sys->current_chapter = seekpoint_idx;
                     return VLC_SUCCESS;
                 }
@@ -437,7 +439,8 @@ Control(demux_t *demux, int query, va_list args)
             if (!sys->can_seek)
                 return VLC_EGENERIC;
             sys->pts = sys->video_pts = sys->audio_pts =
-                VLC_TICK_0 + va_arg(args, double) * sys->length;
+                VLC_TICK_0 + sys->pts_shift +
+                va_arg(args, double) * sys->length;
             return VLC_SUCCESS;
         case DEMUX_GET_LENGTH:
             *va_arg(args, vlc_tick_t *) = sys->length;
@@ -1116,13 +1119,14 @@ Demux(demux_t *demux)
         sys->audio_track_count > 0 ? sys->audio.sample_length : 0;
 
     const vlc_tick_t step_length = __MAX(audio_step_length, video_step_length);
+    const vlc_tick_t end_pts = sys->length + sys->pts_shift;
 
     bool eof = !created;
     if (sys->audio_track_count > 0)
     {
         ret = DemuxAudio(demux, audio_step_length,
-                         __MIN(step_length + sys->audio_pts, sys->length));
-        if (sys->audio_pts + audio_step_length < sys->length)
+                         __MIN(step_length + sys->audio_pts, end_pts));
+        if (sys->audio_pts + audio_step_length < end_pts)
             eof = false;
     }
 
@@ -1130,8 +1134,8 @@ Demux(demux_t *demux)
      && (sys->video_track_count > 0 || sys->sub_track_count > 0))
     {
         ret = DemuxVideo(demux, video_step_length,
-                         __MIN(step_length + sys->video_pts, sys->length));
-        if (sys->video_pts + video_step_length < sys->length)
+                         __MIN(step_length + sys->video_pts, end_pts));
+        if (sys->video_pts + video_step_length < end_pts)
             eof = false;
     }
 
@@ -1139,7 +1143,7 @@ Demux(demux_t *demux)
     if (step_length == 0)
     {
         sys->pts += sys->input_sample_length;
-        if (sys->pts + sys->input_sample_length < sys->length)
+        if (sys->pts + sys->input_sample_length < end_pts)
             eof = false;
     }
 
@@ -1467,7 +1471,7 @@ Open(vlc_object_t *obj)
     if (CheckAndCreateTracksEs(demux, VLC_TICK_0, &created) != VLC_SUCCESS)
         goto error;
 
-    sys->pts = sys->audio_pts = sys->video_pts = VLC_TICK_0;
+    sys->pts = sys->audio_pts = sys->video_pts = VLC_TICK_0 + sys->pts_shift;
     sys->current_title = 0;
     sys->chapter_gap = sys->chapter_count > 0 ?
                        (sys->length / sys->chapter_count) : VLC_TICK_INVALID;
