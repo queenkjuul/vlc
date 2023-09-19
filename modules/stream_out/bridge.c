@@ -274,7 +274,6 @@ static void DelOut( sout_stream_t *p_stream, void *id )
 static int SendOut( sout_stream_t *p_stream, void *id, vlc_frame_t *frame )
 {
     out_sout_stream_sys_t *p_sys = (out_sout_stream_sys_t *)p_stream->p_sys;
-    bridged_es_t *p_es;
 
     if ( (out_sout_stream_sys_t *)id != p_sys )
     {
@@ -284,13 +283,7 @@ static int SendOut( sout_stream_t *p_stream, void *id, vlc_frame_t *frame )
 
     vlc_mutex_lock( &lock );
 
-    p_es = p_sys->p_es;
-    *p_es->out_chain_end = frame;
-    while ( frame != NULL )
-    {
-        p_es->out_chain_end = &frame->p_next;
-        frame = frame->p_next;
-    }
+    vlc_frame_ChainLastAppend(&p_sys->p_es->out_chain_end, frame);
 
     vlc_mutex_unlock( &lock );
 
