@@ -521,18 +521,7 @@ static int SendIn( sout_stream_t *p_stream, void *_id, vlc_frame_t *frame )
             continue;
 
         if ( p_bridge->pp_es[i]->out_chain == NULL )
-        {
-            if ( p_bridge->pp_es[i]->id != NULL
-                  && p_bridge->pp_es[i]->i_last < i_date )
-            {
-                if( !p_sys->b_placeholder )
-                    sout_StreamIdDel( p_stream->p_next, p_bridge->pp_es[i]->id );
-                p_bridge->pp_es[i]->fmt.i_id -= p_sys->i_id_offset;
-                p_bridge->pp_es[i]->b_changed = true;
-                p_bridge->pp_es[i]->id = NULL;
-            }
             continue;
-        }
 
         if ( p_bridge->pp_es[i]->id != NULL || p_sys->b_placeholder)
         {
