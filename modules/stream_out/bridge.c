@@ -31,9 +31,9 @@
 
 #include <vlc_common.h>
 #include <vlc_configuration.h>
+#include <vlc_frame.h>
 #include <vlc_plugin.h>
 #include <vlc_sout.h>
-#include <vlc_block.h>
 
 /*****************************************************************************
  * Module descriptor
@@ -142,8 +142,8 @@ typedef struct sout_stream_id_sys_t sout_stream_id_sys_t;
 typedef struct bridged_es_t
 {
     es_format_t fmt;
-    block_t *out_chain;
-    block_t **out_chain_end;
+    vlc_frame_t *out_chain;
+    vlc_frame_t **out_chain_end;
     bool b_empty;
     char *es_id;
 
@@ -260,7 +260,7 @@ static void DelOut( sout_stream_t *p_stream, void *id )
     p_es = p_sys->p_es;
 
     p_es->b_empty = true;
-    block_ChainRelease( p_es->out_chain );
+    vlc_frame_ChainRelease( p_es->out_chain );
     p_es->out_chain = NULL;
 
     free( p_es->es_id );
@@ -271,25 +271,25 @@ static void DelOut( sout_stream_t *p_stream, void *id )
     p_sys->b_inited = false;
 }
 
-static int SendOut( sout_stream_t *p_stream, void *id, block_t *p_buffer )
+static int SendOut( sout_stream_t *p_stream, void *id, vlc_frame_t *frame )
 {
     out_sout_stream_sys_t *p_sys = (out_sout_stream_sys_t *)p_stream->p_sys;
     bridged_es_t *p_es;
 
     if ( (out_sout_stream_sys_t *)id != p_sys )
     {
-        block_ChainRelease( p_buffer );
+        vlc_frame_ChainRelease( frame );
         return VLC_SUCCESS;
     }
 
     vlc_mutex_lock( &lock );
 
     p_es = p_sys->p_es;
-    *p_es->out_chain_end = p_buffer;
-    while ( p_buffer != NULL )
+    *p_es->out_chain_end = frame;
+    while ( frame != NULL )
     {
-        p_es->out_chain_end = &p_buffer->p_next;
-        p_buffer = p_buffer->p_next;
+        p_es->out_chain_end = &frame->p_next;
+        frame = frame->p_next;
     }
 
     vlc_mutex_unlock( &lock );
@@ -444,7 +444,7 @@ static void DelIn( sout_stream_t *p_stream, void *_id )
     free( id );
 }
 
-static int SendIn( sout_stream_t *p_stream, void *_id, block_t *p_buffer )
+static int SendIn( sout_stream_t *p_stream, void *_id, vlc_frame_t *frame )
 {
     vlc_object_t *vlc = VLC_OBJECT(vlc_object_instance(p_stream));
     in_sout_stream_sys_t *p_sys = (in_sout_stream_sys_t *)p_stream->p_sys;
@@ -456,7 +456,7 @@ static int SendIn( sout_stream_t *p_stream, void *_id, block_t *p_buffer )
 
     /* First forward the packet for our own ES */
     if( !p_sys->b_placeholder )
-        sout_StreamIdSend( p_stream->p_next, id->id, p_buffer );
+        sout_StreamIdSend( p_stream->p_next, id->id, frame );
 
     /* Then check all bridged streams */
     vlc_mutex_lock( &lock );
@@ -476,12 +476,12 @@ static int SendIn( sout_stream_t *p_stream, void *_id, block_t *p_buffer )
                       || p_bridge->pp_es[i]->out_chain->i_dts + p_sys->i_delay
                           < p_bridge->pp_es[i]->i_last) )
         {
-            block_t *p_block = p_bridge->pp_es[i]->out_chain;
+            vlc_frame_t *queued_frame = p_bridge->pp_es[i]->out_chain;
             msg_Dbg( p_stream, "dropping a packet (%"PRId64 ")",
-                     i_date - p_block->i_dts - p_sys->i_delay );
+                     i_date - queued_frame->i_dts - p_sys->i_delay );
             p_bridge->pp_es[i]->out_chain
                 = p_bridge->pp_es[i]->out_chain->p_next;
-            block_Release( p_block );
+            vlc_frame_Release( queued_frame );
         }
 
         if ( p_bridge->pp_es[i]->out_chain == NULL )
@@ -543,13 +543,13 @@ static int SendIn( sout_stream_t *p_stream, void *_id, block_t *p_buffer )
 
         if ( p_bridge->pp_es[i]->id != NULL || p_sys->b_placeholder)
         {
-            block_t *p_block = p_bridge->pp_es[i]->out_chain;
-            while ( p_block != NULL )
+            vlc_frame_t *chain_it = p_bridge->pp_es[i]->out_chain;
+            while ( chain_it != NULL )
             {
-                p_bridge->pp_es[i]->i_last = p_block->i_dts;
-                p_block->i_pts += p_sys->i_delay;
-                p_block->i_dts += p_sys->i_delay;
-                p_block = p_block->p_next;
+                p_bridge->pp_es[i]->i_last = chain_it->i_dts;
+                chain_it->i_pts += p_sys->i_delay;
+                chain_it->i_dts += p_sys->i_delay;
+                chain_it = chain_it->p_next;
             }
             sout_stream_id_sys_t *newid = NULL;
             if( p_sys->b_placeholder )
@@ -564,7 +564,7 @@ static int SendIn( sout_stream_t *p_stream, void *_id, block_t *p_buffer )
                         if( !p_sys->b_switch_on_iframe ||
                             p_sys->i_state == placeholder_off ||
                             ( p_bridge->pp_es[i]->fmt.i_cat == VIDEO_ES &&
-                              p_bridge->pp_es[i]->out_chain->i_flags & BLOCK_FLAG_TYPE_I ) )
+                              p_bridge->pp_es[i]->out_chain->i_flags & VLC_FRAME_FLAG_TYPE_I ) )
                         {
                             sout_StreamIdSend( p_stream->p_next,
                                        newid,
@@ -592,7 +592,7 @@ static int SendIn( sout_stream_t *p_stream, void *_id, block_t *p_buffer )
         }
         else
         {
-            block_ChainRelease( p_bridge->pp_es[i]->out_chain );
+            vlc_frame_ChainRelease( p_bridge->pp_es[i]->out_chain );
         }
 
         p_bridge->pp_es[i]->out_chain = NULL;
@@ -616,25 +616,25 @@ static int SendIn( sout_stream_t *p_stream, void *_id, block_t *p_buffer )
             case VIDEO_ES:
                 if( ( p_sys->i_last_video + p_sys->i_placeholder_delay < i_date
                     && (  !p_sys->b_switch_on_iframe
-                       || p_buffer->i_flags & BLOCK_FLAG_TYPE_I ) )
+                       || frame->i_flags & VLC_FRAME_FLAG_TYPE_I ) )
                   || p_sys->i_state == placeholder_on )
                 {
-                    sout_StreamIdSend( p_stream->p_next, id->id, p_buffer );
+                    sout_StreamIdSend( p_stream->p_next, id->id, frame );
                     p_sys->i_state = placeholder_on;
                 }
                 else
-                    block_Release( p_buffer );
+                    vlc_frame_Release( frame );
                 break;
 
             case AUDIO_ES:
                 if( p_sys->i_last_audio + p_sys->i_placeholder_delay < i_date )
-                    sout_StreamIdSend( p_stream->p_next, id->id, p_buffer );
+                    sout_StreamIdSend( p_stream->p_next, id->id, frame );
                 else
-                    block_Release( p_buffer );
+                    vlc_frame_Release( frame );
                 break;
 
             default:
-                block_Release( p_buffer ); /* FIXME: placeholder subs anyone? */
+                vlc_frame_Release( frame ); /* FIXME: placeholder subs anyone? */
                 break;
         }
     }
