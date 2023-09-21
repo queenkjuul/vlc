@@ -17,6 +17,7 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
  *****************************************************************************/
+#include "vlc_vector.h"
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
@@ -180,11 +181,10 @@ static int OpenOutputChecker(vlc_object_t *obj)
 }
 
 static void
-on_state_changed(vlc_player_t *player, enum vlc_player_state state, void *latch)
+on_state_changed(vlc_player_t *player, enum vlc_player_state state, void *cond)
 {
-    (void)player;
-    if (state == VLC_PLAYER_STATE_STOPPED)
-        vlc_latch_count_down(latch, 1);
+    (void)player; (void)state;
+    vlc_cond_signal(cond);
 }
 static void play_scenario(intf_thread_t *intf, struct test_scenario *scenario)
 {
@@ -200,13 +200,13 @@ static void play_scenario(intf_thread_t *intf, struct test_scenario *scenario)
 
     struct VLC_VECTOR(struct played_scenario) played_scenarios =
         VLC_VECTOR_INITIALIZER;
-    size_t i = 0;
-    for (; i < MAX_BRIDGES; ++i)
+    for (unsigned i = 0; i < MAX_BRIDGES; ++i)
     {
         const struct bridge_scenario *bridge = scenario->bridges[i];
         if (bridge == NULL)
             break;
-        struct played_scenario played_scenario;
+        vlc_vector_push_hole(&played_scenarios, 1);
+        struct played_scenario *played_scenario = played_scenarios.data[played_scenarios];
         vlc_cond_init(&played_scenario.cond);
         played_scenario.media = input_item_New(bridge->source, "dummy");
         assert(played_scenario.media);
@@ -230,23 +230,25 @@ static void play_scenario(intf_thread_t *intf, struct test_scenario *scenario)
 
     vlc_sem_wait(&scenario_data.wait_stop);
 
-    struct played_scenario played_scenario;
-    vlc_vector_foreach (played_scenario, &played_scenarios)
+    for (unsigned i = 0; i < played_scenarios.size; ++i)
     {
-        vlc_player_Lock(played_scenario.player);
-        vlc_player_Stop(played_scenario.player);
+        struct played_scenario *played_scenario = &played_scenarios.data[i];
+        vlc_player_Lock(played_scenario->player);
+        vlc_player_Stop(played_scenario->player);
 
-        while (vlc_player_GetState(played_scenario.player) !=
+        while (vlc_player_GetState(played_scenario->player) !=
                VLC_PLAYER_STATE_STOPPED)
-            vlc_player_CondWait(played_scenario.player, &played_scenario.cond);
+            vlc_player_CondWait(played_scenario->player, &played_scenario->cond);
 
-        vlc_player_RemoveListener(played_scenario.player,
-                                  played_scenario.listener);
-        vlc_player_Unlock(played_scenario.player);
+        vlc_player_RemoveListener(played_scenario->player,
+                                  played_scenario->listener);
+        vlc_player_Unlock(played_scenario->player);
 
-        vlc_player_Delete(played_scenario.player);
-        input_item_Release(played_scenario.media);
+        vlc_player_Delete(played_scenario->player);
+        input_item_Release(played_scenario->media);
     }
+
+    vlc_vector_destroy(&played_scenarios);
 }
 
 static int OpenIntf(vlc_object_t *obj)

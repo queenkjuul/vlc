@@ -463,25 +463,6 @@ static int SendIn( sout_stream_t *p_stream, void *_id, vlc_frame_t *frame )
         if ( !p_bridge->pp_es[i]->b_empty )
             b_no_es = false;
 
-        while ( p_bridge->pp_es[i]->out_chain != NULL
-                 && (p_bridge->pp_es[i]->out_chain->i_dts + p_sys->i_delay
-                       < i_date
-                      || p_bridge->pp_es[i]->out_chain->i_dts + p_sys->i_delay
-                          < p_bridge->pp_es[i]->i_last) )
-        {
-            vlc_frame_t *queued_frame = p_bridge->pp_es[i]->out_chain;
-            msg_Dbg( p_stream, "dropping a packet (%"PRId64 ")",
-                     i_date - queued_frame->i_dts - p_sys->i_delay );
-            p_bridge->pp_es[i]->out_chain
-                = p_bridge->pp_es[i]->out_chain->p_next;
-            vlc_frame_Release( queued_frame );
-        }
-
-        if ( p_bridge->pp_es[i]->out_chain == NULL )
-        {
-            p_bridge->pp_es[i]->out_chain_end = &p_bridge->pp_es[i]->out_chain;
-        }
-
         if ( p_bridge->pp_es[i]->b_changed )
         {
             if ( p_bridge->pp_es[i]->b_empty && p_bridge->pp_es[i]->id != NULL )
@@ -628,11 +609,17 @@ static int SendIn( sout_stream_t *p_stream, void *_id, vlc_frame_t *frame )
     return VLC_SUCCESS;
 }
 
+static void SetPCRIn( sout_stream_t *stream, vlc_tick_t pcr )
+{
+    sout_StreamSetPCR(stream->p_next, pcr);
+}
+
 static const struct sout_stream_operations ops_in = {
     .add = AddIn,
     .del = DelIn,
     .send = SendIn,
     .control = ControlCommon,
+    .set_pcr = SetPCRIn,
     .close = CloseIn,
 };
 
