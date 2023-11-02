@@ -62,6 +62,7 @@
     "Name of this bridge-in instance. If you do not need more " \
     "than one bridge-in at a time, you can discard this option." )
 
+// Placeholder is a default ES being activated when the bridge output is late.
 #define PLACEHOLDER_TEXT N_( "Fallback to placeholder stream when out of data" )
 #define PLACEHOLDER_LONGTEXT N_( \
     "If set to true, the bridge will discard all input elementary streams " \
@@ -514,43 +515,43 @@ static int SendIn( sout_stream_t *p_stream, void *_id, vlc_frame_t *frame )
                 chain_it->i_dts += p_sys->i_delay;
                 chain_it = chain_it->p_next;
             }
-            sout_stream_id_sys_t *newid = NULL;
-            if( p_sys->b_placeholder )
-            {
-                switch( p_bridge->pp_es[i]->fmt.i_cat )
-                {
-                    case VIDEO_ES:
-                        p_sys->i_last_video = i_date;
-                        newid = p_sys->id_video;
-                        if( !newid )
-                            break;
-                        if( !p_sys->b_switch_on_iframe ||
-                            p_sys->i_state == placeholder_off ||
-                            ( p_bridge->pp_es[i]->fmt.i_cat == VIDEO_ES &&
-                              p_bridge->pp_es[i]->out_chain->i_flags & VLC_FRAME_FLAG_TYPE_I ) )
-                        {
-                            sout_StreamIdSendChain(
-                                p_stream->p_next,
-                                newid,
-                                p_bridge->pp_es[i]->out_chain );
-                            p_sys->i_state = placeholder_off;
-                        }
-                        break;
-                    case AUDIO_ES:
-                        newid = p_sys->id_audio;
-                        if( !newid )
-                            break;
-                        p_sys->i_last_audio = i_date;
-                        /* fall through */
-                    default:
-                        sout_StreamIdSendChain( p_stream->p_next,
-                                                newid ? newid
-                                                      : p_bridge->pp_es[i]->id,
-                                                p_bridge->pp_es[i]->out_chain );
-                        break;
-                }
-            }
-            else /* !b_placeholder */
+            //sout_stream_id_sys_t *newid = NULL;
+            //if( p_sys->b_placeholder )
+            //{
+            //    switch( p_bridge->pp_es[i]->fmt.i_cat )
+            //    {
+            //        case VIDEO_ES:
+            //            p_sys->i_last_video = i_date;
+            //            newid = p_sys->id_video;
+            //            if( !newid )
+            //                break;
+            //            if( !p_sys->b_switch_on_iframe ||
+            //                p_sys->i_state == placeholder_off ||
+            //                ( p_bridge->pp_es[i]->fmt.i_cat == VIDEO_ES &&
+            //                  p_bridge->pp_es[i]->out_chain->i_flags & VLC_FRAME_FLAG_TYPE_I ) )
+            //            {
+            //                sout_StreamIdSendChain(
+            //                    p_stream->p_next,
+            //                    newid,
+            //                    p_bridge->pp_es[i]->out_chain );
+            //                p_sys->i_state = placeholder_off;
+            //            }
+            //            break;
+            //        case AUDIO_ES:
+            //            newid = p_sys->id_audio;
+            //            if( !newid )
+            //                break;
+            //            p_sys->i_last_audio = i_date;
+            //            /* fall through */
+            //        default:
+            //            sout_StreamIdSendChain( p_stream->p_next,
+            //                                    newid ? newid
+            //                                          : p_bridge->pp_es[i]->id,
+            //                                    p_bridge->pp_es[i]->out_chain );
+            //            break;
+            //    }
+            //}
+            //else /* !b_placeholder */
                 sout_StreamIdSendChain( p_stream->p_next,
                                         p_bridge->pp_es[i]->id,
                                         p_bridge->pp_es[i]->out_chain );
@@ -574,35 +575,35 @@ static int SendIn( sout_stream_t *p_stream, void *_id, vlc_frame_t *frame )
     }
     }
 
-    if( p_sys->b_placeholder )
-    {
-        switch( id->i_cat )
-        {
-            case VIDEO_ES:
-                if( ( p_sys->i_last_video + p_sys->i_placeholder_delay < i_date
-                    && (  !p_sys->b_switch_on_iframe
-                       || frame->i_flags & VLC_FRAME_FLAG_TYPE_I ) )
-                  || p_sys->i_state == placeholder_on )
-                {
-                    sout_StreamIdSend( p_stream->p_next, id->id, frame );
-                    p_sys->i_state = placeholder_on;
-                }
-                else
-                    vlc_frame_Release( frame );
-                break;
+    //if( p_sys->b_placeholder )
+    //{
+    //    switch( id->i_cat )
+    //    {
+    //        case VIDEO_ES:
+    //            if( ( p_sys->i_last_video + p_sys->i_placeholder_delay < i_date
+    //                && (  !p_sys->b_switch_on_iframe
+    //                   || frame->i_flags & VLC_FRAME_FLAG_TYPE_I ) )
+    //              || p_sys->i_state == placeholder_on )
+    //            {
+    //                sout_StreamIdSend( p_stream->p_next, id->id, frame );
+    //                p_sys->i_state = placeholder_on;
+    //            }
+    //            else
+    //                vlc_frame_Release( frame );
+    //            break;
 
-            case AUDIO_ES:
-                if( p_sys->i_last_audio + p_sys->i_placeholder_delay < i_date )
-                    sout_StreamIdSend( p_stream->p_next, id->id, frame );
-                else
-                    vlc_frame_Release( frame );
-                break;
+    //        case AUDIO_ES:
+    //            if( p_sys->i_last_audio + p_sys->i_placeholder_delay < i_date )
+    //                sout_StreamIdSend( p_stream->p_next, id->id, frame );
+    //            else
+    //                vlc_frame_Release( frame );
+    //            break;
 
-            default:
-                vlc_frame_Release( frame ); /* FIXME: placeholder subs anyone? */
-                break;
-        }
-    }
+    //        default:
+    //            vlc_frame_Release( frame ); /* FIXME: placeholder subs anyone? */
+    //            break;
+    //    }
+    //}
 
     vlc_mutex_unlock( &lock );
 
