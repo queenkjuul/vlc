@@ -17,7 +17,6 @@
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
  *****************************************************************************/
-#include "vlc_vector.h"
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
@@ -36,6 +35,7 @@
 #include <vlc_player.h>
 #include <vlc_plugin.h>
 #include <vlc_sout.h>
+#include <vlc_vector.h>
 
 #include "../../libvlc/test.h"
 
@@ -45,6 +45,7 @@ struct bridge_scenario
 {
     const char *source;
     const char *sout;
+    unsigned track_count;
 };
 
 struct es_data
@@ -71,15 +72,19 @@ static struct scenario_data
 #define MAX_ES_DATA (0x10u)
     struct es_data es_data[MAX_ES_DATA];
     unsigned es_data_count; 
+    unsigned expected_es;
 
 } scenario_data;
 
-static void scenario_data_init(void)
+static void scenario_data_init(struct test_scenario *scenario)
 {
     vlc_sem_init(&scenario_data.wait_stop, 0);
     scenario_data.last_pcr = VLC_TICK_INVALID;
     memset(scenario_data.es_data, 0, sizeof(scenario_data.es_data));
     scenario_data.es_data_count = 0;
+    scenario_data.expected_es = 0;
+    for (size_t i = 0; i < MAX_BRIDGES; ++i)
+        scenario_data.expected_es += scenario->bridges[i]->track_count;
 }
 
 static void CountFramePerES(const vlc_frame_t *frame, struct es_data *es_data)
@@ -96,8 +101,11 @@ static void ValidateFramesAtSecondPCR(vlc_tick_t pcr)
         return;
     }
 
-    for (unsigned i = 0; i < scenario_data.es_data_count; ++i)
+    for (unsigned i = 0; i < scenario_data.expected_es; ++i)
+    {
         assert(scenario_data.es_data[i].frame_received_count > 0);
+        printf("hop\n");
+    }
 
     vlc_sem_post(&scenario_data.wait_stop);
 }
@@ -107,11 +115,13 @@ struct bridge_scenario v = {
               "video_track_count=1;length=100000000000;"
               "video_width=800;video_height=600",
     .sout = "sout=#bridge-in:output_checker",
+    .track_count = 1,
 };
 
 struct bridge_scenario a_out = {
     .source = "mock://audio_track_count=1;length=100000000000",
     .sout = "sout=#bridge-out",
+    .track_count = 1,
 };
 
 struct test_scenario test_scenarios[] = {
@@ -127,7 +137,6 @@ size_t current_scenario = 0u;
 static int OutputCheckerSend(sout_stream_t *stream, void *id, vlc_frame_t *f)
 {
     (void)stream;
-    (void)id;
     struct test_scenario *scenario = &test_scenarios[current_scenario];
 
     assert(scenario->report_frame != NULL);
@@ -206,26 +215,26 @@ static void play_scenario(intf_thread_t *intf, struct test_scenario *scenario)
         if (bridge == NULL)
             break;
         vlc_vector_push_hole(&played_scenarios, 1);
-        struct played_scenario *played_scenario = played_scenarios.data[played_scenarios];
-        vlc_cond_init(&played_scenario.cond);
-        played_scenario.media = input_item_New(bridge->source, "dummy");
-        assert(played_scenario.media);
+        struct played_scenario *played_scenario = &played_scenarios.data[played_scenarios.size - 1];
+        vlc_cond_init(&played_scenario->cond);
+        played_scenario->media = input_item_New(bridge->source, "dummy");
+        assert(played_scenario->media);
         input_item_AddOption(
-            played_scenario.media, bridge->sout, VLC_INPUT_OPTION_TRUSTED);
+            played_scenario->media, bridge->sout, VLC_INPUT_OPTION_TRUSTED);
 
-        played_scenario.player =
+        played_scenario->player =
             vlc_player_New(&intf->obj, VLC_PLAYER_LOCK_NORMAL, NULL, NULL);
-        assert(played_scenario.player);
+        assert(played_scenario->player);
         static const struct vlc_player_cbs player_cbs = {
             .on_state_changed = on_state_changed,
         };
-        vlc_player_Lock(played_scenario.player);
-        played_scenario.listener = vlc_player_AddListener(
-            played_scenario.player, &player_cbs, &played_scenario.cond);
-        vlc_player_SetCurrentMedia(played_scenario.player,
-                                   played_scenario.media);
-        vlc_player_Start(played_scenario.player);
-        vlc_player_Unlock(played_scenario.player);
+        vlc_player_Lock(played_scenario->player);
+        played_scenario->listener = vlc_player_AddListener(
+            played_scenario->player, &player_cbs, &played_scenario->cond);
+        vlc_player_SetCurrentMedia(played_scenario->player,
+                                   played_scenario->media);
+        vlc_player_Start(played_scenario->player);
+        vlc_player_Unlock(played_scenario->player);
     }
 
     vlc_sem_wait(&scenario_data.wait_stop);
