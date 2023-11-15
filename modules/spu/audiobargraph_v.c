@@ -370,11 +370,14 @@ static subpicture_t *FilterSub(filter_t *p_filter, vlc_tick_t date)
     if (!p_pic || !p_BarGraph->i_alpha)
         goto exit;
 
+    p_spu->i_original_picture_width = p_pic->p[Y_PLANE].i_visible_pitch;
+    p_spu->i_original_picture_height = p_pic->p[Y_PLANE].i_visible_lines;
+
     /* Create new SPU region */
     video_format_Init(&fmt, VLC_CODEC_YUVA);
     fmt.i_sar_num = fmt.i_sar_den = 1;
-    fmt.i_width = fmt.i_visible_width = p_pic->p[Y_PLANE].i_visible_pitch;
-    fmt.i_height = fmt.i_visible_height = p_pic->p[Y_PLANE].i_visible_lines;
+    fmt.i_width = fmt.i_visible_width = p_spu->i_original_picture_width;
+    fmt.i_height = fmt.i_visible_height = p_spu->i_original_picture_height;
     fmt.i_x_offset = fmt.i_y_offset = 0;
     p_region = subpicture_region_New(&fmt);
     if (!p_region) {
