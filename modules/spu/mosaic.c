@@ -532,11 +532,13 @@ static subpicture_t *Filter( filter_t *p_filter, vlc_tick_t date )
         while ( !vlc_picture_chain_IsEmpty( &p_es->pictures ) )
         {
             picture_t *front = vlc_picture_chain_PeekFront( &p_es->pictures );
-            if ( front->date + p_sys->i_delay >= date )
+            if ( front->date + p_sys->i_delay >= date)
                 break; // front picture not late
 
             if ( vlc_picture_chain_HasNext( &p_es->pictures ) )
             {
+
+            msg_Err(p_filter, "1 date: %lu %lu", front->date + p_sys->i_delay, date );
                 // front picture is late and has more pictures chained, skip it
                 front = vlc_picture_chain_PopFront( &p_es->pictures );
                 picture_Release( front );
@@ -545,6 +547,7 @@ static subpicture_t *Filter( filter_t *p_filter, vlc_tick_t date )
 
             if ( front->date + p_sys->i_delay + BLANK_DELAY < date )
             {
+                msg_Err(p_filter, "2 date: %lu %lu", front->date + p_sys->i_delay, date );
                 // front picture is late and too old, don't display it
                 front = vlc_picture_chain_PopFront( &p_es->pictures );
                 // the picture chain is empty as the front didn't have chained pics
@@ -642,6 +645,7 @@ static subpicture_t *Filter( filter_t *p_filter, vlc_tick_t date )
             fmt_out.i_visible_width = fmt_out.i_width;
             fmt_out.i_visible_height = fmt_out.i_height;
         }
+        msg_Err(p_filter, "visible %d %d",fmt_out.i_visible_height, p_converted->format.i_visible_height);
 
         p_region = subpicture_region_ForPicture( &fmt_out, p_converted );
         if( !p_sys->b_keep )

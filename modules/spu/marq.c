@@ -124,6 +124,7 @@ typedef struct
 vlc_module_begin ()
     set_shortname( N_("Marquee" ))
     set_description( N_("Marquee display") )
+    add_shortcut("marquee")
     set_help(MARQUEE_HELP)
     set_callback_sub_source( CreateFilter, 0 )
     set_subcategory( SUBCAT_VIDEO_SUBPIC )

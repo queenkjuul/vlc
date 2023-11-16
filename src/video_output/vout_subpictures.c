@@ -2080,7 +2080,7 @@ vlc_render_subpicture *spu_Render(spu_t *spu,
         free(chain_update);
     }
     /* Run subpicture sources */
-    struct sub_source sub_src = { spu, system_now };
+    struct sub_source sub_src = { spu, render_subtitle_date };
     filter_chain_ForEach(sys->source_chain, SubSourceGenerate, &sub_src);
 
     static const vlc_fourcc_t chroma_list_default_yuv[] = {

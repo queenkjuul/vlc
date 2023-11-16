@@ -505,9 +505,9 @@ static subpicture_t *Filter( filter_t *p_filter, vlc_tick_t date )
         video_format_Copy( &fmt_out, &p_pic->format );
 
         fmt_out.i_sar_num = fmt_out.i_sar_den = 1;
-        fmt_out.i_width =
+        p_spu->i_original_picture_width = fmt_out.i_width =
             fmt_out.i_visible_width = p_pic->p[Y_PLANE].i_visible_pitch;
-        fmt_out.i_height =
+        p_spu->i_original_picture_height = fmt_out.i_height =
             fmt_out.i_visible_height = p_pic->p[Y_PLANE].i_visible_lines;
 
         p_region = subpicture_region_ForPicture( &fmt_out, p_pic );
