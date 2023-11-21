@@ -143,6 +143,16 @@ static void Del( sout_stream_t *p_stream, void *id )
     free( id_sys );
 }
 
+static void Flush(sout_stream_t *p_stream, void *id)
+{
+
+    sout_stream_sys_t *sys = p_stream->p_sys;
+    sout_stream_id_sys_t *id_sys = id;
+
+    vlc_input_decoder_Flush(id_sys->dec);
+    sys->first_pcr_signaled = false;
+}
+
 static int Send( sout_stream_t *p_stream, void *id, vlc_frame_t *frames )
 {
     sout_stream_sys_t *p_sys = p_stream->p_sys;
@@ -213,6 +223,7 @@ static const struct sout_stream_operations ops = {
     .del = Del,
     .send = Send,
     .control = Control,
+    .flush = Flush,
     .set_pcr = SetPCR,
     .close = Close,
 };
