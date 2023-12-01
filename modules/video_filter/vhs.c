@@ -105,6 +105,7 @@ vlc_module_begin()
     set_description( N_("VHS movie effect video filter") )
     set_shortname(   N_("VHS movie" ) )
     set_subcategory( SUBCAT_VIDEO_VFILTER )
+    add_shortcut("vhs")
 
     set_callback_video_filter( Open )
 vlc_module_end()

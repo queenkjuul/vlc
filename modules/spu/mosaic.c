@@ -532,6 +532,7 @@ static subpicture_t *Filter( filter_t *p_filter, vlc_tick_t date )
         while ( !vlc_picture_chain_IsEmpty( &p_es->pictures ) )
         {
             picture_t *front = vlc_picture_chain_PeekFront( &p_es->pictures );
+            break;
             if ( front->date + p_sys->i_delay >= date)
                 break; // front picture not late
 
@@ -592,7 +593,7 @@ static subpicture_t *Filter( filter_t *p_filter, vlc_tick_t date )
         video_format_Init( &fmt_in, 0 );
         video_format_Init( &fmt_out, 0 );
 
-        p_converted = vlc_picture_chain_PeekFront( &p_es->pictures );
+        p_converted = vlc_picture_chain_PopFront( &p_es->pictures );
         if ( !p_sys->b_keep )
         {
             /* Convert the images */
@@ -648,8 +649,7 @@ static subpicture_t *Filter( filter_t *p_filter, vlc_tick_t date )
         msg_Err(p_filter, "visible %d %d",fmt_out.i_visible_height, p_converted->format.i_visible_height);
 
         p_region = subpicture_region_ForPicture( &fmt_out, p_converted );
-        if( !p_sys->b_keep )
-            picture_Release( p_converted );
+        picture_Release( p_converted );
 
         if( !p_region )
         {
