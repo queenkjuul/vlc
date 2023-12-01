@@ -636,6 +636,9 @@ static int video_update_format_decoder( decoder_t *p_dec, vlc_video_context *vct
     struct decoder_owner *p_owner = dec_get_owner( p_dec );
     sout_stream_sys_t *p_sys = p_owner->p_stream->p_sys;
 
+    if ( video_format_IsSimilar(&p_dec->fmt_out.video, &p_owner->fmt_out.video) )
+        return VLC_SUCCESS;
+
     es_format_Clean( &p_owner->fmt_out );
     es_format_Copy( &p_owner->fmt_out, &p_dec->fmt_out );
 
