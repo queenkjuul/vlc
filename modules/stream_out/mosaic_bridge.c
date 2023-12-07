@@ -38,7 +38,6 @@
 #include <vlc_codec.h>
 #include <vlc_meta.h>
 
-#include <vlc_image.h>
 #include <vlc_filter.h>
 #include <vlc_modules.h>
 
@@ -56,8 +55,10 @@ struct decoder_owner
     vlc_decoder_device *dec_dev;
     sout_stream_t *p_stream;
 
+    vlc_video_context *vcontext;
     filter_chain_t *filters;
-    image_handler_t *p_image; /* filter for resizing */
+    bool need_filter_reset;
+
     bridged_es_t *p_es;
 };
 
@@ -72,6 +73,8 @@ typedef struct
     vlc_fourcc_t i_chroma; /* force image format chroma */
 
     char *filters_config;
+
+    vlc_mutex_t var_lock;
 } sout_stream_sys_t;
 
 static inline struct decoder_owner *dec_get_owner( decoder_t *p_dec )
@@ -303,6 +306,8 @@ static int Open( vlc_object_t *p_this )
 
     p_sys->filters_config = var_GetNonEmptyString( p_stream, CFG_PREFIX "vfilter" );
 
+    vlc_mutex_init( &p_sys->var_lock );
+
 #define INT_COMMAND( a ) do { \
     var_Create( p_stream, CFG_PREFIX #a, \
                 VLC_VAR_INTEGER | VLC_VAR_DOINHERIT | VLC_VAR_ISCOMMAND ); \
@@ -390,12 +395,15 @@ Add( sout_stream_t *p_stream, const es_format_t *p_fmt, const char *es_id )
         .video = &cbs,
         .sys = p_owner,
     };
+
+    p_owner->vcontext =  NULL;
     p_owner->filters = filter_chain_NewVideo( p_stream, false, &owner );
     if( unlikely(p_owner->filters == NULL) )
     {
         ReleaseDecoder(&p_owner->dec);
         return NULL;
     }
+    p_owner->need_filter_reset = true;
 
     static const struct decoder_owner_callbacks dec_cbs =
     {
@@ -454,7 +462,9 @@ Add( sout_stream_t *p_stream, const es_format_t *p_fmt, const char *es_id )
     }
 
     p_owner->p_es = p_es = p_bridge->pp_es[i];
+    vlc_mutex_lock( &p_sys->var_lock );
     p_sys->decoder_ref = p_owner;
+    vlc_mutex_unlock( &p_sys->var_lock );
 
     p_es->i_alpha = var_GetInteger( p_stream, CFG_PREFIX "alpha" );
     p_es->i_x = var_GetInteger( p_stream, CFG_PREFIX "x" );
@@ -466,15 +476,6 @@ Add( sout_stream_t *p_stream, const es_format_t *p_fmt, const char *es_id )
     p_es->b_empty = false;
 
     vlc_global_unlock( VLC_MOSAIC_MUTEX );
-
-    if ( p_sys->i_height || p_sys->i_width )
-    {
-        p_owner->p_image = image_HandlerCreate( p_stream );
-    }
-    else
-    {
-        p_owner->p_image = NULL;
-    }
 
     msg_Dbg( p_stream, "mosaic bridge id=%s pos=%d", p_es->psz_id, i );
 
@@ -522,14 +523,10 @@ static void Del( sout_stream_t *p_stream, void *id )
         var_Destroy( p_libvlc, "mosaic-struct" );
     }
 
+    vlc_mutex_lock( &p_sys->var_lock );
     p_sys->decoder_ref = NULL;
+    vlc_mutex_unlock( &p_sys->var_lock );
     ReleaseDecoder( &owner->dec );
-
-
-    if ( owner->p_image )
-    {
-        image_HandlerDelete( owner->p_image );
-    }
 
     vlc_global_unlock( VLC_MOSAIC_MUTEX );
 
@@ -561,63 +558,53 @@ static void ApplyRescale( video_format_t *dst,
     {
         dst->i_width = sys->i_width;
         dst->i_height = sys->i_height;
+        dst->i_sar_num = sys->i_sar_num;
+        dst->i_sar_den = sys->i_sar_den;
     }
     dst->i_visible_width = dst->i_width;
     dst->i_visible_height = dst->i_height;
 }
 
+static void ResetFilterChain(struct decoder_owner *owner)
+{
+    sout_stream_sys_t *sys = owner->p_stream->p_sys;
+    es_format_t rescaled;
+    es_format_InitFromVideo( &rescaled, &owner->fmt_out.video );
+
+    rescaled.video.i_chroma = sys->i_chroma;
+    if ( sys->i_width != 0 || sys->i_height != 0 )
+        ApplyRescale( &rescaled.video, &owner->fmt_out.video, sys );
+
+    filter_chain_Reset(
+        owner->filters, &owner->fmt_out, owner->vcontext, &rescaled );
+
+    if ( !video_format_IsSimilar(&owner->fmt_out.video, &rescaled.video) )
+        filter_chain_AppendConverter( owner->filters, &rescaled );
+
+    es_format_Clean( &rescaled );
+
+    if ( sys->filters_config != NULL )
+        filter_chain_AppendFromString( owner->filters, sys->filters_config );
+
+    owner->need_filter_reset = false;
+}
+
 static void decoder_queue_video( decoder_t *p_dec, picture_t *p_pic )
 {
     struct decoder_owner *p_owner = dec_get_owner( p_dec );
-    sout_stream_t *p_stream = p_owner->p_stream;
-    sout_stream_sys_t *p_sys = p_stream->p_sys;
-    picture_t *p_new_pic;
+    sout_stream_sys_t *sys = p_owner->p_stream->p_sys;
 
-    const video_format_t *p_fmt_in = &p_owner->fmt_out.video;
+    vlc_mutex_lock( &sys->var_lock );
+    if ( p_owner->need_filter_reset )
+        ResetFilterChain( p_owner );
+    vlc_mutex_unlock( &sys->var_lock );
 
-    if( p_sys->i_height || p_sys->i_width )
-    {
-        video_format_t fmt_out;
-
-        video_format_Init( &fmt_out, p_sys->i_chroma );
-
-        ApplyRescale( &fmt_out, p_fmt_in, p_sys );
-
-        p_new_pic = image_Convert( p_owner->p_image,
-                                   p_pic, p_fmt_in, &fmt_out );
-        video_format_Clean( &fmt_out );
-        if( p_new_pic == NULL )
-        {
-            msg_Err( p_stream, "image conversion failed" );
-            picture_Release( p_pic );
-            return;
-        }
-    }
-    else
-    {
-        /* TODO: chroma conversion if needed */
-        video_format_t pic_fmt = p_pic->format;
-        pic_fmt.i_sar_num = p_fmt_in->i_sar_num;
-        pic_fmt.i_sar_den = p_fmt_in->i_sar_den;
-
-        p_new_pic = picture_NewFromFormat( &pic_fmt );
-        if( !p_new_pic )
-        {
-            picture_Release( p_pic );
-            msg_Err( p_stream, "image allocation failed" );
-            return;
-        }
-
-        picture_Copy( p_new_pic, p_pic );
-    }
-    picture_Release( p_pic );
-
-    p_new_pic = filter_chain_VideoFilter( p_owner->filters, p_new_pic );
+    p_pic = filter_chain_VideoFilter( p_owner->filters, p_pic );
 
     /* push the picture in the mosaic-struct structure */
     bridged_es_t *p_es = p_owner->p_es;
     vlc_global_lock( VLC_MOSAIC_MUTEX );
-    vlc_picture_chain_Append( &p_es->pictures, p_new_pic );
+    vlc_picture_chain_Append( &p_es->pictures, p_pic );
     vlc_global_unlock( VLC_MOSAIC_MUTEX );
 }
 
@@ -633,7 +620,6 @@ static int Send( sout_stream_t *p_stream, void *id, block_t *p_buffer )
 static int video_update_format_decoder( decoder_t *p_dec, vlc_video_context *vctx )
 {
     struct decoder_owner *p_owner = dec_get_owner( p_dec );
-    sout_stream_sys_t *p_sys = p_owner->p_stream->p_sys;
 
     if ( video_format_IsSimilar(&p_dec->fmt_out.video, &p_owner->fmt_out.video) )
         return VLC_SUCCESS;
@@ -641,22 +627,11 @@ static int video_update_format_decoder( decoder_t *p_dec, vlc_video_context *vct
     es_format_Clean( &p_owner->fmt_out );
     es_format_Copy( &p_owner->fmt_out, &p_dec->fmt_out );
 
-    if ( p_sys->filters_config != NULL )
-    {
-        // update the filter after the format changed/is known
-        msg_Dbg( p_owner->p_stream, "Update filter: '%s'",
-                 p_sys->filters_config );
-        es_format_t fmt;
-        es_format_InitFromVideo( &fmt, &p_dec->fmt_out.video );
-        if( p_sys->i_chroma )
-        {
-            fmt.video.i_chroma = p_sys->i_chroma;
-            vctx = NULL; // CPU chroma, no video context
-        }
-        filter_chain_Reset( p_owner->filters, &fmt, vctx, &fmt );
-        es_format_Clean( &fmt );
-        filter_chain_AppendFromString( p_owner->filters, p_sys->filters_config );
-    }
+    sout_stream_sys_t *sys = p_owner->p_stream->p_sys;
+    vlc_mutex_lock( &sys->var_lock );
+    p_owner->vcontext = vctx;
+    ResetFilterChain( p_owner );
+    vlc_mutex_unlock( &sys->var_lock );
     return 0;
 }
 
@@ -676,11 +651,12 @@ static int HeightCallback( vlc_object_t *p_this, char const *psz_var,
     sout_stream_t *p_stream = (sout_stream_t *)p_data;
     sout_stream_sys_t *p_sys = p_stream->p_sys;
 
-    vlc_global_lock( VLC_MOSAIC_MUTEX );
-    if( p_sys->decoder_ref && !p_sys->decoder_ref->p_image && newval.i_int )
-        p_sys->decoder_ref->p_image = image_HandlerCreate( p_stream );
-    vlc_global_unlock( VLC_MOSAIC_MUTEX );
+    vlc_mutex_lock( &p_sys->var_lock );
+    struct decoder_owner *owner = p_sys->decoder_ref;
+    if ( p_sys->i_height != newval.i_int && owner != NULL )
+        owner->need_filter_reset = true;
     p_sys->i_height = newval.i_int;
+    vlc_mutex_unlock( &p_sys->var_lock );
 
     return VLC_SUCCESS;
 }
@@ -693,11 +669,12 @@ static int WidthCallback( vlc_object_t *p_this, char const *psz_var,
     sout_stream_t *p_stream = (sout_stream_t *)p_data;
     sout_stream_sys_t *p_sys = p_stream->p_sys;
 
-    vlc_global_lock( VLC_MOSAIC_MUTEX );
-    if( p_sys->decoder_ref && !p_sys->decoder_ref->p_image && newval.i_int )
-        p_sys->decoder_ref->p_image = image_HandlerCreate( p_stream );
-    vlc_global_unlock( VLC_MOSAIC_MUTEX );
+    vlc_mutex_lock( &p_sys->var_lock );
+    struct decoder_owner *owner = p_sys->decoder_ref;
+    if ( p_sys->i_width != newval.i_int && owner != NULL )
+        owner->need_filter_reset = true;
     p_sys->i_width = newval.i_int;
+    vlc_mutex_unlock( &p_sys->var_lock );
 
     return VLC_SUCCESS;
 }
