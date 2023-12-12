@@ -36,6 +36,8 @@
 #include <vlc_plugin.h>
 #include <vlc_sout.h>
 
+#include <assert.h>
+
 /*****************************************************************************
  * Module descriptor
  *****************************************************************************/
@@ -175,6 +177,12 @@ static int Send( sout_stream_t *p_stream, void *id, vlc_frame_t *frames )
         vlc_frame_t *p_next = frames->p_next;
 
         frames->p_next = NULL;
+
+        if (frames->i_flags & VLC_FRAME_FLAG_DISCONTINUITY)
+        {
+            vlc_input_decoder_Flush( id_sys->dec );
+            sout_ClockMainSetFirstPcr( p_sys->main_clock, frames->i_dts );
+        }
 
         if( id != NULL && frames->i_buffer > 0 )
             vlc_input_decoder_Decode( id_sys->dec, frames, false );
