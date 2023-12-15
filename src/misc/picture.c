@@ -99,6 +99,7 @@ void picture_Reset( picture_t *p_picture )
     p_picture->b_progressive = false;
     p_picture->i_nb_fields = 2;
     p_picture->b_top_field_first = false;
+    video_format_Clean(&p_picture->format);
     PictureDestroyContext( p_picture );
 
     picture_priv_t *priv = container_of(p_picture, picture_priv_t, picture);
@@ -134,6 +135,7 @@ int picture_Setup( picture_t *p_picture, const video_format_t *restrict fmt )
     video_format_Setup( &p_picture->format, fmt->i_chroma, fmt->i_width, fmt->i_height,
                         fmt->i_visible_width, fmt->i_visible_height,
                         fmt->i_sar_num, fmt->i_sar_den );
+    p_picture->format.orientation = fmt->orientation;
     if( fmt->i_x_offset < fmt->i_width &&
         fmt->i_y_offset < fmt->i_height &&
         fmt->i_visible_width  > 0 && fmt->i_x_offset + fmt->i_visible_width  <= fmt->i_width &&
@@ -210,7 +212,7 @@ static bool picture_InitPrivate(const video_format_t *restrict p_fmt,
     memset( p_picture, 0, sizeof( *p_picture ) );
     p_picture->date = VLC_TICK_INVALID;
 
-    p_picture->format = *p_fmt;
+    video_format_Copy(&p_picture->format, p_fmt);
     /* Make sure the real dimensions are a multiple of 16 */
     if( picture_Setup( p_picture, p_fmt ) )
         return false;
@@ -351,6 +353,7 @@ void picture_Destroy(picture_t *picture)
     picture_priv_t *priv = container_of(picture, picture_priv_t, picture);
     assert(priv->gc.destroy != NULL);
     priv->gc.destroy(picture);
+    video_format_Clean(&picture->format);
     vlc_ancillary_array_Clear(&priv->ancillaries);
     free(priv);
 }
