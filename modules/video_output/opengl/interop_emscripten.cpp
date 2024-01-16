@@ -54,7 +54,7 @@ static int
 tc_emscripten_op_allocate_textures(const struct vlc_gl_interop *interop, GLuint *textures,
                           const GLsizei *tex_width, const GLsizei *tex_height)
 {
-    (void) tex_width; (void) tex_height;
+    (void)interop; (void) tex_width; (void) tex_height;
     assert(textures[0] != 0);
 
     return VLC_SUCCESS;
@@ -75,6 +75,7 @@ tc_emscripten_op_update(const struct vlc_gl_interop *interop, GLuint *textures,
                const GLsizei *tex_width, const GLsizei *tex_height,
                picture_t *pic, const size_t *plane_offset)
 {
+    (void)tex_width; (void)tex_height; (void)plane_offset;
     auto sys = static_cast<EmscriptenInterop *>( interop->priv );
 
     sys->gl.BindTexture(interop->tex_target, textures[0]);
@@ -205,9 +206,6 @@ Open(vlc_object_t *obj)
             /*.format = */GL_RGBA,
             /*.type = */GL_UNSIGNED_BYTE,
     };
-    interop->fmt_out.i_rmask = 0xFF0000;
-    interop->fmt_out.i_gmask = 0x00FF00;
-    interop->fmt_out.i_bmask = 0x0000FF;
     interop->priv = sys;
 
     interop->fmt_out.orientation = ORIENT_VFLIPPED;
