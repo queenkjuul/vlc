@@ -348,6 +348,17 @@ download_git = \
 	$(XZ) --stdout "$(@:.xz=)" > "$@.tmp" && \
 	rm -f "$(@:.xz=)" && \
 	mv -f -- "$@.tmp" "$@"
+download_git_branch = \
+	rm -Rf -- "$(@:.tar.xz=)" && \
+	$(GIT) clone --single-branch --branch $(4) $(1) "$(@:.tar.xz=)" && \
+	(cd "$(@:.tar.xz=)" && \
+	$(GIT) archive --prefix="$(notdir $(@:.tar.xz=))/" \
+		--format=tar "$(3)") > "$(@:.xz=)" && \
+	echo "$(3) $(@)" > "$(@:.tar.xz=.githash)" && \
+	rm -Rf -- "$(@:.tar.xz=)" && \
+	$(XZ) --stdout "$(@:.xz=)" > "$@.tmp" && \
+	rm -f "$(@:.xz=)" && \
+	mv -f -- "$@.tmp" "$@"
 check_githash = \
 	h=`sed -e "s,^\([0-9a-fA-F]\{40\}\) .*/$(notdir $<),\1,g" \
 		< "$(<:.tar.xz=.githash)"` && \
