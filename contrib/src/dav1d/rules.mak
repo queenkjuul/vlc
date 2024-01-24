@@ -7,6 +7,8 @@ DAV1D_GITURL := https://code.videolan.org/Skantes/dav1d.git
 DAV1D_HASH := 1cc5096ea1227336a08352edd59b7f71d4939bc0
 DAV1D_BRANCH := test-patch
 
+DEPS_dav1d = vulkan-headers $(DEPS_vulkan-headers)
+
 PKGS += dav1d
 ifeq ($(call need_pkg,"dav1d"),)
 PKGS_FOUND += dav1d
