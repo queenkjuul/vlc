@@ -872,8 +872,8 @@ static int Demux( demux_t *p_demux )
             {
                 p_block->i_dts =
                 p_block->i_pts = VLC_TICK_0 + p_subtitle->i_start * p_sys->f_rate;
-                if( p_subtitle->i_stop >= 0 && p_subtitle->i_stop >= p_subtitle->i_start )
-                    p_block->i_length = (p_subtitle->i_stop - p_subtitle->i_start) * p_sys->f_rate;
+                //if( p_subtitle->i_stop >= 0 && p_subtitle->i_stop >= p_subtitle->i_start )
+                //    p_block->i_length = (p_subtitle->i_stop - p_subtitle->i_start) * p_sys->f_rate;
 
                 es_out_Send( p_demux->out, p_sys->es, p_block );
             }

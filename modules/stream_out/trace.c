@@ -30,6 +30,8 @@
 #include <vlc_sout.h>
 #include <vlc_tracer.h>
 
+#include <assert.h>
+
 typedef struct
 {
     const char *es_id;
@@ -43,6 +45,7 @@ Add(sout_stream_t *stream, const es_format_t *fmt, const char *es_id)
     if (unlikely(id == NULL))
         return NULL;
 
+    assert(es_id != NULL);
     id->es_id = es_id;
     id->next_id = sout_StreamIdAdd(stream->p_next, fmt, es_id);
     if (id->next_id == NULL)

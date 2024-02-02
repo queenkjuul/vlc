@@ -707,7 +707,9 @@ Add( sout_stream_t *p_stream, const es_format_t *p_fmt, const char *es_id )
     if( p_sys->pcr_forwarding_enabled )
     {
         // TODO properly estimate the delay
-        id->pcr_helper = transcode_track_pcr_helper_New( p_sys->pcr_sync, VLC_TICK_FROM_SEC( 4 ) );
+        const vlc_tick_t maxdelay =
+            (p_fmt->i_cat == SPU_ES) ? VLC_TICK_INVALID : VLC_TICK_FROM_SEC(4);
+        id->pcr_helper = transcode_track_pcr_helper_New( p_sys->pcr_sync,  maxdelay);
         if( unlikely( id->pcr_helper == NULL ) )
             goto error;
     }
@@ -851,6 +853,7 @@ static int Send( sout_stream_t *p_stream, void *_id, block_t *p_buffer )
 
         if( pcr != VLC_TICK_INVALID )
         {
+            printf("(after block) FORWARD %ld\n", pcr);
             sout_StreamSetPCR( p_stream->p_next, pcr );
         }
 
@@ -876,6 +879,7 @@ static void SetPCR( sout_stream_t *stream, vlc_tick_t pcr )
 
     if( sys->transcoded_stream_nb == 0)
     {
+        printf("(no stream) FORWARD %ld\n", pcr);
         sout_StreamSetPCR( stream->p_next, pcr );
         return;
     }
@@ -897,11 +901,13 @@ static void SetPCR( sout_stream_t *stream, vlc_tick_t pcr )
          */
         if( sys->first_pcr_sent )
         {
+            printf("FIRST PCR\n");
             sout_StreamSetPCR( stream->p_next, VLC_TICK_0 );
             sys->first_pcr_sent = true;
         }
         else if( sys->pcr_sync_has_input )
         {
+            printf("FORWARD %ld\n", pcr);
             sout_StreamSetPCR( stream->p_next, pcr );
         }
     }

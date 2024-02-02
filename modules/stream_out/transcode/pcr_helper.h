@@ -46,8 +46,7 @@ typedef struct transcode_track_pcr_helper transcode_track_pcr_helper_t;
  * Allocate a new pcr helper.
  *
  * \param sync_ref Pointer to the pcr_sync, must be valid during all the helper's lifetime.
- * \param max_delay Maximum frame delay that can be taken by the processing unit (See explanations
- * above).
+ * \param max_delay Maximum frame delay of the processing unit (See explanations above).
  *
  * \return A pointer to the allocated pcr helper or NULL if the allocation failed.
  */

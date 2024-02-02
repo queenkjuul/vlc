@@ -52,8 +52,7 @@ typedef struct
     struct vlc_list node;
 } delayed_frame_data_t;
 
-transcode_track_pcr_helper_t *transcode_track_pcr_helper_New(vlc_pcr_sync_t *sync_ref,
-                                                             vlc_tick_t max_delay)
+transcode_track_pcr_helper_t *transcode_track_pcr_helper_New(vlc_pcr_sync_t *sync_ref, vlc_tick_t max_delay)
 {
     transcode_track_pcr_helper_t *ret = malloc(sizeof(*ret));
     if (unlikely(ret == NULL))
@@ -117,6 +116,7 @@ int transcode_track_pcr_helper_SignalEnteringFrame(transcode_track_pcr_helper_t 
     if (unlikely(bdata == NULL))
         return VLC_ENOMEM;
 
+    printf("Entering %ld\n", frame->i_dts);
     pcr_helper->input_media_time += frame->i_length;
     pcr_helper->held_media_time += frame->i_length;
 
@@ -132,8 +132,9 @@ int transcode_track_pcr_helper_SignalEnteringFrame(transcode_track_pcr_helper_t 
     // Exceeding this limit usually means the frame was dropped. So in our case, act like it went
     // through.
     // TODO needs to be properly unit-tested.
-    if (pcr_helper->held_media_time > pcr_helper->max_delay)
+    if (pcr_helper->max_delay != VLC_TICK_INVALID && pcr_helper->held_media_time > pcr_helper->max_delay)
     {
+        printf("wtf\n");
         delayed_frame_data_t *first_bdata = vlc_list_first_entry_or_null(
             &pcr_helper->delayed_frames_data, delayed_frame_data_t, node);
         assert(first_bdata != NULL);
@@ -162,7 +163,10 @@ int transcode_track_pcr_helper_SignalLeavingFrame(transcode_track_pcr_helper_t *
     *pcr = VLC_TICK_INVALID;
 
     if (vlc_list_is_empty(&pcr_helper->delayed_frames_data))
+    {
+        printf("arg\n");
         return VLC_EGENERIC;
+    }
 
     pcr_helper->last_dts_output = frame->i_dts;
 
@@ -173,8 +177,12 @@ int transcode_track_pcr_helper_SignalLeavingFrame(transcode_track_pcr_helper_t *
     delayed_frame_data_t *frame_data;
     vlc_list_foreach(frame_data, &pcr_helper->delayed_frames_data, node)
     {
+        printf("%ld %ld\n", output_media_time ,frame_data->media_time);
         if (output_media_time < frame_data->media_time)
+        {
+            printf("---\n");
             break;
+        }
 
         const vlc_tick_t current_pcr =
             transcode_track_pcr_helper_GetFramePCR(pcr_helper, frame_data->dts);
