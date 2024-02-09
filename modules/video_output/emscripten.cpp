@@ -135,9 +135,16 @@ EM_ASYNC_JS(void, getVoutMessagePort, (), {
             let msg = e.data;
             if (msg.customCmd == 'getVoutMessagePortResult') {
                 Module.voutMsgPort = msg['msgPort'];
+
+                Module.voutMsgPort.onmessage = function(vout_msg) {
+                    if (vout_msg.data['customCmd'] == 'releaseFrame')
+                    {
+                        vout_msg.data['bitmap'].close();
+                    }
+                };
                 resolve();
                 self.removeEventListener('message', listener);
-            };
+            }
         };
         self.addEventListener('message', listener);
         self.postMessage({
@@ -196,15 +203,25 @@ static int Open (vlc_gl_t *gl, unsigned width, unsigned height, const struct vlc
             if (data.customCmd == 'commitFrame') {
                 let bmp = data['bitmap'];
                 document.getElementById(canvasName).getContext('2d').drawImage(bmp, 0, 0);
-                bmp.close();
-            }
+                let oldPicture = Module.canvasCtx.currentPicture;
+                Module.canvasCtx.currentPicture = bmp;
+
+                if (oldPicture !== undefined)
+                {
+                  console.dir(this);
+                  this.postMessage({
+                      customCmd: 'releaseFrame',
+                      bitmap: oldPicture,
+                  }, [oldPicture]);
+                }
+           }
         }
         let w = Module.PThread.pthreads[$0];
         w.addEventListener('message', function (e) {
             let msg = e['data'];
             if (msg.customCmd == 'getVoutMessagePort') {
                 let msgChannel = new MessageChannel();
-                msgChannel.port1.onmessage = onVoutMessage;
+                msgChannel.port1.onmessage = onVoutMessage.bind(msgChannel.port1);
                 w.postMessage({
                     customCmd: 'getVoutMessagePortResult',
                     msgPort: msgChannel.port2,
