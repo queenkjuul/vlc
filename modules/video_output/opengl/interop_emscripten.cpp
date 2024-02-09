@@ -33,6 +33,7 @@
 #include "interop.h"
 #include "gl_common.h"
 #include <cassert>
+#undef typeof
 #include "../emscripten/common.h"
 
 #include <emscripten.h>

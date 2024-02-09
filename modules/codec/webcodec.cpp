@@ -33,6 +33,7 @@
 
 #include "../video_output/emscripten/common.h"
 
+#undef typeof
 #include <emscripten/emscripten.h>
 #include <emscripten/val.h>
 #include <emscripten/bind.h>
@@ -164,16 +165,25 @@ static emval getDecoderConfig( decoder_t* dec, bool includeExtraData )
         //decoderConfig.set("codec", "avc1.64000b" );
         break;
     }
+    case VLC_CODEC_HEVC:
+    {
+        decoderConfig.set("codec", "hev1.1.2.H123.90" );
+        break;
+    }
     case VLC_CODEC_AV1:
         decoderConfig.set( "codec", "av01" );
         break;
     default:
         return emval::undefined();
     }
-    decoderConfig.set( "codedWidth", dec->fmt_in->video.i_width );
-    decoderConfig.set( "codedHeight", dec->fmt_in->video.i_height );
-    decoderConfig.set( "displayAspectWidth", dec->fmt_in->video.i_visible_width );
-    decoderConfig.set( "displayAspectHeight", dec->fmt_in->video.i_visible_height );
+    //decoderConfig.set( "codedWidth", dec->fmt_in->video.i_width );
+    //decoderConfig.set( "codedHeight", dec->fmt_in->video.i_height );
+    //decoderConfig.set( "displayAspectWidth", dec->fmt_in->video.i_visible_width );
+    //decoderConfig.set( "displayAspectHeight", dec->fmt_in->video.i_visible_height );
+    //decoderConfig.set( "codedWidth", 1920 );
+    //decoderConfig.set( "codedHeight", 1080 );
+    //decoderConfig.set( "displayAspectWidth", 1920 );
+    //decoderConfig.set( "displayAspectHeight", 1080 );
     decoderConfig.set( "optimizeForLatency", false );
     if ( includeExtraData )
     {

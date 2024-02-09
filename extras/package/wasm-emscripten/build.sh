@@ -146,6 +146,7 @@ diagnostic "vlc contribs: bootstrap"
             --disable-speexdsp --disable-taglib --disable-zvbi \
             --disable-rnnoise --disable-libaribcaption \
             --disable-ogg --disable-vorbis --disable-kate --disable-flac \
+            --disable-ass \
             --host=wasm32-unknown-emscripten --enable-rav1e
 
 diagnostic "vlc contribs: make"
@@ -251,6 +252,6 @@ if echo "${VLC_USE_SANITIZER}" | grep address > /dev/null; then
 SANITIZERS="$SANITIZERS -fsanitize=address -fsanitize-address-use-after-scope -fno-omit-frame-pointer"
 fi
 
-emcc $SANITIZERS -pthread -c "$BUILD_PATH"/vlc-modules.c -I"$VLC_SRCPATH"/include -I"$BUILD_PATH"  -o "$BUILD_PATH"/vlc-modules.bc
+emcc $SANITIZERS -pthread -c "$BUILD_PATH"/vlc-modules.c -I"$VLC_SRCPATH"/include -I"$BUILD_PATH"  -emit-llvm -o "$BUILD_PATH"/vlc-modules.bc
 
 echo "VLC for wasm32-unknown-emscripten built!"
