@@ -62,9 +62,12 @@ tc_emscripten_op_allocate_textures(const struct vlc_gl_interop *interop, GLuint 
 }
 
 EM_ASYNC_JS(void, bindVideoFrame, (int pictureIdx), {
+    console.error("Bind video frame");
     let frame = await Module.awaitFrame(pictureIdx);
+    console.error("1");
     if (!frame)
         return;
+    console.error("2");
 
     let glCtx = Module.glCtx;
     glCtx.texImage2D(glCtx.TEXTURE_2D, 0, glCtx.RGBA, frame.codedWidth, frame.codedHeight, 0,
@@ -109,6 +112,8 @@ EM_JS(void, setupMessagePort, (vlc_video_context* vctx), {
         if (data.customCmd == 'displayFrame') {
             let pictureIdx = data.pictureId;
             let frame = data['frame'];
+            console.error("resolver");
+            console.error(Module.glConv.frameResolver);
             Module.glConv.frameResolver( frame );
         }
     };
@@ -137,13 +142,17 @@ EM_JS(void, initGlConvWorker, (int maxPictures), {
         }
         let p = new Promise((resolve, reject) => {
             Module.glConv.frameResolver = resolve;
+            console.error("interop send");
+            console.error(resolve);
             Module.msgChannel.port1.postMessage({
                 'customCmd': 'sendFrame',
                 'pictureIdx': pictureIdx,
             });
+            console.error("wtf");
 
         });
         let frame = await p;
+        console.error("interop sent");
         Module.glConv.frameResolver = undefined;
         if (Module.glConv.lastFrame.frame)
             Module.glConv.lastFrame.frame.close();
@@ -294,5 +303,5 @@ vlc_module_begin ()
 
     add_submodule()
         set_subcategory(SUBCAT_VIDEO_VFILTER)
-        set_callback_video_converter(OpenConverter, 10)
+        set_callback_video_converter(OpenConverter, 1000)
 vlc_module_end ()

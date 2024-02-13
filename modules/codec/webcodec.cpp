@@ -202,10 +202,14 @@ static emval getDecoderConfig( decoder_t* dec, bool includeExtraData )
 EM_JS(emscripten::EM_VAL, initDecoderJS, (void* decoder, emscripten::EM_VAL decCfgHandle), {
     function onInteropMessage(msg) {
         let data = msg['data'];
+        console.error("on interop");
         if (data['customCmd'] == 'sendFrame') {
             let picIdx = data['pictureIdx'];
             let frame = Module.framesReady[picIdx];
             Module.framesReady[picIdx] = undefined;
+            console.error("sendFrame");
+            console.error(picIdx);
+            console.error(frame);
             if (!frame) {
                 /* We may receive a late message after a flush, in which case
                  * we still need to reply to the interop, but we don't have
@@ -267,7 +271,9 @@ EM_JS(emscripten::EM_VAL, initDecoderJS, (void* decoder, emscripten::EM_VAL decC
 
     async function getPictureAsync(dec) {
         function getPicture(dec, resolve) {
+            console.log("waiting");
             let pic = _waitPictureFromPool(dec);
+            console.log(pic);
             resolve(pic);
         }
         let p = new Promise((resolve) => {

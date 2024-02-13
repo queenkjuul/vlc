@@ -113,8 +113,8 @@ static void Swap(vlc_gl_t *gl)
      */
     VLC_UNUSED(gl);
     EM_ASM({
-        console.error("Swap");
         let bitmap = Module.offscreenCanvas.transferToImageBitmap();
+        console.error(bitmap);
         Module.voutMsgPort.postMessage({
             customCmd: 'commitFrame',
             bitmap: bitmap,
@@ -183,7 +183,8 @@ static int Open (vlc_gl_t *gl, unsigned width, unsigned height, const struct vlc
 
     vlc_window_t *wnd = gl->surface;
 
-    char *canvas = var_InheritString(gl, "emscripten-canvas-id");
+    char *canvas = wnd->handle.canvas != nullptr ? strdup(wnd->handle.canvas)
+        : var_InheritString(gl, "emscripten-canvas-id");
 
     if (wnd->type != VLC_WINDOW_TYPE_EMSCRIPTEN_WEBGL)
         goto error;
@@ -202,18 +203,29 @@ static int Open (vlc_gl_t *gl, unsigned width, unsigned height, const struct vlc
             let data = msg['data'];
             if (data.customCmd == 'commitFrame') {
                 let bmp = data['bitmap'];
-                document.getElementById(canvasName).getContext('2d').drawImage(bmp, 0, 0);
-                let oldPicture = Module.canvasCtx.currentPicture;
-                Module.canvasCtx.currentPicture = bmp;
+                let ctx = document.getElementById(canvasName).getContext('2d');
+                ctx.reset();
+                ctx.drawImage(bmp, 0, 0);
+                bmp.close();
+                //let oldPicture = ctx.currentPicture;
+                //ctx.currentPicture = bmp;
 
-                if (oldPicture !== undefined)
-                {
-                  console.dir(this);
-                  this.postMessage({
-                      customCmd: 'releaseFrame',
-                      bitmap: oldPicture,
-                  }, [oldPicture]);
-                }
+                //if (oldPicture !== undefined)
+                //{
+                //  console.dir(this);
+                //  this.postMessage({
+                //      customCmd: 'releaseFrame',
+                //      bitmap: oldPicture,
+                //  }, [oldPicture]);
+                //}
+           }
+           else if (data.customCmd == 'swap')
+           {
+                let bmp = Module.offscreenCanvas.transferToImageBitmap();
+                let ctx = document.getElementById(canvasName).getContext('2d');
+                ctx.drawImage(bmp, 0, 0);
+                bmp.close();
+                console.error("swapped");
            }
         }
         let w = Module.PThread.pthreads[$0];
