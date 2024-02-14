@@ -114,11 +114,15 @@ static void Swap(vlc_gl_t *gl)
     VLC_UNUSED(gl);
     EM_ASM({
         let bitmap = Module.offscreenCanvas.transferToImageBitmap();
-        console.error(bitmap);
-        Module.voutMsgPort.postMessage({
-            customCmd: 'commitFrame',
-            bitmap: bitmap,
-        }, [bitmap]);
+        let c = Module.realCanvas.getContext('2d');
+        c.drawImage(bitmap, 0, 0);
+        bitmap.close();
+        console.error("swap");
+        //console.error(bitmap);
+        //Module.voutMsgPort.postMessage({
+        //    customCmd: 'commitFrame',
+        //    bitmap: bitmap,
+        //}, [bitmap]);
     });
 }
 
@@ -134,14 +138,16 @@ EM_ASYNC_JS(void, getVoutMessagePort, (), {
         let listener = function(e) {
             let msg = e.data;
             if (msg.customCmd == 'getVoutMessagePortResult') {
-                Module.voutMsgPort = msg['msgPort'];
+                Module.realCanvas = msg['canvas'];
+                console.error("recv");
+                console.error(Module.offscreenCanvas);
 
-                Module.voutMsgPort.onmessage = function(vout_msg) {
-                    if (vout_msg.data['customCmd'] == 'releaseFrame')
-                    {
-                        vout_msg.data['bitmap'].close();
-                    }
-                };
+                //Module.voutMsgPort.onmessage = function(vout_msg) {
+                //    if (vout_msg.data['customCmd'] == 'releaseFrame')
+                //    {
+                //        vout_msg.data['bitmap'].close();
+                //    }
+                //};
                 resolve();
                 self.removeEventListener('message', listener);
             }
@@ -156,6 +162,8 @@ EM_ASYNC_JS(void, getVoutMessagePort, (), {
 
 EM_JS(int, createGlContext, (int width, int height), {
     Module.offscreenCanvas = new OffscreenCanvas(width, height);
+    console.error("create");
+    console.error(Module.offscreenCanvas);
     Module.glCtx = Module.offscreenCanvas.getContext('webgl2');
 
     return GL.registerContext(Module.glCtx, {
@@ -234,10 +242,12 @@ static int Open (vlc_gl_t *gl, unsigned width, unsigned height, const struct vlc
             if (msg.customCmd == 'getVoutMessagePort') {
                 let msgChannel = new MessageChannel();
                 msgChannel.port1.onmessage = onVoutMessage.bind(msgChannel.port1);
+                let canvas = document.getElementById(canvasName).transferControlToOffscreen();
+                console.error(canvas);
                 w.postMessage({
                     customCmd: 'getVoutMessagePortResult',
-                    msgPort: msgChannel.port2,
-                }, [msgChannel.port2]);
+                    canvas: canvas,
+                }, [canvas]);
             }
         });
     }, pthread_self(), canvas ? canvas : "canvas");
