@@ -104,23 +104,18 @@ static void ReleaseCurrent(vlc_gl_t *gl)
     emscripten_webgl_make_context_current(0);
 }
 
-static void Swap(vlc_gl_t *gl)
-{
-    /**
-     * There is no way to commit/swapbuffer from an offscreen canvas, so instead
-     * we render the offscreen canvas onto a bitmap and let the actual canvas
-     * display that bitmap from the main thread.
-     */
-    VLC_UNUSED(gl);
-    EM_ASM({
-        let bitmap = Module.offscreenCanvas.transferToImageBitmap();
-        console.error(bitmap);
-        Module.voutMsgPort.postMessage({
-            customCmd: 'commitFrame',
-            bitmap: bitmap,
-        }, [bitmap]);
+EM_ASYNC_JS(void, Swap, (vlc_gl_t *gl), {
+    let bitmap = Module.offscreenCanvas.transferToImageBitmap();
+    await new Promise((resolve) => {
+        setTimeout(() => {
+            Module.voutMsgPort.postMessage({
+                customCmd: 'commitFrame',
+                bitmap: bitmap,
+            }, [bitmap]);
+            resolve();
+        });
     });
-}
+})
 
 static void Resize(vlc_gl_t *gl, unsigned w, unsigned h)
 {
