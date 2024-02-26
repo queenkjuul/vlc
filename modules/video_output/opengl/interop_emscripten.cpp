@@ -82,14 +82,20 @@ tc_emscripten_op_update(const struct vlc_gl_interop *interop, GLuint *textures,
     (void)tex_width; (void)tex_height; (void)plane_offset;
     auto sys = static_cast<EmscriptenInterop *>( interop->priv );
 
+    if (sys->lastPicture)
+    {
+        printf("interop release\n");
+        picture_Release(sys->lastPicture);
+    }
+
     sys->gl.BindTexture(interop->tex_target, textures[0]);
 
     auto picCtx = PictureContextPrivate(pic->context);
-    bindVideoFrame(picCtx->pictureIdx);
+    auto idx = picCtx->pictureIdx;
+    bindVideoFrame(idx);
+    //picture_Release(pic);
 
-    if (sys->lastPicture)
-        picture_Release(sys->lastPicture);
-    sys->lastPicture = picture_Hold(pic);
+    //sys->lastPicture = picture_Hold(pic);
 
     return VLC_SUCCESS;
 }

@@ -55,14 +55,41 @@ struct decoder_sys_t
     vlc_video_context* vctx;
 };
 
+static picture_context_t* PictureContextCopy(picture_context_t* picCtx)
+{
+    vlc_video_context_Hold( picCtx->vctx );
+    return picCtx;
+}
+
+static void PictureContextDestroy( picture_context_t* )
+{
+    /* Context is already released by picture_Release() */
+}
+
+static picture_context_t* webcodec_CreatePictureContext( vlc_video_context* vctx, int64_t picIdx )
+{
+    auto picCtx = static_cast<webcodec_picture_ctx*>(
+                malloc( sizeof(  webcodec_picture_ctx ) ) );
+    if ( picCtx == nullptr )
+        return nullptr;
+    picCtx->context.copy = PictureContextCopy;
+    picCtx->context.destroy = PictureContextDestroy;
+    picCtx->context.vctx = vctx;
+    picCtx->pictureIdx = picIdx;
+    return &picCtx->context;
+}
+
 extern "C"
 {
-EMSCRIPTEN_KEEPALIVE picture_t* waitPictureFromPool(decoder_t* dec)
+EMSCRIPTEN_KEEPALIVE picture_t* waitPictureFromPool(decoder_t* dec, int64_t idx)
 {
     auto sys = static_cast<decoder_sys_t*>( dec->p_sys );
     auto vctx = static_cast<webcodec_context*>(
                 vlc_video_context_GetPrivate(sys->vctx, VLC_VIDEO_CONTEXT_WEBCODEC) );
-    return picture_pool_Wait(vctx->pool);
+    auto pic = picture_NewFromFormat(&dec->fmt_out.video);
+    pic->context = webcodec_CreatePictureContext(sys->vctx, idx);
+    return pic;
+    //return picture_pool_Wait(vctx->pool);
 }
 
 EMSCRIPTEN_KEEPALIVE bool updateVideoOutput(decoder_t* dec)
@@ -269,10 +296,10 @@ EM_JS(emscripten::EM_VAL, initDecoderJS, (void* decoder, emscripten::EM_VAL decC
         }
     }
 
-    async function getPictureAsync(dec) {
+    async function getPictureAsync(dec, picIdx) {
         function getPicture(dec, resolve) {
             console.log("waiting");
-            let pic = _waitPictureFromPool(dec);
+            let pic = _waitPictureFromPool(dec, picIdx);
             console.log(pic);
             resolve(pic);
         }
@@ -304,7 +331,8 @@ EM_JS(emscripten::EM_VAL, initDecoderJS, (void* decoder, emscripten::EM_VAL decC
 
     /* Prepare an array containing the decoded frames, so the interop can query
      * then later */
-    Module.framesReady = [];
+    Module.framesReady = {};
+    Module.pictCount = 0;
 
     let initCfg = {
         'output': async function (frame) {
@@ -317,8 +345,9 @@ EM_JS(emscripten::EM_VAL, initDecoderJS, (void* decoder, emscripten::EM_VAL decC
             }
             if (Module.voutPort === undefined)
                 await getVoutMessagePort();
-            let p = await getPictureAsync(Module.webCodecCtx);
-            let picIdx = _queuePicture(Module.webCodecCtx, p, frame.timestamp);
+            let picIdx = Module.pictCount;
+            let p = await getPictureAsync(Module.webCodecCtx, picIdx);
+            _queuePicture(Module.webCodecCtx, p, frame.timestamp, picIdx);
             if ( Module.framesReady[picIdx] ) {
                 /*
                  *  If we end up overriding a frame, it means it was dropped
@@ -329,6 +358,7 @@ EM_JS(emscripten::EM_VAL, initDecoderJS, (void* decoder, emscripten::EM_VAL decC
                 Module.framesReady[picIdx].close();
             }
             Module.framesReady[picIdx] = frame;
+            Module.pictCount++;
         },
         'error': function(err) {
             console.log('Error while decoding: ');
