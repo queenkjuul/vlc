@@ -65,6 +65,14 @@ EMSCRIPTEN_KEEPALIVE picture_t* waitPictureFromPool(decoder_t* dec)
     return picture_pool_Wait(vctx->pool);
 }
 
+EMSCRIPTEN_KEEPALIVE picture_t* getPictureFromPool(decoder_t* dec)
+{
+    auto sys = static_cast<decoder_sys_t*>( dec->p_sys );
+    auto vctx = static_cast<webcodec_context*>(
+                vlc_video_context_GetPrivate(sys->vctx, VLC_VIDEO_CONTEXT_WEBCODEC) );
+    return picture_pool_Get(vctx->pool);
+}
+
 EMSCRIPTEN_KEEPALIVE bool updateVideoOutput(decoder_t* dec)
 {
     auto sys = static_cast<decoder_sys_t*>( dec->p_sys );
@@ -242,6 +250,18 @@ EM_JS(emscripten::EM_VAL, initDecoderJS, (void* decoder, emscripten::EM_VAL decC
                     Module.voutPort.onmessage = onInteropMessage;
                     resolve();
                 }
+                else if (msg.customCmd == 'releasePicture')
+                {
+                    console.error("releasePicture");
+                    if (Module.framesReady[msg.idx])
+                    {
+                        Module.framesReady[msg.idx].close();
+                        Module.framesReady[msg.idx] = undefined;
+                    }
+                    let cb = Module.onPictureReleased.shift();
+                    if(cb)
+                        cb();
+                }
             });
         });
         await p;
@@ -270,16 +290,21 @@ EM_JS(emscripten::EM_VAL, initDecoderJS, (void* decoder, emscripten::EM_VAL decC
     }
 
     async function getPictureAsync(dec) {
-        function getPicture(dec, resolve) {
-            console.log("waiting");
-            let pic = _waitPictureFromPool(dec);
-            console.log(pic);
-            resolve(pic);
-        }
+        let pic = _getPictureFromPool(dec);
+        if (pic)
+            return pic;
+
         let p = new Promise((resolve) => {
-            getPicture(dec, resolve);
+            Module.onPictureReleased.push(() => {
+                console.error("onPictureReleased");
+                resolve(_waitPictureFromPool(dec));
+            });
         });
-        return await p;
+
+        console.error("queue size: " + Module.onPictureReleased.length);
+        pic = await p;
+        console.error("got picture");
+        return pic;
     }
 
     self.addEventListener('message', (e) => {
@@ -305,6 +330,7 @@ EM_JS(emscripten::EM_VAL, initDecoderJS, (void* decoder, emscripten::EM_VAL decC
     /* Prepare an array containing the decoded frames, so the interop can query
      * then later */
     Module.framesReady = [];
+    Module.onPictureReleased = [];
 
     let initCfg = {
         'output': async function (frame) {
