@@ -94,17 +94,12 @@ tc_emscripten_op_update(const struct vlc_gl_interop *interop, GLuint *textures,
     return VLC_SUCCESS;
 }
 
-extern "C"
-{
-EMSCRIPTEN_KEEPALIVE int getDecoderWorker(vlc_video_context* vctx)
-{
-    auto wcCtx = static_cast<webcodec_context*>(
-                vlc_video_context_GetPrivate(vctx, VLC_VIDEO_CONTEXT_WEBCODEC));
-    if (!vctx)
-        return 0;
-    return wcCtx->decoder_worker;
-}
-}
+//EMSCRIPTEN_KEEPALIVE emscripten::EM_VAL getDecoderWorker(vlc_video_context* vctx)
+//{
+//    auto wcCtx = static_cast<webcodec_context*>(
+//                vlc_video_context_GetPrivate(vctx, VLC_VIDEO_CONTEXT_WEBCODEC));
+//    return wcCtx->frame_pool_worker.as_handle();
+//}
 
 EM_JS(void, setupMessagePort, (vlc_video_context* vctx), {
     function onDecoderMessage(msg) {
@@ -119,14 +114,11 @@ EM_JS(void, setupMessagePort, (vlc_video_context* vctx), {
     };
     Module.msgChannel = new MessageChannel();
     Module.msgChannel.port1.onmessage = onDecoderMessage;
-    let workerId = _getDecoderWorker(vctx);
-    if (workerId == 0)
-        return;
     self.postMessage({
-        customCmd: 'transferMessagePort',
-        targetThread: workerId,
-        transferList: [Module.msgChannel.port2],
+        customCmd: 'connect',
+        port: Module.msgChannel.port2,
     }, [Module.msgChannel.port2]);
+    console.error("interop set up");
 });
 
 EM_JS(void, initGlConvWorker, (int maxPictures), {
@@ -203,6 +195,55 @@ Open(vlc_object_t *obj)
     };
     interop->ops = &ops;
     initGlConvWorker(WEBCODEC_MAX_PICTURES);
+
+    MAIN_THREAD_EM_ASM({
+        const WEBCODEC_MAX_PICTURES = 32;
+        const thread_id = $0;
+        let w = Module.PThread.pthreads[thread_id];
+
+        const connect = msg => {
+            const port = msg.port;
+            port.onmessage = e => {
+                if (e.data.customCmd !== 'sendFrame')
+                    return;
+
+                const picIndex = e.data.pictureIdx;
+                console.assert(picIndex >= 0 && picIndex < WEBCODEC_MAX_PICTURES);
+                const frame = Module.framePool[picIndex];
+                if (frame === undefined) {
+                    /* We may receive a late message after a flush, in which case
+                     * we still need to reply to the interop, but we don't have
+                     * anything to provide to it
+                     */
+                    port.postMessage({
+                        customCmd: 'displayFrame',
+                        frame: undefined,
+                        pictureId: picIndex
+                    });
+                    return;
+                }
+
+                port.postMessage({
+                    customCmd: 'displayFrame',
+                    frame: frame,
+                    pictureId: picIndex,
+                }, [frame.clone()]);
+
+            };
+        };
+
+        w.addEventListener('message', e => {
+            const LISTENERS = {
+                'connect': connect,
+            };
+
+            console.error("interop: ", e.data.customCmd);
+            const listener = LISTENERS[e.data.customCmd];
+            if (listener !== undefined)
+                listener(e.data);
+        });
+    }, pthread_self());
+
     setupMessagePort(interop->vctx);
 
     interop->tex_target = GL_TEXTURE_2D;

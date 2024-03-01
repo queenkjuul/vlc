@@ -208,65 +208,6 @@ static emval getDecoderConfig( decoder_t* dec, bool includeExtraData )
 }
 
 EM_JS(emscripten::EM_VAL, initDecoderJS, (void* decoder, emscripten::EM_VAL decCfgHandle), {
-    function onInteropMessage(msg) {
-        let data = msg['data'];
-        console.error("on interop");
-        if (data['customCmd'] == 'sendFrame') {
-            let picIdx = data['pictureIdx'];
-            let frame = Module.framesReady[picIdx];
-            Module.framesReady[picIdx] = undefined;
-            console.error("sendFrame");
-            console.error(picIdx);
-            console.error(frame);
-            if (!frame) {
-                /* We may receive a late message after a flush, in which case
-                 * we still need to reply to the interop, but we don't have
-                 * anything to provide to it
-                 */
-                Module.voutPort.postMessage({
-                    customCmd: 'displayFrame',
-                    frame: undefined,
-                    pictureId: picIdx
-                });
-                return;
-            }
-            Module.voutPort.postMessage({
-                customCmd: 'displayFrame',
-                frame: frame,
-                pictureId: picIdx,
-              }, [frame]);
-        }
-    }
-
-    async function getVoutMessagePort() {
-        let p = new Promise((resolve, reject) => {
-            self.addEventListener('message', function(e) {
-                let msg = e['data'];
-                if (msg.customCmd == 'transferMessagePort') {
-                    let port = msg['transferList'][0];
-                    if (!port)
-                        reject();
-                    Module.voutPort = port;
-                    Module.voutPort.onmessage = onInteropMessage;
-                    resolve();
-                }
-                else if (msg.customCmd == 'releasePicture')
-                {
-                    console.error("releasePicture");
-                    if (Module.framesReady[msg.idx])
-                    {
-                        Module.framesReady[msg.idx].close();
-                        Module.framesReady[msg.idx] = undefined;
-                    }
-                    let cb = Module.onPictureReleased.shift();
-                    if(cb)
-                        cb();
-                }
-            });
-        });
-        await p;
-    }
-
     async function onDecoderWorkerMessage(msg) {
         const data = msg['data'];
         if (data['customCmd'] == 'decode') {
@@ -290,20 +231,23 @@ EM_JS(emscripten::EM_VAL, initDecoderJS, (void* decoder, emscripten::EM_VAL decC
     }
 
     async function getPictureAsync(dec) {
-        let pic = _getPictureFromPool(dec);
-        if (pic)
-            return pic;
+        console.error("getPictureAsync");
+        let pic = _waitPictureFromPool(dec);
+        console.error("getPictureAsync done");
+        //if (pic)
+        //    return pic;
+        //console.error("Pool is full");
 
-        let p = new Promise((resolve) => {
-            Module.onPictureReleased.push(() => {
-                console.error("onPictureReleased");
-                resolve(_waitPictureFromPool(dec));
-            });
-        });
+        //let p = new Promise((resolve) => {
+        //    Module.onPictureReleased.push(() => {
+        //        console.error("onPictureReleased");
+        //        resolve(_waitPictureFromPool(dec));
+        //    });
+        //});
 
-        console.error("queue size: " + Module.onPictureReleased.length);
-        pic = await p;
-        console.error("got picture");
+        //console.error("queue size: " + Module.onPictureReleased.length);
+        //pic = await p;
+        //console.error("got picture");
         return pic;
     }
 
@@ -341,20 +285,15 @@ EM_JS(emscripten::EM_VAL, initDecoderJS, (void* decoder, emscripten::EM_VAL decC
                 frame.close();
                 return;
             }
-            if (Module.voutPort === undefined)
-                await getVoutMessagePort();
             let p = await getPictureAsync(Module.webCodecCtx);
             let picIdx = _queuePicture(Module.webCodecCtx, p, frame.timestamp);
-            if ( Module.framesReady[picIdx] ) {
-                /*
-                 *  If we end up overriding a frame, it means it was dropped
-                 *  by the vout before the interop asked for it, so we can close
-                 *  it safely.
-                 */
-                console.log('Discarding dropped frame ', picIdx);
-                Module.framesReady[picIdx].close();
-            }
-            Module.framesReady[picIdx] = frame;
+            console.error("Picture queued");
+            self.postMessage({
+                customCmd: 'newFrame',
+                picIdx: picIdx,
+                frame: frame,
+            }, [frame]);
+
         },
         'error': function(err) {
             console.log('Error while decoding: ');
@@ -380,6 +319,41 @@ static void mainloop_tick()
 
 static void* WebcodecDecodeWorker( void* arg )
 {
+    MAIN_THREAD_EM_ASM({
+        const WEBCODEC_MAX_PICTURES = 32;
+        Module.framePool = new Array(WEBCODEC_MAX_PICTURES);
+
+        const thread_id = $0;
+        let w = Module.PThread.pthreads[thread_id];
+
+        const newFrame = msg => {
+            const picIndex = msg.picIdx;
+            console.assert(picIndex >= 0 && picIndex < WEBCODEC_MAX_PICTURES);
+
+            if (Module.framePool[picIndex] !== undefined) {
+                /*
+                 *  If we end up overriding a frame, it means it was dropped
+                 *  by the vout before the interop asked for it, so we can close
+                 *  it safely.
+                 */
+                console.warn('Discarding dropped frame ', picIndex);
+                Module.framePool[picIndex].close();
+            }
+
+            Module.framePool[picIndex] = msg.frame;
+        };
+
+        w.addEventListener('message', e => {
+            const LISTENERS = {
+                'newFrame': newFrame,
+            };
+
+            console.error("webcodec: ", e.data.customCmd);
+            const listener = LISTENERS[e.data.customCmd];
+            if (listener !== undefined)
+                listener(e.data);
+        });
+    }, pthread_self());
     /*
      * We need to be able to yield back to the browser main loop after we
      * queue some blocks for decoding, otherwise the callback will never be

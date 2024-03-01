@@ -39,14 +39,15 @@ static void PictureContextDestroy( picture_context_t* picCtx )
     auto ctx = static_cast<webcodec_context*>(
         vlc_video_context_GetPrivate( picCtx->vctx, VLC_VIDEO_CONTEXT_WEBCODEC ) );
     MAIN_THREAD_EM_ASM({
-        let w = Module.PThread.pthreads[$0];
         console.error("destroying picture");
-        console.error($0);
-        w.postMessage({
-            customCmd: 'releasePicture',
-            idx: $1,
-        });
-    }, ctx->decoder_worker, PictureContextPrivate(picCtx)->pictureIdx );
+        const WEBCODEC_MAX_PICTURES = 32;
+        const picIndex = $0;
+        console.assert(picIndex >= 0 && picIndex < WEBCODEC_MAX_PICTURES);
+        console.assert(Module.framePool[picIndex] !== undefined);
+
+        Module.framePool[picIndex].close();
+        Module.framePool[picIndex] = undefined;
+    },  PictureContextPrivate(picCtx)->pictureIdx );
 }
 
 static picture_context_t* webcodec_CreatePictureContext( vlc_video_context* vctx, uint32_t picIdx )
