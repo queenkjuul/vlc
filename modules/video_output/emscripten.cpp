@@ -200,26 +200,6 @@ static int Open (vlc_gl_t *gl, unsigned width, unsigned height, const struct vlc
                 let bmp = data['bitmap'];
                 let ctx = document.getElementById(canvasName).getContext('bitmaprenderer');
                 ctx.transferFromImageBitmap(bmp);
-                //bmp.close();
-                //let oldPicture = ctx.currentPicture;
-                //ctx.currentPicture = bmp;
-
-                //if (oldPicture !== undefined)
-                //{
-                //  console.dir(this);
-                //  this.postMessage({
-                //      customCmd: 'releaseFrame',
-                //      bitmap: oldPicture,
-                //  }, [oldPicture]);
-                //}
-           }
-           else if (data.customCmd == 'swap')
-           {
-                let bmp = Module.offscreenCanvas.transferToImageBitmap();
-                let ctx = document.getElementById(canvasName).getContext('2d');
-                ctx.drawImage(bmp, 0, 0);
-                bmp.close();
-                console.error("swapped");
            }
         }
         let w = Module.PThread.pthreads[$0];

@@ -42,12 +42,13 @@ static void PictureContextDestroy( picture_context_t* picCtx )
         console.error("destroying picture");
         const WEBCODEC_MAX_PICTURES = 32;
         const picIndex = $0;
+        const poolIndex = $1;
+        const frame = Module.framePools[poolIndex][picIndex];
         console.assert(picIndex >= 0 && picIndex < WEBCODEC_MAX_PICTURES);
-        console.assert(Module.framePool[picIndex] !== undefined);
-
-        Module.framePool[picIndex].close();
-        Module.framePool[picIndex] = undefined;
-    },  PictureContextPrivate(picCtx)->pictureIdx );
+        if (frame !== undefined)
+            frame.close();
+        Module.framePools[poolIndex][picIndex] = undefined;
+    },  PictureContextPrivate(picCtx)->pictureIdx, ctx->decoder_worker );
 }
 
 static picture_context_t* webcodec_CreatePictureContext( vlc_video_context* vctx, uint32_t picIdx )

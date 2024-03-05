@@ -61,16 +61,14 @@ tc_emscripten_op_allocate_textures(const struct vlc_gl_interop *interop, GLuint 
     return VLC_SUCCESS;
 }
 
-EM_ASYNC_JS(void, bindVideoFrame, (int pictureIdx), {
+EM_ASYNC_JS(void, bindVideoFrame, (int pictureIdx, int decoderId), {
     console.error("Bind video frame");
-    let frame = await Module.awaitFrame(pictureIdx);
-    console.error("1");
+    let frame = await Module.awaitFrame(pictureIdx, decoderId);
     if (!frame)
         return;
-    console.error("2");
 
     let glCtx = Module.glCtx;
-    glCtx.texImage2D(glCtx.TEXTURE_2D, 0, glCtx.RGBA, frame.codedWidth, frame.codedHeight, 0,
+    glCtx.texImage2D(glCtx.TEXTURE_2D, 0, glCtx.RGBA, frame.displayWidth, frame.displayHeight, 0,
                 glCtx.RGBA, glCtx.UNSIGNED_BYTE, frame);
 })
 
@@ -85,7 +83,10 @@ tc_emscripten_op_update(const struct vlc_gl_interop *interop, GLuint *textures,
     sys->gl.BindTexture(interop->tex_target, textures[0]);
 
     auto picCtx = PictureContextPrivate(pic->context);
-    bindVideoFrame(picCtx->pictureIdx);
+    auto vctx = static_cast<webcodec_context*>(
+        vlc_video_context_GetPrivate( pic->context->vctx, VLC_VIDEO_CONTEXT_WEBCODEC ) );
+
+    bindVideoFrame(picCtx->pictureIdx, vctx->decoder_worker);
 
     if (sys->lastPicture)
         picture_Release(sys->lastPicture);
@@ -108,7 +109,6 @@ EM_JS(void, setupMessagePort, (vlc_video_context* vctx), {
             let pictureIdx = data.pictureId;
             let frame = data['frame'];
             console.error("resolver");
-            console.error(Module.glConv.frameResolver);
             Module.glConv.frameResolver( frame );
         }
     };
@@ -128,19 +128,18 @@ EM_JS(void, initGlConvWorker, (int maxPictures), {
         frame: undefined
     };
 
-    Module.awaitFrame = async function(pictureIdx) {
+    Module.awaitFrame = async function(pictureIdx, decoderId) {
         if (Module.glConv.lastFrame.pictureIdx == pictureIdx) {
             return Module.glConv.lastFrame.frame;
         }
         let p = new Promise((resolve, reject) => {
             Module.glConv.frameResolver = resolve;
             console.error("interop send");
-            console.error(resolve);
             Module.msgChannel.port1.postMessage({
                 'customCmd': 'sendFrame',
                 'pictureIdx': pictureIdx,
+                'decoderId': decoderId
             });
-            console.error("wtf");
 
         });
         let frame = await p;
@@ -207,9 +206,10 @@ Open(vlc_object_t *obj)
                 if (e.data.customCmd !== 'sendFrame')
                     return;
 
+                const decoderId = e.data.decoderId;
                 const picIndex = e.data.pictureIdx;
                 console.assert(picIndex >= 0 && picIndex < WEBCODEC_MAX_PICTURES);
-                const frame = Module.framePool[picIndex];
+                const frame = Module.framePools[decoderId][picIndex];
                 if (frame === undefined) {
                     /* We may receive a late message after a flush, in which case
                      * we still need to reply to the interop, but we don't have

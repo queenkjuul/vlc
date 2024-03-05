@@ -146,6 +146,14 @@ EM_ASYNC_JS(bool, probeConfig, (emscripten::EM_VAL cfg), {
     return res['supported'];
 });
 
+static bool
+hxxx_extra_isannexb(const void *p_extra, size_t i_extra)
+{
+    static const uint8_t  annexb_startcode4[] = { 0x00, 0x00, 0x00, 0x01 };
+    return i_extra == 0
+        || (i_extra > 4 && memcmp(p_extra, annexb_startcode4, 4) == 0);
+}
+
 static emval getDecoderConfig( decoder_t* dec, bool includeExtraData )
 {
     auto decoderConfig = emval::object();
@@ -161,7 +169,7 @@ static emval getDecoderConfig( decoder_t* dec, bool includeExtraData )
     {
         char codec[12];
 
-        if (dec->fmt_in->i_extra > 0)
+        if (dec->fmt_in->i_extra > 0 && !hxxx_extra_isannexb(dec->fmt_in->p_extra, dec->fmt_in->i_extra))
             snprintf(codec, sizeof(codec), "avc1.%.2X%.2X%.2X",
                      dec->fmt_in->i_profile, 0, dec->fmt_in->i_level);
         else // TODO
@@ -184,10 +192,17 @@ static emval getDecoderConfig( decoder_t* dec, bool includeExtraData )
     default:
         return emval::undefined();
     }
-    //decoderConfig.set( "codedWidth", dec->fmt_in->video.i_width );
-    //decoderConfig.set( "codedHeight", dec->fmt_in->video.i_height );
-    //decoderConfig.set( "displayAspectWidth", dec->fmt_in->video.i_visible_width );
-    //decoderConfig.set( "displayAspectHeight", dec->fmt_in->video.i_visible_height );
+    printf("%dx%d %dx%d\n", dec->fmt_in->video.i_width,
+           dec->fmt_in->video.i_height, dec->fmt_in->video.i_visible_width,
+           dec->fmt_in->video.i_visible_height);
+    if (dec->fmt_in->video.i_width)
+        decoderConfig.set( "codedWidth", dec->fmt_in->video.i_width );
+    if (dec->fmt_in->video.i_height)
+        decoderConfig.set( "codedHeight", dec->fmt_in->video.i_height );
+    if (dec->fmt_in->video.i_visible_width)
+        decoderConfig.set( "displayAspectWidth", dec->fmt_in->video.i_visible_width );
+    if (dec->fmt_in->video.i_visible_height)
+        decoderConfig.set( "displayAspectHeight", dec->fmt_in->video.i_visible_height );
     //decoderConfig.set( "codedWidth", 1920 );
     //decoderConfig.set( "codedHeight", 1080 );
     //decoderConfig.set( "displayAspectWidth", 1920 );
@@ -195,14 +210,12 @@ static emval getDecoderConfig( decoder_t* dec, bool includeExtraData )
     decoderConfig.set( "optimizeForLatency", false );
     if ( includeExtraData )
     {
-        if ( dec->fmt_in->i_extra > 0 )
-        {
-            decoderConfig.set( "description",
-                               emscripten::typed_memory_view(
-                                    dec->fmt_in->i_extra,
-                                   static_cast<uint8_t*>( dec->fmt_in->p_extra ) )
-                               );
-        }
+      if (dec->fmt_in->i_extra > 0 && !hxxx_extra_isannexb(dec->fmt_in->p_extra, dec->fmt_in->i_extra)) {
+        decoderConfig.set("description",
+                          emscripten::typed_memory_view(
+                              dec->fmt_in->i_extra,
+                              static_cast<uint8_t *>(dec->fmt_in->p_extra)));
+      }
     }
     return decoderConfig;
 }
@@ -228,27 +241,6 @@ EM_JS(emscripten::EM_VAL, initDecoderJS, (void* decoder, emscripten::EM_VAL decC
         } else if ( data['customCmd'] == 'close' ) {
             Module.decoder.close();
         }
-    }
-
-    async function getPictureAsync(dec) {
-        console.error("getPictureAsync");
-        let pic = _waitPictureFromPool(dec);
-        console.error("getPictureAsync done");
-        //if (pic)
-        //    return pic;
-        //console.error("Pool is full");
-
-        //let p = new Promise((resolve) => {
-        //    Module.onPictureReleased.push(() => {
-        //        console.error("onPictureReleased");
-        //        resolve(_waitPictureFromPool(dec));
-        //    });
-        //});
-
-        //console.error("queue size: " + Module.onPictureReleased.length);
-        //pic = await p;
-        //console.error("got picture");
-        return pic;
     }
 
     self.addEventListener('message', (e) => {
@@ -285,9 +277,8 @@ EM_JS(emscripten::EM_VAL, initDecoderJS, (void* decoder, emscripten::EM_VAL decC
                 frame.close();
                 return;
             }
-            let p = await getPictureAsync(Module.webCodecCtx);
+            let p = _waitPictureFromPool(Module.webCodecCtx);
             let picIdx = _queuePicture(Module.webCodecCtx, p, frame.timestamp);
-            console.error("Picture queued");
             self.postMessage({
                 customCmd: 'newFrame',
                 picIdx: picIdx,
@@ -321,26 +312,30 @@ static void* WebcodecDecodeWorker( void* arg )
 {
     MAIN_THREAD_EM_ASM({
         const WEBCODEC_MAX_PICTURES = 32;
-        Module.framePool = new Array(WEBCODEC_MAX_PICTURES);
+        if (Module.framePools === undefined)
+            Module.framePools = {};
 
         const thread_id = $0;
+        Module.framePools[thread_id] = new Array(WEBCODEC_MAX_PICTURES);
+        let framePool = Module.framePools[thread_id];
+
         let w = Module.PThread.pthreads[thread_id];
 
         const newFrame = msg => {
             const picIndex = msg.picIdx;
             console.assert(picIndex >= 0 && picIndex < WEBCODEC_MAX_PICTURES);
 
-            if (Module.framePool[picIndex] !== undefined) {
+            if (framePool[picIndex] !== undefined) {
                 /*
                  *  If we end up overriding a frame, it means it was dropped
                  *  by the vout before the interop asked for it, so we can close
                  *  it safely.
                  */
                 console.warn('Discarding dropped frame ', picIndex);
-                Module.framePool[picIndex].close();
+                framePool[picIndex].close();
             }
 
-            Module.framePool[picIndex] = msg.frame;
+            framePool[picIndex] = msg.frame;
         };
 
         w.addEventListener('message', e => {
@@ -348,7 +343,6 @@ static void* WebcodecDecodeWorker( void* arg )
                 'newFrame': newFrame,
             };
 
-            console.error("webcodec: ", e.data.customCmd);
             const listener = LISTENERS[e.data.customCmd];
             if (listener !== undefined)
                 listener(e.data);
