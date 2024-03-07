@@ -41,6 +41,7 @@
 
 #include "emscripten/common.h"
 
+#undef typeof
 #include <emscripten.h>
 #include <emscripten/html5.h>
 #undef typeof // FIXME Remove once val::typeof is finally removed
