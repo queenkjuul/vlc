@@ -1,6 +1,6 @@
 # GLSLANG
 GLSLANG_HASH := ef1f899b5d64a9628023f1bb129198674cba2b97
-GLSLANG_BRANCH := master
+GLSLANG_BRANCH := main
 GLSLANG_GITURL := https://github.com/KhronosGroup/glslang.git
 GLSLANG_BASENAME := $(subst .,_,$(subst \,_,$(subst /,_,$(GLSLANG_HASH))))
 
