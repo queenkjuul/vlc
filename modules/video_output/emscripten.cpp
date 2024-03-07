@@ -40,6 +40,7 @@
 
 #include "emscripten/common.h"
 
+#undef typeof
 #include <emscripten.h>
 #include <emscripten/html5.h>
 #include <emscripten/val.h>
@@ -49,7 +50,7 @@
 
 static const struct vout_window_operations ops = {
     //TODO: Implement canvas operations
-    //vout_window_ReportSize() should be called from here
+    //vlc_window_ReportSize() should be called from here
 };
 
 //MAIN_THREAD_
@@ -69,14 +70,14 @@ static int OpenWindow(vout_window_t *wnd)
 {
     wnd->type = VOUT_WINDOW_TYPE_EMSCRIPTEN_WEBGL;
     wnd->ops = &ops;
-    wnd->handle.canvas = "canvas";
+    wnd->handle.canvas = nullptr;
 
     //emscripten::val size = GetCanvasSize();
     //std::vector<int> vec_size = emscripten::vecFromJSArray(size);
     //if (vec_size.size() != 2)
     //    return VLC_EGENERIC;
 
-    //vout_window_ReportSize(wnd, vec_size[0], vec_size[1]);
+    //vlc_window_ReportSize(wnd, vec_size[0], vec_size[1]);
     vout_window_ReportSize(wnd, 1280, 720);
     return VLC_SUCCESS;
 }
@@ -103,22 +104,18 @@ static void ReleaseCurrent(vlc_gl_t *gl)
     emscripten_webgl_make_context_current(0);
 }
 
-static void Swap(vlc_gl_t *gl)
-{
-    /**
-     * There is no way to commit/swapbuffer from an offscreen canvas, so instead
-     * we render the offscreen canvas onto a bitmap and let the actual canvas
-     * display that bitmap from the main thread.
-     */
-    VLC_UNUSED(gl);
-    EM_ASM({
-        let bitmap = Module.offscreenCanvas.transferToImageBitmap();
-        Module.voutMsgPort.postMessage({
-            customCmd: 'commitFrame',
-            bitmap: bitmap,
-        }, [bitmap]);
+EM_ASYNC_JS(void, Swap, (vlc_gl_t *gl), {
+    let bitmap = Module.offscreenCanvas.transferToImageBitmap();
+    await new Promise((resolve) => {
+        setTimeout(() => {
+            Module.voutMsgPort.postMessage({
+                customCmd: 'commitFrame',
+                bitmap: bitmap,
+            }, [bitmap]);
+            resolve();
+        });
     });
-}
+})
 
 static void Resize(vlc_gl_t *gl, unsigned w, unsigned h)
 {
@@ -133,9 +130,16 @@ EM_ASYNC_JS(void, getVoutMessagePort, (), {
             let msg = e.data;
             if (msg.customCmd == 'getVoutMessagePortResult') {
                 Module.voutMsgPort = msg['msgPort'];
+
+                Module.voutMsgPort.onmessage = function(vout_msg) {
+                    if (vout_msg.data['customCmd'] == 'releaseFrame')
+                    {
+                        vout_msg.data['bitmap'].close();
+                    }
+                };
                 resolve();
                 self.removeEventListener('message', listener);
-            };
+            }
         };
         self.addEventListener('message', listener);
         self.postMessage({
@@ -162,9 +166,21 @@ static void Close (vlc_gl_t *gl)
 
 static int Open (vlc_gl_t *gl, unsigned width, unsigned height)
 {
-    VLC_UNUSED(width), VLC_UNUSED(height);
+    (void)width, (void)height;
+
+    EmscriptenWebGLContextAttributes attr;
+
+    printf("OPLA\n");
+    emscripten_webgl_init_context_attributes(&attr);
+    attr.majorVersion=2;
+    attr.minorVersion=0;
+    attr.explicitSwapControl = 1;
+    printf("adios\n");
 
     vout_window_t *wnd = gl->surface;
+
+    char *canvas = wnd->handle.canvas != nullptr ? strdup(wnd->handle.canvas)
+        : var_InheritString(gl, "emscripten-canvas-id");
 
     if (wnd->type != VOUT_WINDOW_TYPE_EMSCRIPTEN_WEBGL)
         goto error;
@@ -175,32 +191,31 @@ static int Open (vlc_gl_t *gl, unsigned width, unsigned height)
     if (!sys)
         return VLC_ENOMEM;
 
+
     MAIN_THREAD_EM_ASM({
-        if (Module.canvasCtx === undefined) {
-            let canvasName = UTF8ToString($1);
-            Module.canvasCtx = document.getElementById(canvasName).getContext('2d');
-        }
+        let canvasName = UTF8ToString($1);
+        //Module.canvasCtx = document.getElementById(canvasName).getContext('2d');
         function onVoutMessage(msg) {
             let data = msg['data'];
             if (data.customCmd == 'commitFrame') {
                 let bmp = data['bitmap'];
-                Module.canvasCtx.drawImage(bmp, 0, 0);
-                bmp.close();
-            }
+                let ctx = document.getElementById(canvasName).getContext('bitmaprenderer');
+                ctx.transferFromImageBitmap(bmp);
+           }
         }
         let w = Module.PThread.pthreads[$0];
         w.addEventListener('message', function (e) {
             let msg = e['data'];
             if (msg.customCmd == 'getVoutMessagePort') {
                 let msgChannel = new MessageChannel();
-                msgChannel.port1.onmessage = onVoutMessage;
+                msgChannel.port1.onmessage = onVoutMessage.bind(msgChannel.port1);
                 w.postMessage({
                     customCmd: 'getVoutMessagePortResult',
                     msgPort: msgChannel.port2,
                 }, [msgChannel.port2]);
             }
         });
-    }, pthread_self(), wnd->handle.canvas ? wnd->handle.canvas : "canvas");
+    }, pthread_self(), canvas ? canvas : "canvas");
 
     getVoutMessagePort();
     sys->context = createGlContext(width, height);
@@ -225,9 +240,11 @@ static int Open (vlc_gl_t *gl, unsigned width, unsigned height)
     gl->swap = Swap;
     gl->get_proc_address = GetProcAddress;
     gl->destroy = Close;
+    free(canvas);
     return VLC_SUCCESS;
 
 error:
+    free(canvas);
     Close(gl);
     return VLC_EGENERIC;
 }
@@ -241,6 +258,7 @@ vlc_module_begin()
     set_subcategory(SUBCAT_VIDEO_VOUT)
     set_capability("vout window", 10)
     set_callbacks(OpenWindow, nullptr)
+    add_string("emscripten-canvas-id", "canvas", "", "")
 
     add_submodule ()
     set_shortname("Emscripten GL")

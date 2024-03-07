@@ -33,6 +33,7 @@
 #include "interop.h"
 #include "gl_common.h"
 #include <cassert>
+#undef typeof
 #include "../emscripten/common.h"
 
 #include <emscripten.h>
@@ -46,25 +47,29 @@ struct EmscriptenInterop
     {
         PFNGLBINDTEXTUREPROC BindTexture;
     } gl;
+
+    picture_t *lastPicture;
 };
 
 static int
 tc_emscripten_op_allocate_textures(const struct vlc_gl_interop *interop, GLuint *textures,
                           const GLsizei *tex_width, const GLsizei *tex_height)
 {
-    (void) tex_width; (void) tex_height;
+    (void)interop; (void) tex_width; (void) tex_height;
     assert(textures[0] != 0);
 
     return VLC_SUCCESS;
 }
 
-EM_ASYNC_JS(void, bindVideoFrame, (int pictureIdx), {
-    let frame = await Module.awaitFrame(pictureIdx);
+EM_ASYNC_JS(void, bindVideoFrame, (int pictureIdx, int decoderId), {
+    let frame = await Module.awaitFrame(pictureIdx, decoderId);
     if (!frame)
+    {
         return;
+    }
 
     let glCtx = Module.glCtx;
-    glCtx.texImage2D(glCtx.TEXTURE_2D, 0, glCtx.RGBA, frame.codedWidth, frame.codedHeight, 0,
+    glCtx.texImage2D(glCtx.TEXTURE_2D, 0, glCtx.RGBA, frame.displayWidth, frame.displayHeight, 0,
                 glCtx.RGBA, glCtx.UNSIGNED_BYTE, frame);
 })
 
@@ -73,27 +78,30 @@ tc_emscripten_op_update(const struct vlc_gl_interop *interop, GLuint *textures,
                const GLsizei *tex_width, const GLsizei *tex_height,
                picture_t *pic, const size_t *plane_offset)
 {
+    (void)tex_width; (void)tex_height; (void)plane_offset;
     auto sys = static_cast<EmscriptenInterop *>( interop->priv );
 
     sys->gl.BindTexture(interop->tex_target, textures[0]);
 
     auto picCtx = PictureContextPrivate(pic->context);
-    bindVideoFrame(picCtx->pictureIdx);
+    auto vctx = static_cast<webcodec_context*>(
+        vlc_video_context_GetPrivate( pic->context->vctx, VLC_VIDEO_CONTEXT_WEBCODEC ) );
+
+    bindVideoFrame(picCtx->pictureIdx, vctx->decoder_worker);
+
+    if (sys->lastPicture)
+        picture_Release(sys->lastPicture);
+    sys->lastPicture = picture_Hold(pic);
 
     return VLC_SUCCESS;
 }
 
-extern "C"
-{
-EMSCRIPTEN_KEEPALIVE int getDecoderWorker(vlc_video_context* vctx)
-{
-    auto wcCtx = static_cast<webcodec_context*>(
-                vlc_video_context_GetPrivate(vctx, VLC_VIDEO_CONTEXT_WEBCODEC));
-    if (!vctx)
-        return 0;
-    return wcCtx->decoder_worker;
-}
-}
+//EMSCRIPTEN_KEEPALIVE emscripten::EM_VAL getDecoderWorker(vlc_video_context* vctx)
+//{
+//    auto wcCtx = static_cast<webcodec_context*>(
+//                vlc_video_context_GetPrivate(vctx, VLC_VIDEO_CONTEXT_WEBCODEC));
+//    return wcCtx->frame_pool_worker.as_handle();
+//}
 
 EM_JS(void, setupMessagePort, (vlc_video_context* vctx), {
     function onDecoderMessage(msg) {
@@ -106,13 +114,9 @@ EM_JS(void, setupMessagePort, (vlc_video_context* vctx), {
     };
     Module.msgChannel = new MessageChannel();
     Module.msgChannel.port1.onmessage = onDecoderMessage;
-    let workerId = _getDecoderWorker(vctx);
-    if (workerId == 0)
-        return;
     self.postMessage({
-        customCmd: 'transferMessagePort',
-        targetThread: workerId,
-        transferList: [Module.msgChannel.port2],
+        customCmd: 'connect',
+        port: Module.msgChannel.port2,
     }, [Module.msgChannel.port2]);
 });
 
@@ -123,7 +127,7 @@ EM_JS(void, initGlConvWorker, (int maxPictures), {
         frame: undefined
     };
 
-    Module.awaitFrame = async function(pictureIdx) {
+    Module.awaitFrame = async function(pictureIdx, decoderId) {
         if (Module.glConv.lastFrame.pictureIdx == pictureIdx) {
             return Module.glConv.lastFrame.frame;
         }
@@ -132,6 +136,7 @@ EM_JS(void, initGlConvWorker, (int maxPictures), {
             Module.msgChannel.port1.postMessage({
                 'customCmd': 'sendFrame',
                 'pictureIdx': pictureIdx,
+                'decoderId': decoderId
             });
 
         });
@@ -151,8 +156,12 @@ EM_JS(void, closeMessagePort, (void), {
 });
 
 static void
-Close(struct vlc_gl_interop *)
+Close(struct vlc_gl_interop *interop)
 {
+    auto *sys = static_cast<EmscriptenInterop *>( interop->priv );
+
+    if (sys->lastPicture != NULL)
+        picture_Release(sys->lastPicture);
     closeMessagePort();
 }
 
@@ -173,6 +182,8 @@ Open(vlc_object_t *obj)
     if (sys->gl.BindTexture == NULL)
         return VLC_EGENERIC;
 
+    sys->lastPicture = NULL;
+
     static const struct vlc_gl_interop_ops ops = {
         .allocate_textures = tc_emscripten_op_allocate_textures,
         .update_textures = tc_emscripten_op_update,
@@ -180,6 +191,55 @@ Open(vlc_object_t *obj)
     };
     interop->ops = &ops;
     initGlConvWorker(WEBCODEC_MAX_PICTURES);
+
+    MAIN_THREAD_EM_ASM({
+        const WEBCODEC_MAX_PICTURES = 32;
+        const thread_id = $0;
+        let w = Module.PThread.pthreads[thread_id];
+
+        const connect = msg => {
+            const port = msg.port;
+            port.onmessage = e => {
+                if (e.data.customCmd !== 'sendFrame')
+                    return;
+
+                const decoderId = e.data.decoderId;
+                const picIndex = e.data.pictureIdx;
+                console.assert(picIndex >= 0 && picIndex < WEBCODEC_MAX_PICTURES);
+                const frame = Module.framePools[decoderId][picIndex];
+                if (frame === undefined) {
+                    /* We may receive a late message after a flush, in which case
+                     * we still need to reply to the interop, but we don't have
+                     * anything to provide to it
+                     */
+                    port.postMessage({
+                        customCmd: 'displayFrame',
+                        frame: undefined,
+                        pictureId: picIndex
+                    });
+                    return;
+                }
+
+                port.postMessage({
+                    customCmd: 'displayFrame',
+                    frame: frame,
+                    pictureId: picIndex,
+                }, [frame.clone()]);
+
+            };
+        };
+
+        w.addEventListener('message', e => {
+            const LISTENERS = {
+                'connect': connect,
+            };
+
+            const listener = LISTENERS[e.data.customCmd];
+            if (listener !== undefined)
+                listener(e.data);
+        });
+    }, pthread_self());
+
     setupMessagePort(interop->vctx);
 
     interop->tex_target = GL_TEXTURE_2D;
@@ -193,9 +253,6 @@ Open(vlc_object_t *obj)
             /*.format = */GL_RGBA,
             /*.type = */GL_UNSIGNED_BYTE,
     };
-    interop->fmt_out.i_rmask = 0xFF0000;
-    interop->fmt_out.i_gmask = 0x00FF00;
-    interop->fmt_out.i_bmask = 0x0000FF;
     interop->priv = sys;
 
     interop->fmt_out.orientation = ORIENT_VFLIPPED;
@@ -283,5 +340,5 @@ vlc_module_begin ()
 
     add_submodule()
         set_subcategory(SUBCAT_VIDEO_VFILTER)
-        set_callback_video_converter(OpenConverter, 10)
+        set_callback_video_converter(OpenConverter, 1000)
 vlc_module_end ()

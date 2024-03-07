@@ -1,4 +1,4 @@
-/*****************************************************************************
+/*****************************************************************************inputdec
  * decoder.c: Functions for the management of decoders
  *****************************************************************************
  * Copyright (C) 1999-2019 VLC authors, VideoLAN and Videolabs SAS
@@ -1072,6 +1072,7 @@ static int ModuleThread_PlayVideo( vlc_input_decoder_t *p_owner, picture_t *p_pi
     if( prerolled && p_owner->i_preroll_end > p_picture->date )
     {
         vlc_mutex_unlock( &p_owner->lock );
+        printf("oboi\n");
         picture_Release( p_picture );
         return VLC_SUCCESS;
     }

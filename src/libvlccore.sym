@@ -331,6 +331,7 @@ picture_pool_New
 picture_pool_NewFromFormat
 picture_pool_Reserve
 picture_pool_Wait
+picture_pool_Cancel
 picture_Reset
 picture_Setup
 plane_CopyPixels
