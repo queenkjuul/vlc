@@ -40,6 +40,7 @@
 
 #include "emscripten/common.h"
 
+#undef typeof
 #include <emscripten.h>
 #include <emscripten/html5.h>
 #include <emscripten/val.h>
@@ -65,11 +66,17 @@ typedef struct emscripten_gl_sys_t
     EMSCRIPTEN_WEBGL_CONTEXT_HANDLE context;
 } emscripten_gl_sys_t;
 
+
+static const struct vlc_window_operations ops = [] {
+    struct vlc_window_operations o{};
+    return o;
+}();
+
 static int OpenWindow(vlc_window_t *wnd)
 {
     wnd->type = VLC_WINDOW_TYPE_EMSCRIPTEN_WEBGL;
     wnd->ops = &ops;
-    wnd->handle.canvas = "canvas";
+    wnd->handle.canvas = nullptr;
 
     //emscripten::val size = GetCanvasSize();
     //std::vector<int> vec_size = emscripten::vecFromJSArray(size);
@@ -77,7 +84,7 @@ static int OpenWindow(vlc_window_t *wnd)
     //    return VLC_EGENERIC;
 
     //vlc_window_ReportSize(wnd, vec_size[0], vec_size[1]);
-    vlc_window_ReportSize(wnd, 1280, 720);
+    vlc_window_ReportSize(wnd, 854, 480);
     return VLC_SUCCESS;
 }
 
@@ -103,22 +110,18 @@ static void ReleaseCurrent(vlc_gl_t *gl)
     emscripten_webgl_make_context_current(0);
 }
 
-static void Swap(vlc_gl_t *gl)
-{
-    /**
-     * There is no way to commit/swapbuffer from an offscreen canvas, so instead
-     * we render the offscreen canvas onto a bitmap and let the actual canvas
-     * display that bitmap from the main thread.
-     */
-    VLC_UNUSED(gl);
-    EM_ASM({
-        let bitmap = Module.offscreenCanvas.transferToImageBitmap();
-        Module.voutMsgPort.postMessage({
-            customCmd: 'commitFrame',
-            bitmap: bitmap,
-        }, [bitmap]);
+EM_ASYNC_JS(void, Swap, (vlc_gl_t *gl), {
+    let bitmap = Module.offscreenCanvas.transferToImageBitmap();
+    await new Promise((resolve) => {
+        setTimeout(() => {
+            Module.voutMsgPort.postMessage({
+                customCmd: 'commitFrame',
+                bitmap: bitmap,
+            }, [bitmap]);
+            resolve();
+        });
     });
-}
+})
 
 static void Resize(vlc_gl_t *gl, unsigned w, unsigned h)
 {
@@ -133,9 +136,16 @@ EM_ASYNC_JS(void, getVoutMessagePort, (), {
             let msg = e.data;
             if (msg.customCmd == 'getVoutMessagePortResult') {
                 Module.voutMsgPort = msg['msgPort'];
+
+                Module.voutMsgPort.onmessage = function(vout_msg) {
+                    if (vout_msg.data['customCmd'] == 'releaseFrame')
+                    {
+                        vout_msg.data['bitmap'].close();
+                    }
+                };
                 resolve();
                 self.removeEventListener('message', listener);
-            };
+            }
         };
         self.addEventListener('message', listener);
         self.postMessage({
@@ -183,32 +193,31 @@ static int Open (vlc_gl_t *gl, unsigned width, unsigned height, const struct vlc
     if (!sys)
         return VLC_ENOMEM;
 
+
     MAIN_THREAD_EM_ASM({
-        if (Module.canvasCtx === undefined) {
-            let canvasName = UTF8ToString($1);
-            Module.canvasCtx = document.getElementById(canvasName).getContext('2d');
-        }
+        let canvasName = UTF8ToString($1);
+        //Module.canvasCtx = document.getElementById(canvasName).getContext('2d');
         function onVoutMessage(msg) {
             let data = msg['data'];
             if (data.customCmd == 'commitFrame') {
                 let bmp = data['bitmap'];
-                Module.canvasCtx.drawImage(bmp, 0, 0);
-                bmp.close();
-            }
+                let ctx = document.getElementById(canvasName).getContext('bitmaprenderer');
+                ctx.transferFromImageBitmap(bmp);
+           }
         }
         let w = Module.PThread.pthreads[$0];
         w.addEventListener('message', function (e) {
             let msg = e['data'];
             if (msg.customCmd == 'getVoutMessagePort') {
                 let msgChannel = new MessageChannel();
-                msgChannel.port1.onmessage = onVoutMessage;
+                msgChannel.port1.onmessage = onVoutMessage.bind(msgChannel.port1);
                 w.postMessage({
                     customCmd: 'getVoutMessagePortResult',
                     msgPort: msgChannel.port2,
                 }, [msgChannel.port2]);
             }
         });
-    }, pthread_self(), wnd->handle.canvas ? wnd->handle.canvas : "canvas");
+    }, pthread_self(), canvas ? canvas : "canvas");
 
     getVoutMessagePort();
     sys->context = createGlContext(width, height);
