@@ -201,6 +201,6 @@ const void *vlc_static_modules[] = {
 
 diagnostic "vlc static modules: compiling static modules entry points"
 # compile vlc-modules.c
-emcc -pthread -c "$BUILD_PATH"/vlc-modules.c -o "$BUILD_PATH"/vlc-modules.bc
+emcc -pthread -emit-llvm -c "$BUILD_PATH"/vlc-modules.c -o "$BUILD_PATH"/vlc-modules.bc
 
 echo "VLC for wasm32-unknown-emscripten built!"
