@@ -48,11 +48,6 @@
 // eglGetProcAddress
 #include <EGL/egl.h>
 
-static const struct vout_window_operations ops = {
-    //TODO: Implement canvas operations
-    //vlc_window_ReportSize() should be called from here
-};
-
 //MAIN_THREAD_
 //EM_JS(emscripten::EM_VAL, GetCanvasSize, (), {
 //    let canvas = document.getElementById('canvas');
@@ -66,11 +61,27 @@ typedef struct emscripten_gl_sys_t
     EMSCRIPTEN_WEBGL_CONTEXT_HANDLE context;
 } emscripten_gl_sys_t;
 
+static void CloseWindow(vout_window_t *wnd)
+{
+    free(wnd->handle.canvas);
+}
+
+static const struct vout_window_operations ops = [] {
+    struct vout_window_operations o{};
+    o.destroy = CloseWindow;
+    return o;
+}();
+
 static int OpenWindow(vout_window_t *wnd)
 {
+    char *canvas = var_InheritString(wnd, "drawable-canvas");
+    assert(canvas);
+    if (canvas == nullptr)
+        return VLC_EINVAL;
+
     wnd->type = VOUT_WINDOW_TYPE_EMSCRIPTEN_WEBGL;
     wnd->ops = &ops;
-    wnd->handle.canvas = nullptr;
+    wnd->handle.canvas = canvas;
 
     //emscripten::val size = GetCanvasSize();
     //std::vector<int> vec_size = emscripten::vecFromJSArray(size);
@@ -81,6 +92,7 @@ static int OpenWindow(vout_window_t *wnd)
     vout_window_ReportSize(wnd, 1280, 720);
     return VLC_SUCCESS;
 }
+
 
 static void *GetProcAddress(vlc_gl_t *gl, const char *name)
 {
@@ -179,9 +191,6 @@ static int Open (vlc_gl_t *gl, unsigned width, unsigned height)
 
     vout_window_t *wnd = gl->surface;
 
-    char *canvas = wnd->handle.canvas != nullptr ? strdup(wnd->handle.canvas)
-        : var_InheritString(gl, "emscripten-canvas-id");
-
     if (wnd->type != VOUT_WINDOW_TYPE_EMSCRIPTEN_WEBGL)
         goto error;
 
@@ -193,13 +202,11 @@ static int Open (vlc_gl_t *gl, unsigned width, unsigned height)
 
 
     MAIN_THREAD_EM_ASM({
-        let canvasName = UTF8ToString($1);
-        //Module.canvasCtx = document.getElementById(canvasName).getContext('2d');
         function onVoutMessage(msg) {
             let data = msg['data'];
             if (data.customCmd == 'commitFrame') {
                 let bmp = data['bitmap'];
-                let ctx = document.getElementById(canvasName).getContext('bitmaprenderer');
+                let ctx = document.getElementById(UTF8ToString($1)).getContext('bitmaprenderer');
                 ctx.transferFromImageBitmap(bmp);
            }
         }
@@ -215,7 +222,7 @@ static int Open (vlc_gl_t *gl, unsigned width, unsigned height)
                 }, [msgChannel.port2]);
             }
         });
-    }, pthread_self(), canvas ? canvas : "canvas");
+    }, pthread_self(), wnd->handle.canvas);
 
     getVoutMessagePort();
     sys->context = createGlContext(width, height);
@@ -231,7 +238,6 @@ static int Open (vlc_gl_t *gl, unsigned width, unsigned height)
 
     // Release the context
     emscripten_webgl_make_context_current(0);
-    wnd->handle.em_context = sys->context;
 
     // Implement egl routines:
     gl->make_current = MakeCurrent;
@@ -240,11 +246,9 @@ static int Open (vlc_gl_t *gl, unsigned width, unsigned height)
     gl->swap = Swap;
     gl->get_proc_address = GetProcAddress;
     gl->destroy = Close;
-    free(canvas);
     return VLC_SUCCESS;
 
 error:
-    free(canvas);
     Close(gl);
     return VLC_EGENERIC;
 }
@@ -257,8 +261,7 @@ vlc_module_begin()
     set_description(N_("Emscripten drawing area"))
     set_subcategory(SUBCAT_VIDEO_VOUT)
     set_capability("vout window", 10)
-    set_callbacks(OpenWindow, nullptr)
-    add_string("emscripten-canvas-id", "canvas", "", "")
+    set_callback(OpenWindow)
 
     add_submodule ()
     set_shortname("Emscripten GL")
