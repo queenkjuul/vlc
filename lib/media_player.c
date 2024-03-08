@@ -631,6 +631,9 @@ libvlc_media_player_new( libvlc_instance_t *instance )
 #ifdef __ANDROID__
     var_Create (mp, "drawable-androidwindow", VLC_VAR_ADDRESS);
 #endif
+#if defined(__EMSCRIPTEN__)
+    var_Create (mp, "drawable-canvas", VLC_VAR_STRING);
+#endif
 
     var_Create (mp, "keyboard-events", VLC_VAR_BOOL);
     var_SetBool (mp, "keyboard-events", true);
@@ -1189,6 +1192,31 @@ void libvlc_media_player_set_android_context( libvlc_media_player_t *p_mi,
     assert(false);
     var_SetString (p_mi, "window", "none");
 #endif
+}
+
+/**************************************************************************
+ * Set DOM canvas
+ **************************************************************************/
+void libvlc_media_player_set_canvas_id( libvlc_media_player_t *p_mi,
+                                        const char *id )
+{
+    assert (p_mi != NULL);
+
+#if !defined(__EMSCRIPTEN__)
+    libvlc_printerr ("can't set canvas ID: EMSCRIPTEN build required");
+    assert(false);
+    return;
+#endif
+
+    var_SetString (p_mi, "drawable-canvas", id);
+}
+
+/**************************************************************************
+ * get_xwindow
+ **************************************************************************/
+uint32_t libvlc_media_player_get_xwindow( libvlc_media_player_t *p_mi )
+{
+    return var_GetInteger (p_mi, "drawable-xid");
 }
 
 void libvlc_audio_set_callbacks( libvlc_media_player_t *mp,

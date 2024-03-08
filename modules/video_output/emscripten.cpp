@@ -67,9 +67,14 @@ typedef struct emscripten_gl_sys_t
 
 static int OpenWindow(vout_window_t *wnd)
 {
+
+    char *canvas = var_InheritAddress(wnd, "drawable-canvas");
+    if (canvas == nullptr)
+        return VLC_EINVAL;
+
     wnd->type = VOUT_WINDOW_TYPE_EMSCRIPTEN_WEBGL;
     wnd->ops = &ops;
-    wnd->handle.canvas = "canvas";
+    wnd->handle.canvas = canvas;
 
     //emscripten::val size = GetCanvasSize();
     //std::vector<int> vec_size = emscripten::vecFromJSArray(size);
@@ -79,6 +84,11 @@ static int OpenWindow(vout_window_t *wnd)
     //vout_window_ReportSize(wnd, vec_size[0], vec_size[1]);
     vout_window_ReportSize(wnd, 1280, 720);
     return VLC_SUCCESS;
+}
+
+static void CloseWindow(vout_window_t *wnd)
+{
+    free(wnd->handle.canvas);
 }
 
 static void *GetProcAddress(vlc_gl_t *gl, const char *name)
