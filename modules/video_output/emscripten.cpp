@@ -49,11 +49,6 @@
 // eglGetProcAddress
 #include <EGL/egl.h>
 
-static const struct vlc_window_operations ops = {
-    //TODO: Implement canvas operations
-    //vlc_window_ReportSize() should be called from here
-};
-
 //MAIN_THREAD_
 //EM_JS(emscripten::EM_VAL, GetCanvasSize, (), {
 //    let canvas = document.getElementById('canvas');
@@ -71,11 +66,27 @@ typedef struct emscripten_gl_sys_t
     bool dirty;
 } emscripten_gl_sys_t;
 
+static void CloseWindow(vlc_window_t *wnd)
+{
+    free(wnd->handle.canvas);
+}
+
+static const struct vlc_window_operations ops = [] {
+    struct vlc_window_operations o{};
+    o.destroy = CloseWindow;
+    return o;
+}();
+
 static int OpenWindow(vlc_window_t *wnd)
 {
+    char *canvas = var_InheritString(wnd, "drawable-canvas");
+    assert(canvas);
+    if (canvas == nullptr)
+        return VLC_EINVAL;
+
     wnd->type = VLC_WINDOW_TYPE_EMSCRIPTEN_WEBGL;
     wnd->ops = &ops;
-    wnd->handle.canvas = "canvas";
+    wnd->handle.canvas = canvas;
 
     //emscripten::val size = GetCanvasSize();
     //std::vector<int> vec_size = emscripten::vecFromJSArray(size);
@@ -86,6 +97,7 @@ static int OpenWindow(vlc_window_t *wnd)
     vlc_window_ReportSize(wnd, 1280, 720);
     return VLC_SUCCESS;
 }
+
 
 static void *GetProcAddress(vlc_gl_t *gl, const char *name)
 {
@@ -281,11 +293,6 @@ static void OpenglInitialize(vlc_gl_t *gl, unsigned width, unsigned height)
     attr.explicitSwapControl = 1;
 
     MAIN_THREAD_EM_ASM({
-        let canvasName = UTF8ToString($1);
-        let canvas = document.getElementById(canvasName);
-        if (Module.canvasCtx === undefined) {
-            Module.canvasCtx = canvas.getContext('2d');
-        }
         //_bindEvents();
         //console.log(canvas);
         window.addEventListener("keypress", function(ev) {
@@ -307,9 +314,10 @@ static void OpenglInitialize(vlc_gl_t *gl, unsigned width, unsigned height)
             let data = msg['data'];
             if (data.customCmd == 'commitFrame') {
                 let bmp = data['bitmap'];
-                Module.canvasCtx.drawImage(bmp, 0, 0);
+                let ctx = document.getElementById(UTF8ToString($1)).getContext('2d');
+                ctx.drawImage(bmp, 0, 0);
                 bmp.close();
-            }
+           }
         }
 
         let w = Module.PThread.pthreads[$0];
@@ -329,7 +337,7 @@ static void OpenglInitialize(vlc_gl_t *gl, unsigned width, unsigned height)
                 }, [msgChannel.port2]);
             }
         });
-    }, pthread_self(), wnd->handle.canvas ? wnd->handle.canvas : "canvas", wnd);
+    }, pthread_self(), wnd->handle.canvas, wnd);
 
     getVoutMessagePort();
 
@@ -480,7 +488,7 @@ vlc_module_begin()
     set_description(N_("Emscripten drawing area"))
     set_subcategory(SUBCAT_VIDEO_VOUT)
     set_capability("vout window", 10)
-    set_callbacks(OpenWindow, nullptr)
+    set_callback(OpenWindow)
 
     add_submodule ()
     set_shortname("Emscripten GL")
