@@ -399,8 +399,7 @@ typedef struct vlc_window {
         struct wl_surface *wl;   /**< Wayland surface (client pointer) */
         void     *dcomp_visual;  /**<  Win32 direct composition visual */
         uint32_t crtc;           /**< KMS CRTC identifier */
-        uint32_t em_context;     /* Emscripten webgl context */
-        const char *canvas;
+        char *canvas;
     } handle;
 
     /** Display server (mandatory)

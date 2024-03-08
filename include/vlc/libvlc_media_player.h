@@ -1014,6 +1014,9 @@ LIBVLC_API void *libvlc_media_player_get_hwnd ( libvlc_media_player_t *p_mi );
 LIBVLC_API void libvlc_media_player_set_android_context( libvlc_media_player_t *p_mi,
                                                          void *p_awindow_handler );
 
+LIBVLC_API void libvlc_media_player_set_canvas_id( libvlc_media_player_t *p_mi,
+                                                   const char *id );
+
 /**
  * Callback prototype for audio playback.
  *
