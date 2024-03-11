@@ -29,6 +29,9 @@ access_LTLIBRARIES += libfilesystem_plugin.la
 if HAVE_EMSCRIPTEN
 libemjsfile_plugin_la_SOURCES = access/emjsfile.c
 access_LTLIBRARIES += libemjsfile_plugin.la
+
+libemjsfetch_plugin_la_SOURCES = access/emjsfetch.c
+access_LTLIBRARIES += libemjsfetch_plugin.la
 endif
 
 libidummy_plugin_la_SOURCES = access/idummy.c
