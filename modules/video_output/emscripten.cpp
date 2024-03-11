@@ -47,11 +47,6 @@
 // eglGetProcAddress
 #include <EGL/egl.h>
 
-static const struct vout_window_operations ops = {
-    //TODO: Implement canvas operations
-    //vout_window_ReportSize() should be called from here
-};
-
 //MAIN_THREAD_
 //EM_JS(emscripten::EM_VAL, GetCanvasSize, (), {
 //    let canvas = document.getElementById('canvas');
@@ -65,10 +60,21 @@ typedef struct emscripten_gl_sys_t
     EMSCRIPTEN_WEBGL_CONTEXT_HANDLE context;
 } emscripten_gl_sys_t;
 
+static void CloseWindow(vout_window_t *wnd)
+{
+    free(wnd->handle.canvas);
+}
+
+static const struct vout_window_operations ops = [] {
+    struct vout_window_operations o{};
+    o.destroy = CloseWindow;
+    return o;
+}();
+
 static int OpenWindow(vout_window_t *wnd)
 {
-
-    char *canvas = var_InheritAddress(wnd, "drawable-canvas");
+    char *canvas = var_InheritString(wnd, "drawable-canvas");
+    assert(canvas);
     if (canvas == nullptr)
         return VLC_EINVAL;
 
@@ -86,10 +92,6 @@ static int OpenWindow(vout_window_t *wnd)
     return VLC_SUCCESS;
 }
 
-static void CloseWindow(vout_window_t *wnd)
-{
-    free(wnd->handle.canvas);
-}
 
 static void *GetProcAddress(vlc_gl_t *gl, const char *name)
 {
@@ -186,15 +188,12 @@ static int Open (vlc_gl_t *gl, unsigned width, unsigned height)
         return VLC_ENOMEM;
 
     MAIN_THREAD_EM_ASM({
-        if (Module.canvasCtx === undefined) {
-            let canvasName = UTF8ToString($1);
-            Module.canvasCtx = document.getElementById(canvasName).getContext('2d');
-        }
         function onVoutMessage(msg) {
             let data = msg['data'];
+            const canvasCtx = document.getElementById(UTF8ToString($1)).getContext('2d');
             if (data.customCmd == 'commitFrame') {
                 let bmp = data['bitmap'];
-                Module.canvasCtx.drawImage(bmp, 0, 0);
+                canvasCtx.drawImage(bmp, 0, 0);
                 bmp.close();
             }
         }
@@ -210,7 +209,7 @@ static int Open (vlc_gl_t *gl, unsigned width, unsigned height)
                 }, [msgChannel.port2]);
             }
         });
-    }, pthread_self(), wnd->handle.canvas ? wnd->handle.canvas : "canvas");
+    }, pthread_self(), wnd->handle.canvas);
 
     getVoutMessagePort();
     sys->context = createGlContext(width, height);
@@ -226,7 +225,6 @@ static int Open (vlc_gl_t *gl, unsigned width, unsigned height)
 
     // Release the context
     emscripten_webgl_make_context_current(0);
-    wnd->handle.em_context = sys->context;
 
     // Implement egl routines:
     gl->make_current = MakeCurrent;
