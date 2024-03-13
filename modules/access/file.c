@@ -232,7 +232,7 @@ int FileOpen( vlc_object_t *p_this )
         p_sys->b_pace_control = true;
 
         /* Demuxers will need the beginning of the file for probing. */
-        posix_fadvise (fd, 0, 4096, POSIX_FADV_WILLNEED);
+        // posix_fadvise (fd, 0, 4096, POSIX_FADV_WILLNEED);
         /* In most cases, we only read the file once. */
         posix_fadvise (fd, 0, 0, POSIX_FADV_NOREUSE);
 #ifdef F_NOCACHE
