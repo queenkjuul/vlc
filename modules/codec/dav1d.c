@@ -123,7 +123,7 @@ static vlc_fourcc_t FindVlcChroma(const Dav1dPicture *img)
     return 0;
 }
 
-static int NewPicture(Dav1dPicture *img, void *cookie)
+static picture_t *NewPicture(Dav1dPicture *img, void *cookie)
 {
     decoder_t *dec = cookie;
 
@@ -185,18 +185,19 @@ static int NewPicture(Dav1dPicture *img, void *cookie)
         picture_t *pic = decoder_NewPicture(dec);
         if (likely(pic != NULL))
         {
-            img->data[0] = pic->p[0].p_pixels;
-            img->stride[0] = pic->p[0].i_pitch;
-            img->data[1] = pic->p[1].p_pixels;
-            img->data[2] = pic->p[2].p_pixels;
-            assert(pic->p[1].i_pitch == pic->p[2].i_pitch);
-            img->stride[1] = pic->p[1].i_pitch;
-            img->allocator_data = pic;
+            assert(pic->p[0].i_pitch == img->stride[0]);
+            assert(pic->p[1].i_pitch == img->stride[1]);
+            assert(pic->p[2].i_pitch == img->stride[1]);
 
-            return 0;
+            memcpy(pic->p[0].p_pixels, img->data[0], img->stride[0] * pic->p[0].i_lines);
+            memcpy(pic->p[1].p_pixels, img->data[1], img->stride[1] * pic->p[1].i_lines);
+            memcpy(pic->p[2].p_pixels, img->data[2], img->stride[1] * pic->p[2].i_lines);
+
+
+            return pic;
         }
     }
-    return -1;
+    return NULL;
 }
 
 static void FreePicture(Dav1dPicture *data, void *cookie)
@@ -286,12 +287,12 @@ static int Decode(decoder_t *dec, block_t *block)
         res = dav1d_get_picture(p_sys->c, &img);
         if (res == 0)
         {
-            picture_t *_pic = img.allocator_data;
-            picture_t *pic = picture_Clone(_pic);
+            picture_t *pic = NewPicture(&img, dec);
+            //picture_t *pic = picture_Clone(_pic);
             if (unlikely(pic == NULL))
             {
                 i_ret = VLC_EGENERIC;
-                picture_Release(_pic);
+                //picture_Release(_pic);
                 break;
             }
             pic->b_progressive = true; /* codec does not support interlacing */
@@ -370,9 +371,9 @@ static int OpenDecoder(vlc_object_t *p_this)
     if (p_sys->s.n_frame_threads == 0)
         p_sys->s.n_frame_threads = (i_core_count < 16) ? i_core_count : 16;
 #endif
-    p_sys->s.allocator.cookie = dec;
-    p_sys->s.allocator.alloc_picture_callback = NewPicture;
-    p_sys->s.allocator.release_picture_callback = FreePicture;
+    //p_sys->s.allocator.cookie = dec;
+    //p_sys->s.allocator.alloc_picture_callback = NewPicture;
+    //p_sys->s.allocator.release_picture_callback = FreePicture;
 
     if (dav1d_open(&p_sys->c, &p_sys->s) < 0)
     {
