@@ -27,8 +27,13 @@
 #include <pthread.h>
 #include <assert.h>
 
+#include <emscripten/wasm_worker.h>
+
 unsigned long vlc_thread_id(void)
 {
     static_assert(sizeof(pthread_t) <= sizeof(unsigned long),"invalid pthread_t size");
-    return (uintptr_t)(void *)pthread_self();
+    if (pthread_self() == 0)
+        return (uintptr_t)(void*)2;
+    else
+        return (uintptr_t)(void *)pthread_self();
 }
