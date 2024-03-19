@@ -123,6 +123,21 @@ static vlc_fourcc_t FindVlcChroma(const Dav1dPicture *img)
     return 0;
 }
 
+static void CopyLines(picture_t *dest,
+                      const Dav1dPicture *source,
+                      unsigned plane_idx,
+                      unsigned dav1d_plane_stride)
+{
+    plane_t *plane = &dest->p[plane_idx];
+    for (int i = 0; i < plane->i_lines; ++i)
+    {
+        const int pitch = plane->i_pitch;
+        void *dst = plane->p_pixels + pitch * i;
+        const void *src = (uint8_t *)source->data[plane_idx] + dav1d_plane_stride * i;
+        memcpy(dst, src, pitch);
+    }
+}
+
 static picture_t *NewPicture(Dav1dPicture *img, void *cookie)
 {
     decoder_t *dec = cookie;
@@ -185,15 +200,9 @@ static picture_t *NewPicture(Dav1dPicture *img, void *cookie)
         picture_t *pic = decoder_NewPicture(dec);
         if (likely(pic != NULL))
         {
-            assert(pic->p[0].i_pitch == img->stride[0]);
-            assert(pic->p[1].i_pitch == img->stride[1]);
-            assert(pic->p[2].i_pitch == img->stride[1]);
-
-            memcpy(pic->p[0].p_pixels, img->data[0], img->stride[0] * pic->p[0].i_lines);
-            memcpy(pic->p[1].p_pixels, img->data[1], img->stride[1] * pic->p[1].i_lines);
-            memcpy(pic->p[2].p_pixels, img->data[2], img->stride[1] * pic->p[2].i_lines);
-
-
+            CopyLines(pic, img, 0, img->stride[0]);
+            CopyLines(pic, img, 1, img->stride[1]);
+            CopyLines(pic, img, 2, img->stride[1]);
             return pic;
         }
     }
