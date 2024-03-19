@@ -4,7 +4,7 @@ DAV1D_VERSION := 1.2.3
 DAV1D_URL := $(VIDEOLAN)/dav1d/$(DAV1D_VERSION)/dav1d-$(DAV1D_VERSION).tar.xz
 
 DAV1D_GITURL := https://code.videolan.org/asenat/dav1d.git
-DAV1D_HASH := 38e57a52b3b822042c1adf55f83282b4403270d7
+DAV1D_HASH := 56a35d199740d2480b330aeaf44fdd648a0b6822
 DAV1D_BRANCH := vulkan-loader
 
 DEPS_dav1d = vulkan-headers $(DEPS_vulkan-headers)
