@@ -67,6 +67,7 @@ vlc_module_begin ()
     add_integer_with_range("dav1d-thread-frames", 0, 0, DAV1D_MAX_THREADS,
                 THREAD_FRAMES_TEXT, THREAD_FRAMES_LONGTEXT, false)
     add_obsolete_string("dav1d-thread-tiles") // unused with dav1d 1.0
+    add_bool("dav1d-force-gpu", false, "", "", true)
 #else
     add_integer_with_range("dav1d-thread-frames", 0, 0, DAV1D_MAX_FRAME_THREADS,
                 THREAD_FRAMES_TEXT, THREAD_FRAMES_LONGTEXT, false)
@@ -348,6 +349,14 @@ static int OpenDecoder(vlc_object_t *p_this)
     p_sys->s.n_threads = var_InheritInteger(p_this, "dav1d-thread-frames");
     if (p_sys->s.n_threads == 0)
         p_sys->s.n_threads = (i_core_count < 16) ? i_core_count : 16;
+    const bool f = var_InheritBool(p_this, "dav1d-force-gpu");
+    if (f)
+    {
+        p_sys->s.force_gpu = 1;
+        msg_Dbg(dec, "Forcing Dav1d GPU");
+    }
+    else
+        msg_Dbg(dec, "Not forcing Dav1d GPU");
 
 #if DAV1D_API_VERSION_MAJOR > 6 || DAV1D_API_VERSION_MINOR >= 7
     // after dav1d 1.0.0
