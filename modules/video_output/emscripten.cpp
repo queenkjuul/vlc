@@ -42,6 +42,7 @@
 
 #include <emscripten.h>
 #include <emscripten/html5.h>
+#undef typeof // FIXME Remove once val::typeof is finally removed
 #include <emscripten/val.h>
 #include <webgl/webgl2.h>
 // eglGetProcAddress

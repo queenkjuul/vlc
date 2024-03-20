@@ -30,6 +30,7 @@
 
 #include <emscripten/emscripten.h>
 #include <emscripten/em_js.h>
+#undef typeof // FIXME Remove once val::typeof is finally removed
 #include <emscripten/val.h>
 
 struct chroma_sys_t
