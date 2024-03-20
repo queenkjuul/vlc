@@ -37,6 +37,7 @@
 
 #include <emscripten.h>
 #include <emscripten/em_js.h>
+#undef typeof // FIXME Remove once val::typeof is finally removed
 #include <emscripten/val.h>
 #include <emscripten/html5_webgl.h>
 
