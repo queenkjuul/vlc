@@ -343,6 +343,105 @@ static int get_free_frame(encoder_sys_t *sys, QSVFrame **out)
     return VLC_SUCCESS;
 }
 
+//
+//[AVHWDeviceContext @ 0x563bde44b7c0] Trying to use DRM render node for device 0, with matching kernel driver (i915).
+//[AVHWDeviceContext @ 0x563bde44b7c0] libva: VA-API version 1.20.0
+//[AVHWDeviceContext @ 0x563bde44b7c0] libva: User requested driver 'iHD'
+//[AVHWDeviceContext @ 0x563bde44b7c0] libva: Trying to open /usr/lib64/dri/iHD_drv_video.so
+//[AVHWDeviceContext @ 0x563bde44b7c0] libva: Found init function __vaDriverInit_1_20
+//[AVHWDeviceContext @ 0x563bde44b7c0] libva: va_openDriver() returns 0
+//[AVHWDeviceContext @ 0x563bde44b7c0] Initialised VAAPI connection: version 1.20
+//[AVHWDeviceContext @ 0x563bde44b7c0] Format 0x41524742 -> bgra.
+//[AVHWDeviceContext @ 0x563bde44b7c0] Format 0x42475241 -> argb.
+//[AVHWDeviceContext @ 0x563bde44b7c0] Format 0x41424752 -> rgba.
+//[AVHWDeviceContext @ 0x563bde44b7c0] Format 0x52474241 -> abgr.
+//[AVHWDeviceContext @ 0x563bde44b7c0] Format 0x58524742 -> bgr0.
+//[AVHWDeviceContext @ 0x563bde44b7c0] Format 0x42475258 -> 0rgb.
+//[AVHWDeviceContext @ 0x563bde44b7c0] Format 0x58424752 -> rgb0.
+//[AVHWDeviceContext @ 0x563bde44b7c0] Format 0x52474258 -> 0bgr.
+//[AVHWDeviceContext @ 0x563bde44b7c0] Format 0x30335241 -> unknown.
+//[AVHWDeviceContext @ 0x563bde44b7c0] Format 0x30334241 -> unknown.
+//[AVHWDeviceContext @ 0x563bde44b7c0] Format 0x30335258 -> x2rgb10le.
+//[AVHWDeviceContext @ 0x563bde44b7c0] Format 0x30334258 -> unknown.
+//[AVHWDeviceContext @ 0x563bde44b7c0] Format 0x36314752 -> unknown.
+//[AVHWDeviceContext @ 0x563bde44b7c0] Format 0x50424752 -> unknown.
+//[AVHWDeviceContext @ 0x563bde44b7c0] Format 0x50524742 -> unknown.
+//[AVHWDeviceContext @ 0x563bde44b7c0] Format 0x56555941 -> unknown.
+//[AVHWDeviceContext @ 0x563bde44b7c0] Format 0x30303859 -> gray.
+//[AVHWDeviceContext @ 0x563bde44b7c0] Format 0x3231564e -> nv12.
+//[AVHWDeviceContext @ 0x563bde44b7c0] Format 0x3132564e -> unknown.
+//[AVHWDeviceContext @ 0x563bde44b7c0] Format 0x32595559 -> yuyv422.
+//[AVHWDeviceContext @ 0x563bde44b7c0] Format 0x59565955 -> uyvy422.
+//[AVHWDeviceContext @ 0x563bde44b7c0] Format 0x32315659 -> yuv420p.
+//[AVHWDeviceContext @ 0x563bde44b7c0] Format 0x30323449 -> yuv420p.
+//[AVHWDeviceContext @ 0x563bde44b7c0] Format 0x50313134 -> yuv411p.
+//[AVHWDeviceContext @ 0x563bde44b7c0] Format 0x48323234 -> yuv422p.
+//[AVHWDeviceContext @ 0x563bde44b7c0] Format 0x56323234 -> yuv440p.
+//[AVHWDeviceContext @ 0x563bde44b7c0] Format 0x50343434 -> yuv444p.
+//[AVHWDeviceContext @ 0x563bde44b7c0] Format 0x33434d49 -> unknown.
+//[AVHWDeviceContext @ 0x563bde44b7c0] Format 0x30313050 -> p010le.
+//[AVHWDeviceContext @ 0x563bde44b7c0] VAAPI driver: Intel iHD driver for Intel(R) Gen Graphics - 23.4.3 ().
+//[AVHWDeviceContext @ 0x563bde44b7c0] Driver not found in known nonstandard list, using standard behaviour.
+//[h264_qsv @ 0x563bdd63dd40] Initialized an internal MFX session using hardware accelerated implementation
+//[h264_qsv @ 0x563bdd63dd40] Using the variable bitrate (VBR) ratecontrol method
+//[h264_qsv @ 0x563bdd63dd40] profile: avc high; level: 31
+//[h264_qsv @ 0x563bdd63dd40] GopPicSize: 256; GopRefDist: 3; GopOptFlag: closed; IdrInterval: 0
+//[h264_qsv @ 0x563bdd63dd40] TargetUsage: 4; RateControlMethod: VBR
+//[h264_qsv @ 0x563bdd63dd40] BufferSizeInKB: 375; InitialDelayInKB: 187; TargetKbps: 1000; MaxKbps: 1500; BRCParamMultiplier: 1
+//[h264_qsv @ 0x563bdd63dd40] NumSlice: 1; NumRefFrame: 2
+//[h264_qsv @ 0x563bdd63dd40] RateDistortionOpt: OFF
+//[h264_qsv @ 0x563bdd63dd40] RecoveryPointSEI: OFF
+//[h264_qsv @ 0x563bdd63dd40] VDENC: OFF
+//[h264_qsv @ 0x563bdd63dd40] Entropy coding: CABAC; MaxDecFrameBuffering: 2
+//[h264_qsv @ 0x563bdd63dd40] NalHrdConformance: ON; SingleSeiNalUnit: ON; VuiVclHrdParameters: OFF VuiNalHrdParameters: ON
+//[h264_qsv @ 0x563bdd63dd40] FrameRateExtD: 100; FrameRateExtN: 2997 
+//[h264_qsv @ 0x563bdd63dd40] IntRefType: 0; IntRefCycleSize: 0; IntRefQPDelta: 0
+//[h264_qsv @ 0x563bdd63dd40] MaxFrameSize: 345600; MaxSliceSize: 0
+//[h264_qsv @ 0x563bdd63dd40] BitrateLimit: ON; MBBRC: OFF; ExtBRC: OFF
+//[h264_qsv @ 0x563bdd63dd40] Trellis: auto
+//[h264_qsv @ 0x563bdd63dd40] RepeatPPS: OFF; NumMbPerSlice: 0; LookAheadDS: 2x
+//[h264_qsv @ 0x563bdd63dd40] AdaptiveI: OFF; AdaptiveB: OFF; BRefType:off
+//[h264_qsv @ 0x563bdd63dd40] MinQPI: 0; MaxQPI: 0; MinQPP: 0; MaxQPP: 0; MinQPB: 0; MaxQPB: 0
+//[h264_qsv @ 0x563bdd63dd40] DisableDeblockingIdc: 0 
+//[h264_qsv @ 0x563bdd63dd40] SkipFrame: no_skip
+//[h264_qsv @ 0x563bdd63dd40] PRefType: default
+//[h264_qsv @ 0x563bdd63dd40] TransformSkip: unknown 
+//[h264_qsv @ 0x563bdd63dd40] IntRefCycleDist: 0
+//[h264_qsv @ 0x563bdd63dd40] LowDelayBRC: OFF
+//[h264_qsv @ 0x563bdd63dd40] MaxFrameSizeI: 0; MaxFrameSizeP: 0
+//[h264_qsv @ 0x563bdd63dd40] ScenarioInfo: 0
+//
+//[00006160000c5780] qsv encoder debug: profile: 100; level: 31
+//[00006160000c5780] qsv encoder debug: GopPicSize: 32; GopRefDist: 4; GopOptFlag: closed; IdrInterval: 0
+//[00006160000c5780] qsv encoder debug: TargetUsage: 1; RateControlMethod: 2
+//[00006160000c5780] qsv encoder debug: BufferSizeInKB: 0; InitialDelayInKB: 0; TargetKbps: 842; MaxKbps: 1018; BRCParamMultiplier: 0
+//[00006160000c5780] qsv encoder debug: NumSlice: 0; NumRefFrame: 0
+//[00006160000c5780] qsv encoder debug: RateDistortionOpt: unknown
+//[00006160000c5780] qsv encoder debug: RecoveryPointSEI: unknown
+//[00006160000c5780] qsv encoder debug: VDENC: unknown
+//[00006160000c5780] qsv encoder debug: Entropy coding: CABAC; MaxDecFrameBuffering: 0
+//[00006160000c5780] qsv encoder debug: NalHrdConformance: unknown; SingleSeiNalUnit: unknown; VuiVclHrdParameters: unknown VuiNalHrdParameters: unknown
+//[00006160000c5780] qsv encoder debug: FrameRateExtD: 100; FrameRateExtN: 2997 
+//[00006160000c5780] qsv encoder debug: LookAheadDepth: 0
+//[00006160000c5780] qsv encoder debug: IntRefType: 0; IntRefCycleSize: 0; IntRefQPDelta: 0
+//[00006160000c5780] qsv encoder debug: MaxFrameSize: 0; MaxSliceSize: 0
+//[00006160000c5780] qsv encoder debug: BitrateLimit: unknown; MBBRC: unknown; ExtBRC: unknown
+//[00006160000c5780] qsv encoder debug: Trellis: auto
+//[00006160000c5780] qsv encoder debug: RepeatPPS: unknown; NumMbPerSlice: 0; LookAheadDS: unknown
+//[00006160000c5780] qsv encoder debug: AdaptiveI: unknown; AdaptiveB: unknown; BRefType:auto
+//[00006160000c5780] qsv encoder debug: MinQPI: 0; MaxQPI: 0; MinQPP: 0; MaxQPP: 0; MinQPB: 0; MaxQPB: 0
+//[00006160000c5780] qsv encoder debug: DisableDeblockingIdc: 0 
+//[00006160000c5780] qsv encoder debug: SkipFrame: no_skip
+//
+//[00006160000c5780] qsv encoder error: Unsupported encoding parameters (-3)
+//[00006160000c5780] qsv encoder error: Current profile is unsupported
+//[00006160000c5780] qsv encoder error: Selected ratecontrol mode is unsupported
+//[00006160000c5780] qsv encoder error: Current frame rate is unsupported
+//[00006160000c5780] qsv encoder error: Current picture structure is unsupported
+//[00006160000c5780] qsv encoder error: Current resolution is unsupported
+//[00006160000c5780] qsv encoder error: Current pixel format is unsupported
+
+
 static uint64_t qsv_params_get_value(const char *const *text,
                                      const int *list,
                                      size_t size, char *sel)
@@ -375,6 +474,179 @@ static void delete_sys(encoder_sys_t *sys)
         picture_pool_Release(sys->input_pool);
 
     free(sys);
+}
+
+static const char *print_threestate(mfxU16 val)
+{
+    if (val == MFX_CODINGOPTION_ON)
+        return "ON";
+    else if (val == MFX_CODINGOPTION_OFF)
+        return "OFF";
+    return "unknown";
+}
+
+static void dump_video_param(encoder_t *enc, const mfxInfoMFX *info,
+                             mfxExtCodingOption *co, mfxExtCodingOption2 *co2)
+{
+#if QSV_HAVE_HE
+    mfxExtHyperModeParam *exthypermodeparam = NULL;
+#endif
+
+    const char *tmp_str = NULL;
+
+#if QSV_HAVE_HE
+    if (q->exthypermodeparam_idx > 0)
+        exthypermodeparam = (mfxExtHyperModeParam *)coding_opts[q->exthypermodeparam_idx];
+#endif
+
+    msg_Dbg(enc, "profile: %d; level: %"PRIu16"", info->CodecProfile, info->CodecLevel);
+
+    msg_Dbg(enc,
+           "GopPicSize: %"PRIu16"; GopRefDist: %"PRIu16"; GopOptFlag:%s%s; IdrInterval: %"PRIu16"",
+           info->GopPicSize, info->GopRefDist,
+           info->GopOptFlag & MFX_GOP_CLOSED ? " closed" : "",
+           info->GopOptFlag & MFX_GOP_STRICT ? " strict" : "",
+           info->IdrInterval);
+
+    msg_Dbg(enc, "TargetUsage: %"PRIu16"; RateControlMethod: %d",
+           info->TargetUsage, info->RateControlMethod);
+
+    if (info->RateControlMethod == MFX_RATECONTROL_CBR ||
+        info->RateControlMethod == MFX_RATECONTROL_VBR
+#if QSV_HAVE_VCM
+        || info->RateControlMethod == MFX_RATECONTROL_VCM
+#endif
+        ) {
+        msg_Dbg(enc,
+               "BufferSizeInKB: %"PRIu16"; InitialDelayInKB: %"PRIu16"; TargetKbps: %"PRIu16"; MaxKbps: %"PRIu16"; BRCParamMultiplier: %"PRIu16"",
+               info->BufferSizeInKB, info->InitialDelayInKB, info->TargetKbps, info->MaxKbps, info->BRCParamMultiplier);
+    } else if (info->RateControlMethod == MFX_RATECONTROL_CQP) {
+        msg_Dbg(enc, "QPI: %"PRIu16"; QPP: %"PRIu16"; QPB: %"PRIu16"",
+               info->QPI, info->QPP, info->QPB);
+    }
+#if QSV_HAVE_AVBR
+    else if (info->RateControlMethod == MFX_RATECONTROL_AVBR) {
+        msg_Dbg(enc,
+               "TargetKbps: %"PRIu16"; Accuracy: %"PRIu16"; Convergence: %"PRIu16"; BRCParamMultiplier: %"PRIu16"",
+               info->TargetKbps, info->Accuracy, info->Convergence, info->BRCParamMultiplier);
+    }
+#endif
+    else if (info->RateControlMethod == MFX_RATECONTROL_LA
+             || info->RateControlMethod == MFX_RATECONTROL_LA_HRD
+             ) {
+        msg_Dbg(enc,
+               "TargetKbps: %"PRIu16"; BRCParamMultiplier: %"PRIu16"",
+               info->TargetKbps, info->BRCParamMultiplier);
+    } else if (info->RateControlMethod == MFX_RATECONTROL_ICQ ||
+               info->RateControlMethod == MFX_RATECONTROL_LA_ICQ)
+        msg_Dbg(enc, "ICQQuality: %"PRIu16"", info->ICQQuality);
+    msg_Dbg(enc, "NumSlice: %"PRIu16"; NumRefFrame: %"PRIu16"",
+           info->NumSlice, info->NumRefFrame);
+    msg_Dbg(enc, "RateDistortionOpt: %s",
+           print_threestate(co->RateDistortionOpt));
+
+    msg_Dbg(enc, "RecoveryPointSEI: %s", print_threestate(co->RecoveryPointSEI));
+    msg_Dbg(enc, "VDENC: %s", print_threestate(info->LowPower));
+
+    if (enc->fmt_out.i_codec == VLC_CODEC_H264) {
+        msg_Dbg(enc, "Entropy coding: %s; MaxDecFrameBuffering: %"PRIu16"",
+               co->CAVLC == MFX_CODINGOPTION_ON ? "CAVLC" : "CABAC", co->MaxDecFrameBuffering);
+        msg_Dbg(enc,
+               "NalHrdConformance: %s; SingleSeiNalUnit: %s; VuiVclHrdParameters: %s VuiNalHrdParameters: %s",
+               print_threestate(co->NalHrdConformance), print_threestate(co->SingleSeiNalUnit),
+               print_threestate(co->VuiVclHrdParameters), print_threestate(co->VuiNalHrdParameters));
+    } 
+
+    msg_Dbg(enc, "FrameRateExtD: %"PRIu32"; FrameRateExtN: %"PRIu32" ",
+           info->FrameInfo.FrameRateExtD, info->FrameInfo.FrameRateExtN);
+
+    if (co2) {
+        if ((info->RateControlMethod == MFX_RATECONTROL_VBR) ||
+            (info->RateControlMethod == MFX_RATECONTROL_LA) ||
+            (info->RateControlMethod == MFX_RATECONTROL_LA_HRD) ||
+            (info->RateControlMethod == MFX_RATECONTROL_LA_ICQ))
+            msg_Dbg(enc, "LookAheadDepth: %"PRIu16"", co2->LookAheadDepth);
+
+        msg_Dbg(enc, "IntRefType: %"PRIu16"; IntRefCycleSize: %"PRIu16"; IntRefQPDelta: %"PRId16"",
+               co2->IntRefType, co2->IntRefCycleSize, co2->IntRefQPDelta);
+
+        msg_Dbg(enc, "MaxFrameSize: %d; MaxSliceSize: %d",
+               co2->MaxFrameSize, co2->MaxSliceSize);
+
+        msg_Dbg(enc,
+               "BitrateLimit: %s; MBBRC: %s; ExtBRC: %s",
+               print_threestate(co2->BitrateLimit), print_threestate(co2->MBBRC),
+               print_threestate(co2->ExtBRC));
+
+        if (co2->Trellis & MFX_TRELLIS_OFF) {
+            msg_Dbg(enc, "Trellis: off");
+        } else if (!co2->Trellis) {
+            msg_Dbg(enc, "Trellis: auto");
+        } else {
+            char trellis_type[4];
+            int i = 0;
+            if (co2->Trellis & MFX_TRELLIS_I) trellis_type[i++] = 'I';
+            if (co2->Trellis & MFX_TRELLIS_P) trellis_type[i++] = 'P';
+            if (co2->Trellis & MFX_TRELLIS_B) trellis_type[i++] = 'B';
+            trellis_type[i] = 0;
+            msg_Dbg(enc, "Trellis: %s", trellis_type);
+        }
+
+        switch (co2->LookAheadDS) {
+        case MFX_LOOKAHEAD_DS_OFF: tmp_str = "off";     break;
+        case MFX_LOOKAHEAD_DS_2x:  tmp_str = "2x";      break;
+        case MFX_LOOKAHEAD_DS_4x:  tmp_str = "4x";      break;
+        default:                   tmp_str = "unknown"; break;
+        }
+        msg_Dbg(enc,
+               "RepeatPPS: %s; NumMbPerSlice: %"PRIu16"; LookAheadDS: %s",
+               print_threestate(co2->RepeatPPS), co2->NumMbPerSlice, tmp_str);
+
+        switch (co2->BRefType) {
+        case MFX_B_REF_OFF:     tmp_str = "off";       break;
+        case MFX_B_REF_PYRAMID: tmp_str = "pyramid";   break;
+        default:                tmp_str = "auto";      break;
+        }
+        msg_Dbg(enc,
+               "AdaptiveI: %s; AdaptiveB: %s; BRefType:%s",
+               print_threestate(co2->AdaptiveI), print_threestate(co2->AdaptiveB), tmp_str);
+
+        msg_Dbg(enc,
+               "MinQPI: %"PRIu8"; MaxQPI: %"PRIu8"; MinQPP: %"PRIu8"; MaxQPP: %"PRIu8"; MinQPB: %"PRIu8"; MaxQPB: %"PRIu8"",
+               co2->MinQPI, co2->MaxQPI, co2->MinQPP, co2->MaxQPP, co2->MinQPB, co2->MaxQPB);
+        msg_Dbg(enc, "DisableDeblockingIdc: %"PRIu32" ", co2->DisableDeblockingIdc);
+
+        switch (co2->SkipFrame) {
+        case MFX_SKIPFRAME_NO_SKIP:
+            msg_Dbg(enc, "SkipFrame: no_skip");
+            break;
+        case MFX_SKIPFRAME_INSERT_DUMMY:
+            msg_Dbg(enc, "SkipFrame: insert_dummy");
+            break;
+        case MFX_SKIPFRAME_INSERT_NOTHING:
+            msg_Dbg(enc, "SkipFrame: insert_nothing");
+            break;
+        case MFX_SKIPFRAME_BRC_ONLY:
+            msg_Dbg(enc, "SkipFrame: brc_only");
+            break;
+        default: break;
+        }
+    }
+
+#if QSV_HAVE_HE
+    if (exthypermodeparam) {
+        msg_Dbg(enc, "HyperEncode: ");
+
+        if (exthypermodeparam->Mode == MFX_HYPERMODE_OFF)
+            msg_Dbg(enc, "OFF");
+        if (exthypermodeparam->Mode == MFX_HYPERMODE_ON)
+            msg_Dbg(enc, "ON");
+        if (exthypermodeparam->Mode == MFX_HYPERMODE_ADAPTIVE)
+            msg_Dbg(enc, "Adaptive");
+
+        msg_Dbg(enc, "");
+    }
+#endif
 }
 
 static int Open(vlc_object_t *this)
@@ -414,7 +686,6 @@ static int Open(vlc_object_t *this)
     };
     mfxVersion    ver = { { 1, 1 } };
     mfxIMPL       impl;
-    mfxVideoParam param_out = { 0 };
 
     uint8_t *p_extra;
     size_t i_extra;
@@ -460,13 +731,14 @@ static int Open(vlc_object_t *this)
     msg_Dbg(enc, "Using Intel QuickSync Video %s implementation",
         impl & MFX_IMPL_HARDWARE ? "hardware" : "software");
 
+    sys->params = (mfxVideoParam){0};
     /* Input picture format description */
     sys->params.mfx.FrameInfo.FrameRateExtN = enc->fmt_in.video.i_frame_rate;
     sys->params.mfx.FrameInfo.FrameRateExtD = enc->fmt_in.video.i_frame_rate_base;
     sys->params.mfx.FrameInfo.FourCC        = MFX_FOURCC_NV12;
     sys->params.mfx.FrameInfo.ChromaFormat  = MFX_CHROMAFORMAT_YUV420;
     sys->params.mfx.FrameInfo.Width         = vlc_align(enc->fmt_in.video.i_width, 16);
-    sys->params.mfx.FrameInfo.Height        = vlc_align(enc->fmt_in.video.i_height, 32);
+    sys->params.mfx.FrameInfo.Height        = vlc_align(enc->fmt_in.video.i_height, 16);
     sys->params.mfx.FrameInfo.CropW         = enc->fmt_in.video.i_visible_width;
     sys->params.mfx.FrameInfo.CropH         = enc->fmt_in.video.i_visible_height;
     sys->params.mfx.FrameInfo.PicStruct     = MFX_PICSTRUCT_PROGRESSIVE;
@@ -476,18 +748,16 @@ static int Open(vlc_object_t *this)
     sys->params.mfx.FrameInfo.BitDepthLuma   = 8; /* for VLC_CODEC_NV12 */
 
     /* Parsing options common to all RC methods and codecs */
-    sys->params.IOPattern = MFX_IOPATTERN_OUT_SYSTEM_MEMORY;
-    sys->params.IOPattern |= MFX_IOPATTERN_IN_SYSTEM_MEMORY;
+    //sys->params.IOPattern = MFX_IOPATTERN_OUT_SYSTEM_MEMORY;
+    sys->params.IOPattern = MFX_IOPATTERN_IN_SYSTEM_MEMORY;
     sys->params.AsyncDepth      = var_InheritInteger(enc, SOUT_CFG_PREFIX "async-depth");
-    sys->params.mfx.GopOptFlag  = 1; /* TODO */
-    sys->params.mfx.GopPicSize  = var_InheritInteger(enc, SOUT_CFG_PREFIX "gop-size");
-    sys->params.mfx.GopRefDist  = var_InheritInteger(enc, SOUT_CFG_PREFIX "gop-refdist");
+    sys->params.mfx.GopOptFlag  = MFX_GOP_CLOSED; /* TODO */
+    sys->params.mfx.GopPicSize  = 256;
+    sys->params.mfx.GopRefDist  = 3;
     sys->params.mfx.IdrInterval = var_InheritInteger(enc, SOUT_CFG_PREFIX "idr-interval");
-    sys->params.mfx.NumSlice    = var_InheritInteger(enc, SOUT_CFG_PREFIX "num-slice");
-    sys->params.mfx.NumRefFrame = var_InheritInteger(enc, SOUT_CFG_PREFIX "num-ref-frame");
-    sys->params.mfx.TargetUsage = qsv_params_get_value(target_usage_text,
-        target_usage_list, ARRAY_SIZE(target_usage_list),
-        var_InheritString(enc, SOUT_CFG_PREFIX "target-usage"));
+    sys->params.mfx.NumSlice    = 1;
+    sys->params.mfx.NumRefFrame = 2;
+    sys->params.mfx.TargetUsage = 4;
 
     if (enc->fmt_out.i_codec == VLC_CODEC_H264) {
         sys->params.mfx.CodecId = MFX_CODEC_AVC;
@@ -511,7 +781,7 @@ static int Open(vlc_object_t *this)
         msg_Dbg(enc, "Encoder in MPEG2 mode, with profile %d and level %d",
             sys->params.mfx.CodecProfile, sys->params.mfx.CodecLevel);
     }
-    param_out.mfx.CodecId = sys->params.mfx.CodecId;
+    mfxVideoParam param_out = { .mfx.CodecId = sys->params.mfx.CodecId };
 
     char *psz_rc = var_InheritString(enc, SOUT_CFG_PREFIX "rc-method");
     msg_Dbg(enc, "Encoder using '%s' Rate Control method",
@@ -529,7 +799,7 @@ static int Open(vlc_object_t *this)
         if (!enc->fmt_out.i_bitrate) {
             msg_Warn(enc, "No bitrate specified, using default %d",
                 QSV_BITRATE_DEFAULT);
-            sys->params.mfx.TargetKbps = QSV_BITRATE_DEFAULT;
+            sys->params.mfx.TargetKbps = 1000;
         } else
             sys->params.mfx.TargetKbps = enc->fmt_out.i_bitrate / 1000;
 
@@ -537,13 +807,38 @@ static int Open(vlc_object_t *this)
             sys->params.mfx.Accuracy = var_InheritInteger(enc, SOUT_CFG_PREFIX "accuracy");
             sys->params.mfx.Convergence = var_InheritInteger(enc, SOUT_CFG_PREFIX "convergence");
         } else if (sys->params.mfx.RateControlMethod == MFX_RATECONTROL_VBR)
-            sys->params.mfx.MaxKbps = var_InheritInteger(enc, SOUT_CFG_PREFIX "bitrate-max");
+            sys->params.mfx.MaxKbps = 1500;
+        sys->params.mfx.BRCParamMultiplier = 1;
+        sys->params.mfx.BufferSizeInKB = 375;
+        sys->params.mfx.InitialDelayInKB = 187;
     }
 
     sts = MFXVideoENCODE_Query(sys->session, &sys->params, &param_out);
     if ( sts < MFX_ERR_NONE )
     {
         msg_Err(enc, "Unsupported encoding parameters (%d)", sts);
+        dump_video_param(enc, &sys->params.mfx, &co, &co2);
+        msg_Err(enc, "==-==");
+
+        dump_video_param(enc, &param_out.mfx, &co, &co2);
+
+        #define UNMATCH(x) (param_out.mfx.x != sys->params.mfx.x)
+        if (UNMATCH(CodecId))
+            msg_Err(enc, "Current codec type is unsupported");
+        if (UNMATCH(CodecProfile))
+            msg_Err(enc, "Current profile is unsupported");
+        if (UNMATCH(RateControlMethod))
+            msg_Err(enc, "Selected ratecontrol mode is unsupported");
+        if (UNMATCH(LowPower))
+              msg_Err(enc, "Low power mode is unsupported");
+        if (UNMATCH(FrameInfo.FrameRateExtN) || UNMATCH(FrameInfo.FrameRateExtD))
+              msg_Err(enc, "Current frame rate is unsupported");
+        if (UNMATCH(FrameInfo.PicStruct))
+              msg_Err(enc, "Current picture structure is unsupported");
+        if (UNMATCH(FrameInfo.Width) || UNMATCH(FrameInfo.Height))
+              msg_Err(enc, "Current resolution is unsupported");
+        if (UNMATCH(FrameInfo.FourCC))
+              msg_Err(enc, "Current pixel format is unsupported");
         goto error;
     }
 
