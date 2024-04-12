@@ -1,3 +1,4 @@
+subdir('common')
 subdir('src')
 subdir('modules')
 subdir('libvlc')

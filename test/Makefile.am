@@ -9,6 +9,7 @@ AUTOMAKE_OPTIONS = subdir-objects
 ###############################################################################
 noinst_PROGRAMS =
 check_PROGRAMS = \
+	test_common_cxx_test_helper \
 	test_libvlc_core \
 	test_libvlc_equalizer \
 	test_libvlc_media \
@@ -122,6 +123,7 @@ AM_LDFLAGS = -no-install $(LDFLAGS_vlc)
 LIBVLCCORE = -L../src/ -lvlccore
 LIBVLC = -L../lib -lvlc
 
+test_common_cxx_test_helper_SOURCES = common/cxx_test_helper.hpp common/cxx_test_helper.cpp
 test_libvlc_core_SOURCES = libvlc/core.c
 test_libvlc_core_LDADD = $(LIBVLC)
 test_libvlc_equalizer_SOURCES = libvlc/equalizer.c
