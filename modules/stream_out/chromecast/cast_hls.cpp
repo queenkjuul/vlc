@@ -28,6 +28,7 @@ struct SoutStreamId
     vlc_frame_t **chain_end = &chain;
 
     bool is_flushed = false;
+    const char *es_id;
 };
 
 struct SoutStreamSys
@@ -51,21 +52,21 @@ struct SoutStreamSys
 static sout_stream_t *CreateSoutChain( sout_stream_t *stream, SoutStreamSys &sys )
 {
     std::stringstream sstream;
-    sstream << "transcode{vcodec=h264,venc=ffmpeg}:"
-            << "hls{host-http,num-seg=4,base-url="
-            << sys.intf->getHttpStreamRoot() << "}";
+    //sstream << "transcode{vcodec=h264,venc=ffmpeg}:"
+     sstream  << "hls{out-dir=/tmp/hls,variants={{video/1,audio/2}},host-http,num-seg=4,base-url="
+              << sys.intf->getHttpStreamRoot() << "}";
 
     return sout_StreamChainNew( VLC_OBJECT( stream ), sstream.str().c_str(), nullptr );
 }
 
-static void *Add( sout_stream_t *stream, const es_format_t *fmt )
+static void *Add( sout_stream_t *stream, const es_format_t *fmt, const char *es_id )
 {
     SoutStreamSys *sys = static_cast<SoutStreamSys *>( stream->p_sys );
 
-    //if (fmt->i_cat != VIDEO_ES)
-    //{
-    //    return nullptr;
-    //}
+    if (fmt->i_cat != VIDEO_ES)
+    {
+        return nullptr;
+    }
 
     printf( "ADD %d\n", fmt->i_id );
     if ( !sys->is_video_supported && fmt->i_cat != AUDIO_ES )
@@ -91,7 +92,7 @@ static void *Add( sout_stream_t *stream, const es_format_t *fmt )
             return nullptr;
         }
     }
-    id->next_id = sout_StreamIdAdd( sys->hls, fmt );
+    id->next_id = sout_StreamIdAdd( sys->hls, fmt, es_id );
     if ( id->next_id == nullptr )
     {
         return nullptr;
@@ -102,6 +103,7 @@ static void *Add( sout_stream_t *stream, const es_format_t *fmt )
         return nullptr;
     }
 
+    id->es_id = es_id;
     void *ret = id.get();
     sys->tracks.push_back(std::move(id));
 
@@ -142,7 +144,7 @@ static int Send( sout_stream_t *stream, void *id, vlc_frame_t *frame )
 
     if (sys_id->fmt.i_cat == SPU_ES)
     {
-        printf("SUB ARRIVED: %.*s\n" , frame->i_buffer, frame->p_buffer);
+        printf("SUB ARRIVED: %.*s\n",  (int)frame->i_buffer, frame->p_buffer);
     }
     if (sys->is_flushing)
     {
@@ -163,7 +165,7 @@ static int Send( sout_stream_t *stream, void *id, vlc_frame_t *frame )
     if ( result != VLC_SUCCESS )
         return result;
 
-    const auto hls_segcount = var_GetInteger( sys->hls->p_next, "seg-count" );
+    const auto hls_segcount = var_GetInteger( sys->hls, "seg-count" );
     if ( hls_segcount >= 3 && !sys->start_command_sent )
     {
         printf( "START\n" );
@@ -174,7 +176,7 @@ static int Send( sout_stream_t *stream, void *id, vlc_frame_t *frame )
     return VLC_SUCCESS;
 }
 
-static void Flush( sout_stream_t *stream, void *id )
+static void Flush( sout_stream_t *stream, void *)
 {
     auto *sys = static_cast<SoutStreamSys *>( stream->p_sys );
 
@@ -203,7 +205,7 @@ static void Flush( sout_stream_t *stream, void *id )
     sys->hls = CreateSoutChain(stream , *sys);
     for (auto &track : sys->tracks)
     {
-        track->next_id = sout_StreamIdAdd(sys->hls, &track->fmt);
+        track->next_id = sout_StreamIdAdd(sys->hls, &track->fmt, track->es_id);
     }
 }
 
@@ -222,6 +224,17 @@ static void SetPCR( sout_stream_t *stream, vlc_tick_t pcr )
         sout_StreamSetPCR( sys->hls, pcr );
     }
 }
+
+static void Close( sout_stream_t *stream )
+{
+    auto *sys = static_cast<SoutStreamSys *>( stream->p_sys );
+    if (sys->hls != nullptr)
+    {
+        sout_StreamChainDelete(sys->hls, nullptr);
+    }
+    delete sys;
+}
+
 
 static int Open( vlc_object_t *obj )
 {
@@ -279,22 +292,11 @@ static int Open( vlc_object_t *obj )
                    &static_cast<SoutStreamSys *>(stream->p_sys)->pacer);
 
     static const struct sout_stream_operations ops = {
-        Add, Del, Send, nullptr, Flush, SetPCR,
+        Add, Del, Send, nullptr, Flush, SetPCR, Close
     };
     stream->ops = &ops;
 
     return VLC_SUCCESS;
-}
-
-static void Close( vlc_object_t *obj )
-{
-    sout_stream_t *stream = container_of( obj, sout_stream_t, obj );
-    auto *sys = static_cast<SoutStreamSys *>( stream->p_sys );
-    if (sys->hls != nullptr)
-    {
-        sout_StreamChainDelete(sys->hls, nullptr);
-    }
-    delete sys;
 }
 
 #define HTTP_PORT_TEXT N_( "HTTP port" )
@@ -315,7 +317,7 @@ vlc_module_begin()
     set_capability( "sout output", 0 )
     add_shortcut( "chromecast" )
     set_subcategory( SUBCAT_SOUT_STREAM )
-    set_callbacks( Open, Close )
+    set_callback( Open )
     
     add_string( SOUT_CFG_PREFIX "ip", NULL, NULL, NULL )
         change_private()
