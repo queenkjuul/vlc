@@ -163,6 +163,7 @@ int hls_codec_Format(struct vlc_memstream *ms, const es_format_t *fmt)
             return FormatMP4A(ms, fmt);
         case VLC_CODEC_TEXT:
         case VLC_CODEC_WEBVTT:
+        case VLC_CODEC_SUBT:
             return FormatWebVTT(ms);
         default:
             return VLC_ENOTSUP;
@@ -173,5 +174,5 @@ bool hls_codec_IsSupported(const es_format_t *fmt)
 {
     return fmt->i_codec == VLC_CODEC_H264 || fmt->i_codec == VLC_CODEC_HEVC ||
            fmt->i_codec == VLC_CODEC_MP4A || fmt->i_codec == VLC_CODEC_TEXT ||
-           fmt->i_codec == VLC_CODEC_WEBVTT;
+           fmt->i_codec == VLC_CODEC_WEBVTT || fmt->i_codec == VLC_CODEC_SUBT;
 }
