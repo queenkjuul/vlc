@@ -198,6 +198,7 @@ static int HTTPCallback(httpd_callback_sys_t *sys,
     answer->i_type = HTTPD_MSG_ANSWER;
 
     const ssize_t size = storage->get_content(storage, &answer->p_body);
+    printf("FETCHING %s %ld\n", query->psz_url, size);
     if (size != -1)
     {
         answer->i_body = size;

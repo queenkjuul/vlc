@@ -166,7 +166,7 @@ static int Send( sout_stream_t *stream, void *id, vlc_frame_t *frame )
         return result;
 
     const auto hls_segcount = var_GetInteger( sys->hls, "seg-count" );
-    if ( hls_segcount >= 3 && !sys->start_command_sent )
+    if ( hls_segcount >= 1 && !sys->start_command_sent )
     {
         printf( "START\n" );
         sys->intf->setHasInput( "application/vnd.apple.mpegurl" );

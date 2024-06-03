@@ -404,6 +404,7 @@ std::string ChromecastCommunication::GetMedia( const std::string& mime,
     ss << "\"contentId\":\"" << chromecast_url << "\""
        << ",\"streamType\":\"" << stream_type << "\""
        << ",\"hlsSegmentFormat\":\"aac\""
+       << ",\"hlsVideoSegmentFormat\":\"fmp4\""
        << ",\"contentType\":\"" << mime << "\"";
        
     if( is_buffered )

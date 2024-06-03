@@ -957,7 +957,7 @@ static void box_send(sout_mux_t *p_mux,  bo_t *box)
 /***************************************************************************
     MP4 Live submodule
 ****************************************************************************/
-#define FRAGMENT_LENGTH  VLC_TICK_FROM_MS(1500)
+#define FRAGMENT_LENGTH  VLC_TICK_FROM_MS(4000)
 
 #define ENQUEUE_ENTRY(object, entry) \
     do {\
