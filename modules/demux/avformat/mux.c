@@ -64,6 +64,7 @@ typedef struct
     bool     b_error;
 #if LIBAVFORMAT_VERSION_CHECK( 57, 40, 100 )
     bool     b_header_done;
+    vlc_tick_t previous_time;
 #endif
 } sout_mux_sys_t;
 
@@ -160,6 +161,7 @@ int avformat_OpenMux( vlc_object_t *p_this )
 #if LIBAVFORMAT_VERSION_CHECK( 57, 40, 100 )
     p_sys->io->write_data_type = IOWriteTyped;
     p_sys->b_header_done = false;
+    p_sys->previous_time = 0;
 #endif
     if( var_GetBool( p_mux, "sout-avformat-reset-ts" ) )
         p_sys->oc->avoid_negative_ts = AVFMT_AVOID_NEG_TS_MAKE_ZERO;
@@ -435,13 +437,44 @@ static int MuxBlock( sout_mux_t *p_mux, sout_input_t *p_input )
 int IOWriteTyped(void *opaque, uint8_t *buf, int buf_size,
                               enum AVIODataMarkerType type, int64_t time)
 {
-    VLC_UNUSED(time);
 
+    printf("Write %ld\n", time);
     sout_mux_t *p_mux = opaque;
     sout_mux_sys_t *p_sys = p_mux->p_sys;
     if ( !p_sys->b_header_done && type != AVIO_DATA_MARKER_HEADER )
         p_sys->b_header_done = true;
-    return IOWrite(opaque, buf, buf_size);
+
+    int i_ret;
+
+#ifdef AVFORMAT_DEBUG
+    msg_Dbg( p_mux, "IOWrite %i bytes", buf_size );
+#endif
+
+    block_t *p_buf = block_Alloc( buf_size );
+    if( buf_size > 0 ) memcpy( p_buf->p_buffer, buf, buf_size );
+
+    if( p_sys->b_write_header )
+        p_buf->i_flags |= BLOCK_FLAG_HEADER;
+#if LIBAVFORMAT_VERSION_CHECK( 57, 40, 100 )
+    if( !p_sys->b_header_done )
+        p_buf->i_flags |= BLOCK_FLAG_HEADER;
+#endif
+
+    if( p_sys->b_write_keyframe )
+    {
+        p_buf->i_flags |= BLOCK_FLAG_TYPE_I;
+        p_sys->b_write_keyframe = false;
+    }
+
+    if (time != INT64_MIN)
+    {
+        const vlc_tick_t vlc_t = VLC_TICK_FROM_US(time);
+        p_buf->i_length = vlc_t - p_sys->previous_time;
+        p_sys->previous_time = vlc_t;
+    }
+
+    i_ret = sout_AccessOutWrite( p_mux->p_access, p_buf );
+    return i_ret ? i_ret : -1;
 }
 #endif
 
