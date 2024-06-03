@@ -94,6 +94,10 @@ typedef struct hls_playlist
     struct hls_storage *manifest;
     httpd_url_t *http_manifest;
 
+    struct hls_storage *init;
+    char *init_url;
+    httpd_url_t *http_init;
+
     bool ended;
 
     struct vlc_list node;
@@ -178,6 +182,7 @@ static int HTTPCallback(httpd_callback_sys_t *sys,
     answer->i_type = HTTPD_MSG_ANSWER;
 
     const ssize_t size = storage->get_content(storage, &answer->p_body);
+    printf("FETCHING %s %ld\n", query->psz_url, size);
     if (size != -1)
     {
         answer->i_body = size;
@@ -422,6 +427,8 @@ GeneratePlaylistManifest(const hls_playlist_t *playlist)
     MANIFEST_ADD_TAG("#EXT-X-MEDIA-SEQUENCE:%u",
                      (first_seg == NULL) ? 0u : first_seg->id);
 
+    if (playlist->init != NULL)
+        MANIFEST_ADD_TAG("#EXT-X-MAP:URI=\"%s/init.m4s\"", playlist->config->base_url);
     const hls_segment_t *segment;
     hls_segment_queue_Foreach_const(&playlist->segments, segment)
     {
@@ -461,6 +468,14 @@ static int UpdatePlaylistManifest(hls_playlist_t *playlist)
                        HTTPCallback,
                        (httpd_callback_sys_t *)new_manifest);
     }
+
+    //if (playlist->http_init != NULL)
+    //{
+    //    httpd_UrlCatch(playlist->http_init,
+    //                   HTTPD_MSG_GET,
+    //                   HTTPCallback,
+    //                   (httpd_callback_sys_t *)playlist->init);
+    //}
 
     if (playlist->manifest != NULL)
         hls_storage_Destroy(playlist->manifest);
@@ -599,10 +614,30 @@ static ssize_t AccessOutWrite(sout_access_out_t *access, block_t *block)
         /* Append the muxed output to the playlist tied to this access call. */
         if (it->access == access)
         {
+            if (it->type == HLS_PLAYLIST_TYPE_TS && block->i_flags & BLOCK_FLAG_HEADER)
+            {
+                block_t *next = block->p_next;
+                block->p_next = NULL;
+                if (it->init != NULL)
+                    hls_storage_Destroy(it->init);
+                const struct hls_storage_config conf = {
+                    .name = "init.m4s",
+                    .mime = "video/mp4",
+                };
+                it->init = hls_storage_FromBlocks(block, &conf, it->config);
+                printf("RECEIVED HEADER\n");
+
+                block = next;
+            }
+
+            if (block != NULL)
+            {
+            printf("input %ld\n", length);
             block_ChainLastAppend(&it->muxed_output.end, block);
             it->muxed_output.length += length;
             if (block->i_flags & BLOCK_FLAG_HEADER)
                 it->muxed_output.last_header = block;
+            }
         }
 
         if (!IsSegmentReady(
@@ -675,7 +710,7 @@ static sout_mux_t *CreatePlaylistMuxer(sout_access_out_t *access,
     switch(type)
     {
         case HLS_PLAYLIST_TYPE_TS:
-            return sout_MuxNew(access, "ts");
+            return sout_MuxNew(access, "avformat{mux=mp4,options{movflags=frag_keyframe+empty_moov,frag_duration=4000000}}");
         case HLS_PLAYLIST_TYPE_WEBVTT:
             return CreateSubtitleSegmenter(access, config);
     }
@@ -723,6 +758,7 @@ static hls_playlist_t *CreatePlaylist(sout_stream_t *stream,
     hls_segment_queue_Init(&playlist->segments, &config, &sys->config);
 
     hls_block_chain_Reset(&playlist->muxed_output);
+    playlist->init = NULL;
 
     playlist->manifest = NULL;
     if (sys->http_host != NULL)
@@ -731,9 +767,13 @@ static hls_playlist_t *CreatePlaylist(sout_stream_t *stream,
             httpd_UrlNew(sys->http_host, playlist->url, NULL, NULL);
         if (playlist->http_manifest == NULL)
             goto manifest_err;
+        asprintf(&playlist->init_url, "%s/init.m4s", sys->config.base_url);
+        playlist->http_init = httpd_UrlNew(sys->http_host, playlist->init_url, NULL, NULL);
     }
     else
+    {
         playlist->http_manifest = NULL;
+    }
 
     if (UpdatePlaylistManifest(playlist) != VLC_SUCCESS)
         goto error;
@@ -801,6 +841,8 @@ static hls_playlist_t *AddPlaylist(sout_stream_t *stream,
 static void *
 Add(sout_stream_t *stream, const es_format_t *fmt, const char *es_id)
 {
+    if (fmt->i_cat != VIDEO_ES)
+        return NULL;
     if (!hls_codec_IsSupported(fmt))
         return NULL;
 

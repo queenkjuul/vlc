@@ -49,7 +49,7 @@ hls_segment_queue_GetFileExtension(enum hls_playlist_type type)
     switch (type)
     {
         case HLS_PLAYLIST_TYPE_TS:
-            return "ts";
+            return "m4s";
         case HLS_PLAYLIST_TYPE_WEBVTT:
             return "vtt";
         default:
@@ -105,7 +105,7 @@ int hls_segment_queue_NewSegment(hls_segment_queue_t *queue,
 
     const struct hls_storage_config storage_conf = {
         .name = segment->url + strlen(queue->hls_config->base_url) + 1,
-        .mime = "video/MP2T",
+        .mime = "video/mp4",
     };
     segment->storage =
         hls_storage_FromBlocks(content, &storage_conf, queue->hls_config);
