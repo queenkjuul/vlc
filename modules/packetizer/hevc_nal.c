@@ -544,6 +544,16 @@ static bool hevc_parse_inner_profile_tier_level_rbsp( bs_t *p_bs,
     p_in->tier_flag = bs_read1( p_bs );
     p_in->profile_idc = bs_read( p_bs, 5 );
     p_in->profile_compatibility_flag = bs_read( p_bs, 32 );
+    uint32_t profile_compatibility_flag = p_in->profile_compatibility_flag;
+    uint32_t i, res = 0;
+
+    for (i=0; i<32; i++) {
+        res |= profile_compatibility_flag & 1;
+        if (i==31) break;
+        res <<= 1;
+        profile_compatibility_flag >>=1;
+    }
+    printf("HELLO %X\n", res);
     p_in->progressive_source_flag = bs_read1( p_bs );
     p_in->interlaced_source_flag = bs_read1( p_bs );
     p_in->non_packed_constraint_flag = bs_read1( p_bs );
@@ -1497,6 +1507,7 @@ uint8_t * hevc_create_dcr( const struct hevc_dcr_params *p_params,
 
         hevc_dcr_params_from_vps( p_params->p_vps[0], p_params->rgi_vps[0], &values );
 
+        printf("ouaip %p\n", p_params->p_sps[0]);
         hevc_sequence_parameter_set_t *p_sps =
                 hevc_decode_sps( p_params->p_sps[0], p_params->rgi_sps[0], true );
         if( p_sps )

@@ -143,7 +143,8 @@ static int AddStream(sout_mux_t *mux, sout_input_t *input)
 {
     sout_mux_sys_t *sys = mux->p_sys;
     if ((input->fmt.i_codec != VLC_CODEC_WEBVTT &&
-         input->fmt.i_codec != VLC_CODEC_TEXT) ||
+         input->fmt.i_codec != VLC_CODEC_TEXT &&
+         input->fmt.i_codec != VLC_CODEC_SUBT) ||
         sys->input)
         return VLC_ENOTSUP;
     sys->input = input;

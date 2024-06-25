@@ -41,6 +41,7 @@
 #include "segments.h"
 #include "storage.h"
 #include "variant_maps.h"
+#include "mux/mp4/libmp4mux.h"
 
 typedef struct
 {
@@ -469,13 +470,13 @@ static int UpdatePlaylistManifest(hls_playlist_t *playlist)
                        (httpd_callback_sys_t *)new_manifest);
     }
 
-    //if (playlist->http_init != NULL)
-    //{
-    //    httpd_UrlCatch(playlist->http_init,
-    //                   HTTPD_MSG_GET,
-    //                   HTTPCallback,
-    //                   (httpd_callback_sys_t *)playlist->init);
-    //}
+    if (playlist->http_init != NULL)
+    {
+        httpd_UrlCatch(playlist->http_init,
+                       HTTPD_MSG_GET,
+                       HTTPCallback,
+                       (httpd_callback_sys_t *)playlist->init);
+    }
 
     if (playlist->manifest != NULL)
         hls_storage_Destroy(playlist->manifest);
@@ -487,6 +488,18 @@ static hls_block_chain_t ExtractCommonSegment(hls_block_chain_t *muxed_output,
                                               vlc_tick_t max_segment_length)
 {
     hls_block_chain_t segment = {.begin = muxed_output->begin};
+    
+    bo_t *styp = box_new("styp");
+    bo_add_fourcc(styp, "msdh");
+    bo_add_32be(styp, 0);
+    bo_add_fourcc(styp, "msdh");
+    bo_add_fourcc(styp, "msix");
+    assert(styp);
+    printf("SIZE %zu\n", bo_size(styp));
+    box_fix(styp, bo_size(styp));
+    block_t *hdr = styp->b;
+    hdr->p_next = muxed_output->begin;
+    segment.begin = hdr;
 
     block_t *prev = NULL;
     for (block_t *it = muxed_output->begin; it != NULL; it = it->p_next)
@@ -710,7 +723,7 @@ static sout_mux_t *CreatePlaylistMuxer(sout_access_out_t *access,
     switch(type)
     {
         case HLS_PLAYLIST_TYPE_TS:
-            return sout_MuxNew(access, "avformat{mux=mp4,options{movflags=frag_keyframe+empty_moov,frag_duration=4000000}}");
+            return sout_MuxNew(access, "avformat{mux=mp4,options{movflags=frag_keyframe+dash,frag_duration=4000000}}");
         case HLS_PLAYLIST_TYPE_WEBVTT:
             return CreateSubtitleSegmenter(access, config);
     }
@@ -841,8 +854,6 @@ static hls_playlist_t *AddPlaylist(sout_stream_t *stream,
 static void *
 Add(sout_stream_t *stream, const es_format_t *fmt, const char *es_id)
 {
-    if (fmt->i_cat != VIDEO_ES)
-        return NULL;
     if (!hls_codec_IsSupported(fmt))
         return NULL;
 

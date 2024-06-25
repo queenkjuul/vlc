@@ -458,6 +458,7 @@ static bool InsertXPS(decoder_t *p_dec, uint8_t i_nal_type, uint8_t i_id,
         switch(i_nal_type)
         {
             case HEVC_NAL_SPS:
+                printf("ouaip 3 %p\n", p_buffer);
                 p_tuple->p_decoded = hevc_decode_sps(p_buffer, i_buffer, true);
                 if(!p_tuple->p_decoded)
                 {

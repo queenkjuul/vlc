@@ -41,7 +41,8 @@ libstream_out_hls_plugin_la_SOURCES = \
 	stream_out/hls/storage.h stream_out/hls/storage.c \
 	stream_out/hls/segments.h stream_out/hls/segments.c \
 	stream_out/hls/codecs.h stream_out/hls/codecs.c \
-	stream_out/hls/subtitles_segmenter.c
+	stream_out/hls/subtitles_segmenter.c \
+	mux/mp4/libmp4mux.c mux/mp4/libmp4mux.h
 libstream_out_hls_plugin_la_LIBADD = libvlc_hxxxhelper.la
 
 sout_LTLIBRARIES = \

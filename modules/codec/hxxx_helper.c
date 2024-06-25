@@ -186,6 +186,7 @@ helper_load_sei(struct hxxx_helper *hh, const uint8_t *p_nal, size_t i_nal)
         xpsrelease(p_xps);\
         return VLC_EGENERIC;\
     }\
+    printf("ouaip 4 %p\n", hnal->b->p_buffer);\
     if (hnal->xps)\
         xpsrelease(hnal->xps);\
     else\

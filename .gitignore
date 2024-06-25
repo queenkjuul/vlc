@@ -1,4 +1,5 @@
 *~
+po/*
 *.app
 *.cache
 *.dylib
