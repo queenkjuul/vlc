@@ -634,9 +634,19 @@ static vlc_tick_t vlc_clock_slave_update(vlc_clock_t *clock,
         return VLC_TICK_MAX;
     }
 
-    vlc_tick_t computed = clock->ops->to_system(clock, ctx, system_now, ts, rate);
+    vlc_tick_t drift;
+    vlc_tick_t computed;
+    if (ctx->wait_sync_ref.stream != VLC_TICK_INVALID)
+    {
+        computed = clock->ops->to_system(clock, ctx, system_now, ts, rate);
+        drift = computed - system_now;
+    }
+    else
+    {
+        computed = system_now;
+        drift = 0;
+    }
 
-    vlc_tick_t drift = computed - system_now;
     vlc_clock_on_update(clock, computed, ts, drift, rate,
                         frame_rate, frame_rate_base);
     return drift;
