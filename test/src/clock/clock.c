@@ -384,6 +384,11 @@ static void play_scenario(libvlc_int_t *vlc, struct vlc_tracer *tracer,
     tracer_ctx.forced_ts = expected_system;
     size_t index = 0;
 
+    vlc_clock_main_Lock(mainclk);
+    vlc_clock_main_SetFirstPcr(ctx.mainclk, scenario->system_start,
+                               scenario->stream_start);
+    vlc_clock_main_Unlock(mainclk);
+
     for(; stream < stream_end;
         stream += scenario->stream_increment, ++index)
     {
@@ -678,6 +683,9 @@ static void pause_common(const struct clock_ctx *ctx, vlc_clock_t *updater)
     vlc_tick_t system = system_start;
 
     vlc_clock_Lock(updater);
+
+    vlc_clock_main_SetFirstPcr(ctx->mainclk, ctx->system_start,
+                               ctx->stream_start);
     vlc_clock_Update(updater, system, ctx->stream_start, 1.0f);
     vlc_clock_Unlock(updater);
 
@@ -723,6 +731,8 @@ static void convert_paused_common(const struct clock_ctx *ctx, vlc_clock_t *upda
     vlc_tick_t system = system_start;
 
     vlc_clock_Lock(updater);
+    vlc_clock_main_SetFirstPcr(ctx->mainclk, ctx->system_start,
+                               ctx->stream_start);
     vlc_clock_ConvertToSystem(ctx->slave, ctx->system_start, ctx->stream_start,
                               1.0f, NULL);
     vlc_clock_Update(updater, ctx->system_start, ctx->stream_start, 1.0f);
