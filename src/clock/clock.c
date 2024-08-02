@@ -417,9 +417,10 @@ static void vlc_clock_master_update_coeff(
 
                 vlc_clock_SendEvent(main_clock, discontinuity);
 
-                /* Reset and continue (calculate the offset from the
-                 * current point) */
-                vlc_clock_main_reset(main_clock);
+                /* Reset the coeff and calculate the offset from the current
+                 * point. */
+                ctx->coeff = 1.0f;
+                AvgResetAndFill(&main_clock->coeff_avg, ctx->coeff);
             }
             else
             {
