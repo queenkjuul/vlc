@@ -499,8 +499,6 @@ static void vlc_clock_master_reset(vlc_clock_t *clock)
     if (clock->context != NULL && clock->context != ctx)
         vlc_clock_switch_context(clock, ctx);
 
-    vlc_clock_main_reset(main_clock);
-
     assert(main_clock->delay <= 0);
     assert(clock->delay >= 0);
     /* Move the delay from the slaves to the master */
@@ -1095,13 +1093,7 @@ void vlc_clock_Delete(vlc_clock_t *clock)
         assert(main_clock->rc == 2);
     }
     else if (clock == main_clock->master)
-    {
-        /* Don't reset the main clock if the master has been overridden by the
-         * input master */
-        if (main_clock->input_master != NULL)
-            vlc_clock_main_reset(main_clock);
         main_clock->master = NULL;
-    }
     main_clock->rc--;
     vlc_mutex_unlock(&main_clock->lock);
     free(clock);
