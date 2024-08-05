@@ -54,6 +54,7 @@ struct vlc_clock_context
 
     clock_point_t last;
     clock_point_t wait_sync_ref;
+    unsigned wait_sync_ref_priority;
 
     struct vlc_list node;
     struct vlc_list using_clocks;
@@ -81,7 +82,6 @@ struct vlc_clock_main_t
 
     vlc_tick_t pause_date;
 
-    unsigned wait_sync_ref_priority;
     clock_point_t first_pcr;
     vlc_tick_t output_dejitter; /* Delay used to absorb the output clock jitter */
     vlc_tick_t input_dejitter; /* Delay used to absorb the input jitter */
@@ -204,6 +204,7 @@ static void context_reset(struct vlc_clock_context *ctx)
     ctx->rate = 1.0f;
     ctx->offset = VLC_TICK_INVALID;
     ctx->wait_sync_ref = clock_point_Create(VLC_TICK_INVALID, VLC_TICK_INVALID);
+    ctx->wait_sync_ref_priority = UINT_MAX;
     ctx->last = clock_point_Create(VLC_TICK_INVALID, VLC_TICK_INVALID);
 }
 
@@ -347,7 +348,7 @@ static void vlc_clock_main_reset(vlc_clock_main_t *main_clock)
     context_reset(ctx);
     AvgResetAndFill(&main_clock->coeff_avg, ctx->coeff);
 
-    main_clock->wait_sync_ref_priority = UINT_MAX;
+    ctx->wait_sync_ref_priority = UINT_MAX;
     vlc_cond_broadcast(&main_clock->cond);
 }
 
@@ -428,7 +429,7 @@ static void vlc_clock_master_update_coeff(
     }
     else
     {
-        main_clock->wait_sync_ref_priority = UINT_MAX;
+        ctx->wait_sync_ref_priority = UINT_MAX;
         ctx->wait_sync_ref =
             clock_point_Create(VLC_TICK_INVALID, VLC_TICK_INVALID);
 
@@ -550,8 +551,8 @@ vlc_clock_monotonic_to_system(vlc_clock_t *clock, struct vlc_clock_context *ctx,
 {
     vlc_clock_main_t *main_clock = clock->owner;
 
-    if (clock->priority < main_clock->wait_sync_ref_priority
-     && ctx == main_clock->context)
+    if (ctx == main_clock->context
+     && clock->priority < ctx->wait_sync_ref_priority)
     {
         /* XXX: This input_delay calculation is needed until we (finally) get
          * ride of the input clock. This code is adapted from input_clock.c and
@@ -574,7 +575,7 @@ vlc_clock_monotonic_to_system(vlc_clock_t *clock, struct vlc_clock_context *ctx,
         const vlc_tick_t delay =
             __MAX(input_delay, main_clock->output_dejitter);
 
-        main_clock->wait_sync_ref_priority = clock->priority;
+        ctx->wait_sync_ref_priority = clock->priority;
         ctx->wait_sync_ref = clock_point_Create(now + delay, ts);
     }
 
@@ -650,7 +651,7 @@ static void vlc_clock_slave_reset(vlc_clock_t *clock)
     if (clock->context != NULL && clock->context != ctx)
         vlc_clock_switch_context(clock, ctx);
 
-    main_clock->wait_sync_ref_priority = UINT_MAX;
+    ctx->wait_sync_ref_priority = UINT_MAX;
     ctx->wait_sync_ref = clock_point_Create(VLC_TICK_INVALID, VLC_TICK_INVALID);
 
     vlc_clock_on_update(clock, VLC_TICK_INVALID, VLC_TICK_INVALID,
@@ -735,7 +736,6 @@ vlc_clock_main_t *vlc_clock_main_New(struct vlc_logger *parent_logger, struct vl
 
     main_clock->first_pcr =
         clock_point_Create(VLC_TICK_INVALID, VLC_TICK_INVALID);
-    main_clock->wait_sync_ref_priority = UINT_MAX;
 
     main_clock->pause_date = VLC_TICK_INVALID;
     main_clock->input_dejitter = DEFAULT_PTS_DELAY;
@@ -785,7 +785,7 @@ void vlc_clock_main_SetFirstPcr(vlc_clock_main_t *main_clock,
     vlc_clock_main_reset(main_clock);
 
     main_clock->first_pcr = clock_point_Create(system_now, ts);
-    main_clock->wait_sync_ref_priority = UINT_MAX;
+    ctx->wait_sync_ref_priority = UINT_MAX;
     ctx->wait_sync_ref =
         clock_point_Create(VLC_TICK_INVALID, VLC_TICK_INVALID);
 }
