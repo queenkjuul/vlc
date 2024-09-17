@@ -502,7 +502,7 @@ static hls_block_chain_t ExtractCommonSegment(hls_block_chain_t *muxed_output,
     block_t *last_segment_block = NULL;
     for (block_t *it = muxed_output->begin; it != NULL; it = it->p_next)
     {
-        if (it->i_flags & BLOCK_FLAG_HEADER)
+        if (it->i_flags & VLC_FRAME_FLAG_SYNC)
         {
             last_segment_block = prev;
             segment.length += gop_length;
@@ -548,7 +548,7 @@ static hls_block_chain_t ExtractSubtitleSegment(hls_block_chain_t *muxed_output,
         /* Subtitle segments are segmented at mux level by the
          * hls_sub_segmenter. They have varying length so we use the header flag
          * to extract them properly. */
-        if (it->p_next != NULL && it->p_next->i_flags & BLOCK_FLAG_HEADER)
+        if (it->p_next != NULL && it->p_next->i_flags & VLC_FRAME_FLAG_SYNC)
         {
             muxed_output->begin = it->p_next;
             muxed_output->last_header = it->p_next;
@@ -623,6 +623,10 @@ static ssize_t AccessOutWrite(sout_access_out_t *access, block_t *block)
     size_t size = 0;
     vlc_tick_t length;
     block_ChainProperties(block, NULL, &size, &length);
+    printf("Inc block %ld %ld hdr = %d\n",
+           size,
+           MS_FROM_VLC_TICK(length),
+           block->i_flags & VLC_FRAME_FLAG_SYNC);
 
     if (hls_config_IsMemStorageEnabled(&sys->config))
     {
@@ -648,7 +652,7 @@ static ssize_t AccessOutWrite(sout_access_out_t *access, block_t *block)
         {
             block_ChainLastAppend(&it->muxed_output.end, block);
             it->muxed_output.length += length;
-            if (block->i_flags & BLOCK_FLAG_HEADER)
+            if (block->i_flags & VLC_FRAME_FLAG_SYNC)
                 it->muxed_output.last_header = block;
         }
 

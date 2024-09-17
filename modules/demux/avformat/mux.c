@@ -63,6 +63,7 @@ typedef struct
     bool     b_write_keyframe;
     bool     b_error;
     bool     b_header_done;
+    vlc_tick_t last_time;
 } sout_mux_sys_t;
 
 /*****************************************************************************
@@ -152,6 +153,7 @@ int avformat_OpenMux( vlc_object_t *p_this )
     p_sys->b_error = false;
     p_sys->io->write_data_type = IOWriteTyped;
     p_sys->b_header_done = false;
+    p_sys->last_time = 0;
     if( var_GetBool( p_mux, "sout-avformat-reset-ts" ) )
         p_sys->oc->avoid_negative_ts = AVFMT_AVOID_NEG_TS_MAKE_ZERO;
 
@@ -422,6 +424,23 @@ static int MuxBlock( sout_mux_t *p_mux, sout_input_t *p_input )
     return VLC_SUCCESS;
 }
 
+static int WriteToAccess( sout_mux_t *mux, block_t *buff )
+{
+    sout_mux_sys_t *sys = mux->p_sys;
+    if( sys->b_write_header )
+        buff->i_flags |= BLOCK_FLAG_HEADER;
+    if( !sys->b_header_done )
+        buff->i_flags |= BLOCK_FLAG_HEADER;
+
+    if( sys->b_write_keyframe )
+    {
+        buff->i_flags |= BLOCK_FLAG_TYPE_I;
+        sys->b_write_keyframe = false;
+    }
+    const int ret = sout_AccessOutWrite( mux->p_access, buff );
+    return ret ? ret : -1;
+}
+
 #if FF_API_AVIO_WRITE_NONCONST
 int IOWriteTyped(void *opaque, uint8_t *buf, int buf_size,
                               enum AVIODataMarkerType type, int64_t time)
@@ -430,13 +449,28 @@ int IOWriteTyped(void *opaque, const uint8_t *buf, int buf_size,
                  enum AVIODataMarkerType type, int64_t time)
 #endif
 {
-    VLC_UNUSED(time);
 
     sout_mux_t *p_mux = opaque;
     sout_mux_sys_t *p_sys = p_mux->p_sys;
-    if ( !p_sys->b_header_done && type != AVIO_DATA_MARKER_HEADER )
+
+    block_t *buff = block_Alloc( buf_size );
+    if( buf_size > 0 ) memcpy( buff->p_buffer, buf, buf_size );
+
+    if( type == AVIO_DATA_MARKER_SYNC_POINT )
+        buff->i_flags |= VLC_FRAME_FLAG_SYNC;
+
+    if( time != AV_NOPTS_VALUE )
+    {
+        const vlc_tick_t vlc_time = FROM_AV_TS_NZ( time );
+        printf("%ld-%ld=%ld\n", time, p_sys->last_time, time-p_sys->last_time);
+        buff->i_length =  vlc_time - p_sys->last_time;
+        buff->i_dts = buff->i_pts = vlc_time;
+        p_sys->last_time = vlc_time;
+    }
+
+    if( !p_sys->b_header_done && type != AVIO_DATA_MARKER_HEADER )
         p_sys->b_header_done = true;
-    return IOWrite(opaque, buf, buf_size);
+    return WriteToAccess(p_mux, buff);
 }
 
 /*****************************************************************************
@@ -530,8 +564,6 @@ static int IOWrite( void *opaque, const uint8_t *buf, int buf_size )
 #endif
 {
     sout_mux_t *p_mux = opaque;
-    sout_mux_sys_t *p_sys = p_mux->p_sys;
-    int i_ret;
 
 #ifdef AVFORMAT_DEBUG
     msg_Dbg( p_mux, "IOWrite %i bytes", buf_size );
@@ -540,19 +572,7 @@ static int IOWrite( void *opaque, const uint8_t *buf, int buf_size )
     block_t *p_buf = block_Alloc( buf_size );
     if( buf_size > 0 ) memcpy( p_buf->p_buffer, buf, buf_size );
 
-    if( p_sys->b_write_header )
-        p_buf->i_flags |= BLOCK_FLAG_HEADER;
-    if( !p_sys->b_header_done )
-        p_buf->i_flags |= BLOCK_FLAG_HEADER;
-
-    if( p_sys->b_write_keyframe )
-    {
-        p_buf->i_flags |= BLOCK_FLAG_TYPE_I;
-        p_sys->b_write_keyframe = false;
-    }
-
-    i_ret = sout_AccessOutWrite( p_mux->p_access, p_buf );
-    return i_ret ? i_ret : -1;
+    return WriteToAccess( p_mux, p_buf );
 }
 
 static int64_t IOSeek( void *opaque, int64_t offset, int whence )

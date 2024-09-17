@@ -1019,7 +1019,7 @@ static ssize_t Write( sout_access_out_t *p_access, block_t *p_buffer )
         /* Check if current block is already past segment-length
             and we want to write gathered blocks into segment
             and update playlist */
-        if( p_sys->ongoing_segment && ( p_sys->b_splitanywhere  || ( p_buffer->i_flags & BLOCK_FLAG_HEADER ) ) )
+        if( p_sys->ongoing_segment && ( p_sys->b_splitanywhere  || ( p_buffer->i_flags & VLC_FRAME_FLAG_SYNC ) ) )
         {
             msg_Dbg( p_access, "Moving ongoing segment to full segments-queue" );
             block_ChainLastAppend( &p_sys->full_segments_end, p_sys->ongoing_segment );
