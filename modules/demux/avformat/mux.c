@@ -63,6 +63,7 @@ typedef struct
     bool     b_write_keyframe;
     bool     b_error;
     bool     b_header_done;
+    block_t *header;
     vlc_tick_t last_time;
 } sout_mux_sys_t;
 
@@ -153,6 +154,7 @@ int avformat_OpenMux( vlc_object_t *p_this )
     p_sys->b_error = false;
     p_sys->io->write_data_type = IOWriteTyped;
     p_sys->b_header_done = false;
+    p_sys->header = NULL;
     p_sys->last_time = 0;
     if( var_GetBool( p_mux, "sout-avformat-reset-ts" ) )
         p_sys->oc->avoid_negative_ts = AVFMT_AVOID_NEG_TS_MAKE_ZERO;
@@ -466,7 +468,7 @@ int IOWriteTyped(void *opaque, const uint8_t *buf, int buf_size,
         buff->i_length =  vlc_time - p_sys->last_time;
         buff->i_dts = buff->i_pts = vlc_time;
         p_sys->last_time = vlc_time;
-    }
+    } else printf("nopts\n");
 
     if( !p_sys->b_header_done && type != AVIO_DATA_MARKER_HEADER )
         p_sys->b_header_done = true;
