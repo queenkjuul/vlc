@@ -53,7 +53,7 @@ static sout_stream_t *CreateSoutChain( sout_stream_t *stream, SoutStreamSys &sys
 {
     std::stringstream sstream;
     //sstream << "transcode{vcodec=h264,venc=ffmpeg}:"
-     sstream  << "hls{out-dir=/tmp/hls,variants={{video/1,audio/2}},host-http,num-seg=4,base-url="
+     sstream  << "hls{out-dir=/tmp/hls,variants={{video/1,audio/2}},host-http,seg-len=6,num-seg=4,base-url="
               << sys.intf->getHttpStreamRoot() << "}";
 
     return sout_StreamChainNew( VLC_OBJECT( stream ), sstream.str().c_str(), nullptr );
@@ -63,10 +63,10 @@ static void *Add( sout_stream_t *stream, const es_format_t *fmt, const char *es_
 {
     SoutStreamSys *sys = static_cast<SoutStreamSys *>( stream->p_sys );
 
-    if (fmt->i_cat != VIDEO_ES)
-    {
-        return nullptr;
-    }
+    //if (fmt->i_cat != VIDEO_ES)
+    //{
+    //    return nullptr;
+    //}
 
     printf( "ADD %d\n", fmt->i_id );
     if ( !sys->is_video_supported && fmt->i_cat != AUDIO_ES )
@@ -166,7 +166,7 @@ static int Send( sout_stream_t *stream, void *id, vlc_frame_t *frame )
         return result;
 
     const auto hls_segcount = var_GetInteger( sys->hls, "seg-count" );
-    if ( hls_segcount >= 1 && !sys->start_command_sent )
+    if ( hls_segcount >= 3 && !sys->start_command_sent )
     {
         printf( "START\n" );
         sys->intf->setHasInput( "application/vnd.apple.mpegurl" );

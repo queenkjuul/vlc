@@ -211,6 +211,8 @@ typedef struct VLC_VECTOR(const es_format_t *) es_format_vec_t;
 static inline bool IsCodecAlreadyDescribed(const es_format_vec_t *vec,
                                            const es_format_t *fmt)
 {
+    if (fmt->i_cat == SPU_ES)
+        return true;
     const es_format_t *it;
     vlc_vector_foreach (it, vec)
     {
@@ -847,7 +849,7 @@ static sout_mux_t *CreateFMP4Muxer(sout_access_out_t *access,
     char *mux_config;
     if (asprintf(&mux_config,
                  "avformat{mux=mp4,options{movflags=frag_keyframe+"
-                 "delay_moov+dash,frag_duration=2000000}}",
+                 "delay_moov+dash,frag_duration=2000000,fflags=-autobsf}}",
                  US_FROM_VLC_TICK(config->segment_length)) == -1)
         return NULL;
 
@@ -1111,6 +1113,8 @@ static void Del(sout_stream_t *stream, void *id)
 static int Send(sout_stream_t *stream, void *id, vlc_frame_t *frame)
 {
     hls_track_t *track = id;
+    assert(frame->p_next == NULL);
+    printf("send %ld\n", frame->i_dts - VLC_TICK_0);
     return sout_MuxSendBuffer(track->playlist_ref->mux, track->input, frame);
     (void)stream;
 }
