@@ -405,6 +405,7 @@ static int MuxBlock( sout_mux_t *p_mux, sout_input_t *p_input )
     if( p_data->i_dts >= VLC_TICK_0 )
         pkt->dts = av_rescale_q( p_data->i_dts - VLC_TICK_0,
                                 VLC_TIME_BASE_Q, p_stream->time_base );
+    printf("dts:  %p %ld -> %ld\n", p_data, p_data->i_dts - VLC_TICK_0, pkt->dts);
 
     if( av_write_frame( p_sys->oc, pkt ) < 0 )
     {
