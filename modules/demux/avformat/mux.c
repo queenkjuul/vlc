@@ -63,6 +63,7 @@ typedef struct
     bool     b_write_keyframe;
     bool     b_error;
     bool     b_header_done;
+    vlc_tick_t last_time;
 } sout_mux_sys_t;
 
 /*****************************************************************************
@@ -152,6 +153,7 @@ int avformat_OpenMux( vlc_object_t *p_this )
     p_sys->b_error = false;
     p_sys->io->write_data_type = IOWriteTyped;
     p_sys->b_header_done = false;
+    p_sys->last_time = 0;
     if( var_GetBool( p_mux, "sout-avformat-reset-ts" ) )
         p_sys->oc->avoid_negative_ts = AVFMT_AVOID_NEG_TS_MAKE_ZERO;
 
@@ -447,13 +449,19 @@ int IOWriteTyped(void *opaque, const uint8_t *buf, int buf_size,
                  enum AVIODataMarkerType type, int64_t time)
 #endif
 {
-    VLC_UNUSED(time);
-
     sout_mux_t *p_mux = opaque;
     sout_mux_sys_t *p_sys = p_mux->p_sys;
 
     block_t *buff = block_Alloc( buf_size );
     if( buf_size > 0 ) memcpy( buff->p_buffer, buf, buf_size );
+
+    if( time != AV_NOPTS_VALUE )
+    {
+        const vlc_tick_t vlc_time = FROM_AV_TS_NZ( time );
+        buff->i_length =  vlc_time - p_sys->last_time;
+        buff->i_dts = buff->i_pts = vlc_time;
+        p_sys->last_time = vlc_time;
+    }
 
     if( !p_sys->b_header_done && type != AVIO_DATA_MARKER_HEADER )
         p_sys->b_header_done = true;
