@@ -535,7 +535,7 @@ static hls_block_chain_t ExtractSubtitleSegment(hls_block_chain_t *muxed_output,
         /* Subtitle segments are segmented at mux level by the
          * hls_sub_segmenter. They have varying length so we use the header flag
          * to extract them properly. */
-        if (it->p_next != NULL && it->p_next->i_flags & BLOCK_FLAG_HEADER)
+        if (it->p_next != NULL && it->p_next->i_flags & VLC_FRAME_FLAG_SYNC)
         {
             muxed_output->begin = it->p_next;
             muxed_output->last_header = it->p_next;
@@ -544,6 +544,7 @@ static hls_block_chain_t ExtractSubtitleSegment(hls_block_chain_t *muxed_output,
         }
         muxed_output->length -= it->i_length;
     }
+    printf("OUAIP\n");
     hls_block_chain_Reset(muxed_output);
     return segment;
 }
@@ -739,6 +740,12 @@ static ssize_t AccessOutWrite(sout_access_out_t *access, block_t *block)
     size_t size = 0;
     vlc_tick_t length;
     block_ChainProperties(block, NULL, &size, &length);
+    printf("Inc block %ld %ld sync = %d hdr = %d\n",
+           size,
+           MS_FROM_VLC_TICK(length),
+           !!(block->i_flags & VLC_FRAME_FLAG_SYNC),
+           !!(block->i_flags & VLC_FRAME_FLAG_HEADER));
+
 
     if (hls_config_IsMemStorageEnabled(&sys->config))
     {

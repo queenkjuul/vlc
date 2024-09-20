@@ -455,9 +455,13 @@ int IOWriteTyped(void *opaque, const uint8_t *buf, int buf_size,
     block_t *buff = block_Alloc( buf_size );
     if( buf_size > 0 ) memcpy( buff->p_buffer, buf, buf_size );
 
+    printf("type=%d\n", type);
+    printf("key=%d\n", p_sys->b_write_keyframe);
+
     if( time != AV_NOPTS_VALUE )
     {
         const vlc_tick_t vlc_time = FROM_AV_TS_NZ( time );
+        printf("%ld-%ld=%ld\n", time, p_sys->last_time, time-p_sys->last_time);
         buff->i_length =  vlc_time - p_sys->last_time;
         buff->i_dts = buff->i_pts = vlc_time;
         p_sys->last_time = vlc_time;
