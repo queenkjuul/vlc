@@ -1,0 +1,28 @@
+From 07b585a74653707c419ff19252a617c3c8e3a8be Mon Sep 17 00:00:00 2001
+From: Alaric Senat <alaric@videolabs.io>
+Date: Fri, 27 Sep 2024 10:18:21 +0200
+Subject: [PATCH] [DROP] default byte swap primitives for emscripten
+
+---
+ src/bswap.h | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/src/bswap.h b/src/bswap.h
+index d3b2383..29f0142 100644
+--- a/src/bswap.h
++++ b/src/bswap.h
+@@ -109,7 +109,10 @@
+ /* If there isn't a header provided with your system with this functionality
+  * add the relevant || define( ) to the portable implementation above.
+  */
+-#error "You need to add endian swap macros for your system"
++#include <byteswap.h>
++#define B2N_16(x) x = bswap_16(x)
++#define B2N_32(x) x = bswap_32(x)
++#define B2N_64(x) x = bswap_64(x)
+ 
+ #endif
+ 
+-- 
+2.45.2
+
