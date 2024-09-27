@@ -22,6 +22,7 @@ dvdread: libdvdread-$(LIBDVDREAD_VERSION).tar.bz2 .sum-dvdread
 	$(UNPACK)
 	$(call update_autoconfig,.)
 	$(APPLY) $(SRC)/dvdread/0001-ifo_types-avoid-forcing-a-higher-length-in-bitfield-.patch
+	$(APPLY) $(SRC)/dvdread/implement-stream-read-without-libdvdcss.patch
 	$(APPLY) $(SRC)/dvdread/DROP-default-byte-swap-primitives-for-emscripten.patch
 	$(call pkg_static,"misc/dvdread.pc.in")
 	$(MOVE)
