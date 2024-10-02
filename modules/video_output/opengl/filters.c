@@ -397,6 +397,7 @@ vlc_gl_filters_UpdatePicture(struct vlc_gl_filters *filters,
     int ret = vlc_gl_importer_Update(importer, picture);
     if (ret != VLC_SUCCESS)
         return ret;
+    GL_ASSERT_NOERROR(&filters->api->vt);
 
     filters->pic.pts = picture->date;
 

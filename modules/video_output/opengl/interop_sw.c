@@ -259,9 +259,11 @@ upload_plane(const struct vlc_gl_interop *interop, unsigned tex_idx,
     struct priv *priv = interop->priv;
     GLenum tex_format = interop->texs[tex_idx].format;
     GLenum tex_type = interop->texs[tex_idx].type;
+    GL_ASSERT_NOERROR(&priv->gl);
 
     /* This unpack alignment is the default, but setting it just in case. */
     priv->gl.PixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    GL_ASSERT_NOERROR(&priv->gl);
 
     assert(height > 0);
     assert(width > 0);
@@ -300,11 +302,13 @@ upload_plane(const struct vlc_gl_interop *interop, unsigned tex_idx,
             }
             priv->gl.TexSubImage2D(interop->tex_target, 0, 0, 0, width, height,
                                    tex_format, tex_type, priv->texture_temp_buf);
+            GL_ASSERT_NOERROR(&priv->gl);
         }
         else
         {
             priv->gl.TexSubImage2D(interop->tex_target, 0, 0, 0, width, height,
                                    tex_format, tex_type, pixels);
+            GL_ASSERT_NOERROR(&priv->gl);
         }
     }
     else
@@ -314,6 +318,7 @@ upload_plane(const struct vlc_gl_interop *interop, unsigned tex_idx,
         priv->gl.TexSubImage2D(interop->tex_target, 0, 0, 0, width, height,
                                tex_format, tex_type, pixels);
         priv->gl.PixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+        GL_ASSERT_NOERROR(&priv->gl);
     }
 
     GL_ASSERT_NOERROR(&priv->gl);
@@ -333,6 +338,8 @@ tc_common_update(const struct vlc_gl_interop *interop, uint32_t textures[],
         assert(textures[i] != 0);
         priv->gl.ActiveTexture(GL_TEXTURE0 + i);
         priv->gl.BindTexture(interop->tex_target, textures[i]);
+        GL_ASSERT_NOERROR(&priv->gl);
+
         const void *pixels = plane_offset != NULL ?
                              &pic->p[i].p_pixels[plane_offset[i]] :
                              pic->p[i].p_pixels;
@@ -341,6 +348,7 @@ tc_common_update(const struct vlc_gl_interop *interop, uint32_t textures[],
         unsigned pixel_pack = (pic->i_planes == 2 && i == 1) ? 2 : 1;
         ret = upload_plane(interop, i, tex_width[i], tex_height[i],
                            pic->p[i].i_pitch, pic->p[i].i_pixel_pitch, pixels, pixel_pack);
+        GL_ASSERT_NOERROR(&priv->gl);
     }
 
     if (pic->i_planes == 1 && interop->tex_count == 2)
@@ -349,13 +357,17 @@ tc_common_update(const struct vlc_gl_interop *interop, uint32_t textures[],
         assert(textures[1] != 0);
         priv->gl.ActiveTexture(GL_TEXTURE1);
         priv->gl.BindTexture(interop->tex_target, textures[1]);
+        GL_ASSERT_NOERROR(&priv->gl);
+
         const void *pixels = plane_offset != NULL ?
                              &pic->p[0].p_pixels[plane_offset[0]] :
                              pic->p[0].p_pixels;
 
         ret = upload_plane(interop, 1, tex_width[1], tex_height[1],
                            pic->p[0].i_pitch, pic->p[0].i_pixel_pitch, pixels, 2);
+        GL_ASSERT_NOERROR(&priv->gl);
     }
+    GL_ASSERT_NOERROR(&priv->gl);
 
     return ret;
 }

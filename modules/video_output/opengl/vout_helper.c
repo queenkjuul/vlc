@@ -377,6 +377,7 @@ int vout_display_opengl_Prepare(vout_display_opengl_t *vgl,
     int ret = vlc_gl_filters_UpdatePicture(vgl->filters, picture);
     if (ret != VLC_SUCCESS)
         return ret;
+    GL_ASSERT_NOERROR(&vgl->api.vt);
 
     ret = vlc_gl_sub_renderer_Prepare(vgl->sub_renderer, subpicture);
     GL_ASSERT_NOERROR(&vgl->api.vt);
