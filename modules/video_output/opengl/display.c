@@ -88,6 +88,12 @@ typedef struct vout_display_sys_t
         PFNGLFLUSHPROC Flush;
     } vt;
     vlc_viewpoint_t viewpoint;
+
+    struct {
+        video_format_t *fmt;
+        const vlc_fourcc_t *spu_chromas;
+        struct vlc_video_context *context;
+    } cfg;
 } vout_display_sys_t;
 
 /* Display callbacks */
@@ -195,6 +201,25 @@ static void Close(vout_display_t *vd)
     free (sys);
 }
 
+static int RendererInit(vlc_gl_t *gl)
+{
+    vout_display_t *vd = gl->owner.sys;
+    vout_display_sys_t *sys = vd->sys;
+
+    sys->vt.Flush = vlc_gl_GetProcAddress(gl, "glFlush");
+    if (sys->vt.Flush == NULL)
+        return VLC_EGENERIC;
+
+    sys->vgl = vout_display_opengl_New (
+            sys->cfg.fmt, &sys->cfg.spu_chromas,
+            gl, &vd->cfg->viewpoint, sys->cfg.context);
+    if (sys->vgl == NULL)
+        return VLC_EGENERIC;
+
+    return VLC_SUCCESS;
+}
+
+
 static void PictureRender(vlc_gl_t *gl)
 {
     vout_display_t *vd = gl->owner.sys;
@@ -292,10 +317,15 @@ static int Open(vout_display_t *vd,
     if (unlikely(sys == NULL))
         return VLC_ENOMEM;
 
+    vd->sys = sys;
+    sys->vgl = NULL;
     sys->gl = NULL;
     sys->is_dirty = false;
     sys->latch.picture = NULL;
     sys->latch.subpicture = NULL;
+
+    sys->cfg.fmt = fmt;
+    sys->cfg.context = context;
 
     vlc_window_t *surface = vd->cfg->window;
     char *gl_name = var_InheritString(surface, MODULE_VARNAME);
@@ -325,14 +355,19 @@ static int Open(vout_display_t *vd,
 #endif
 
     static const struct vlc_gl_callbacks gl_cbs = {
+        .init = RendererInit,
         .render = PictureRender
     };
 
+    vd->sys = sys;
     sys->gl = vlc_gl_Create(vd->cfg, API, gl_name, NULL, &gl_cbs, vd);
     free(gl_name);
     if (sys->gl == NULL)
         goto error;
     vd->sys = sys;
+
+    if (vlc_gl_InitRenderer(sys->gl) || sys->vgl == NULL)
+        goto error;
 
     struct vout_display_placement dp = vd->cfg->display;
     PlacePicture(vd, &sys->place, dp);
@@ -361,13 +396,14 @@ static int Open(vout_display_t *vd,
 
     sys->viewpoint = vd->cfg->viewpoint;
 
-    vd->info.subpicture_chromas = spu_chromas;
+    vd->info.subpicture_chromas = sys->cfg.spu_chromas;
     vd->ops = &ops;
     return VLC_SUCCESS;
 
 error:
     if (sys->gl != NULL)
         vlc_gl_Delete(sys->gl);
+    vd->sys = NULL;
     free (sys);
     vd->sys = NULL;
     return VLC_EGENERIC;
