@@ -80,13 +80,18 @@ typedef struct vout_display_sys_t
     bool is_dirty;
 
     struct {
+        picture_t *picture;
+        const struct vlc_render_subpicture *subpicture;
+    } latch;
+
+    struct {
         PFNGLFLUSHPROC Flush;
     } vt;
     vlc_viewpoint_t viewpoint;
 } vout_display_sys_t;
 
 /* Display callbacks */
-static void PictureRender (vout_display_t *, picture_t *, const vlc_render_subpicture *, vlc_tick_t);
+static void PicturePrepare(vout_display_t *, picture_t *, const vlc_render_subpicture *, vlc_tick_t);
 static void PictureDisplay (vout_display_t *, picture_t *);
 static int Control (vout_display_t *, int);
 
@@ -129,7 +134,7 @@ UpdateFormat(vout_display_t *vd, const video_format_t *fmt,
 
 static const struct vlc_display_operations ops = {
     .close = Close,
-    .prepare = PictureRender,
+    .prepare = PicturePrepare,
     .display = PictureDisplay,
     .control = Control,
     .set_viewpoint = SetViewpoint,
@@ -173,6 +178,7 @@ static void PlacePicture(vout_display_t *vd, vout_display_place_t *place,
     video_format_Clean(&source);
 }
 
+
 /**
  * Destroys the OpenGL context.
  */
@@ -189,31 +195,46 @@ static void Close(vout_display_t *vd)
     free (sys);
 }
 
-static void PictureRender (vout_display_t *vd, picture_t *pic,
+static void PictureRender(vlc_gl_t *gl)
+{
+    vout_display_t *vd = gl->owner.sys;
+    vout_display_sys_t *sys = vd->sys;
+
+    picture_t *pic = sys->latch.picture;
+    const vlc_render_subpicture *subpicture = sys->latch.subpicture;
+
+    vout_display_opengl_Prepare (sys->vgl, pic, subpicture);
+    if (sys->place_changed)
+    {
+        vout_display_opengl_SetOutputSize(sys->vgl, sys->place.width,
+                sys->place.height);
+        vout_display_opengl_Viewport(sys->vgl, sys->place.x, sys->place.y,
+                sys->place.width, sys->place.height);
+        sys->place_changed = false;
+    }
+    vout_display_opengl_Display(sys->vgl);
+    sys->vt.Flush();
+}
+
+static void PicturePrepare(vout_display_t *vd, picture_t *pic,
                            const vlc_render_subpicture *subpicture,
                            vlc_tick_t date)
 {
     VLC_UNUSED(date);
     vout_display_sys_t *sys = vd->sys;
 
+    sys->latch.picture = pic;
+    sys->latch.subpicture = subpicture;
+
+    vlc_gl_RenderNext(sys->gl);
     // TODO: what to do in case of error
+    /*
     if (vlc_gl_MakeCurrent (sys->gl) == VLC_SUCCESS)
     {
-        vout_display_opengl_Prepare (sys->vgl, pic, subpicture);
-        sys->vt.Flush();
-        if (sys->place_changed)
-        {
-            vout_display_opengl_SetOutputSize(sys->vgl, vd->cfg->display.width,
-                                                        vd->cfg->display.height);
-            vout_display_opengl_Viewport(sys->vgl, sys->place.x, sys->place.y,
-                                         sys->place.width, sys->place.height);
-            sys->place_changed = false;
-        }
-        vout_display_opengl_Display(sys->vgl);
-        sys->vt.Flush();
-        vlc_gl_ReleaseCurrent (sys->gl);
+        PictureRender(sys->gl, vd);
         sys->is_dirty = true;
     }
+    */
 }
 
 static void PictureDisplay (vout_display_t *vd, picture_t *pic)
@@ -268,6 +289,8 @@ static int Open(vout_display_t *vd,
 
     sys->gl = NULL;
     sys->is_dirty = false;
+    sys->latch.picture = NULL;
+    sys->latch.subpicture = NULL;
 
     vlc_window_t *surface = vd->cfg->window;
     char *gl_name = var_InheritString(surface, MODULE_VARNAME);
