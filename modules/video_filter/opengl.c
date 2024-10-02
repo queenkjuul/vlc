@@ -46,31 +46,30 @@ typedef struct
     struct vlc_gl_filters *filters;
     struct vlc_gl_interop *interop;
     struct vlc_gl_api api;
+
+    picture_t *input;
 } filter_sys_t;
+
+static void RenderNext(vlc_gl_t *gl)
+{
+    filter_t *filter = gl->owner.sys;
+    filter_sys_t *sys = filter->p_sys;
+
+    // TODO: error handling
+    int ret = vlc_gl_filters_UpdatePicture(sys->filters, sys->input);
+    (void)ret;
+
+    ret = vlc_gl_filters_Draw(sys->filters);
+    (void)ret;
+}
 
 static picture_t *Filter(filter_t *filter, picture_t *input)
 {
     filter_sys_t *sys = filter->p_sys;
 
-    if (vlc_gl_MakeCurrent(sys->gl) != VLC_SUCCESS)
-        return NULL;
-
-    int ret = vlc_gl_filters_UpdatePicture(sys->filters, input);
-    if (ret != VLC_SUCCESS)
-    {
-        vlc_gl_ReleaseCurrent(sys->gl);
-        return NULL;
-    }
-
-    ret = vlc_gl_filters_Draw(sys->filters);
-    if (ret != VLC_SUCCESS)
-    {
-        vlc_gl_ReleaseCurrent(sys->gl);
-        return NULL;
-    }
-
+    sys->input = input;
+    vlc_gl_RenderNext(sys->gl);
     picture_t *output = vlc_gl_SwapOffscreen(sys->gl);
-    vlc_gl_ReleaseCurrent(sys->gl);
 
     if (output == NULL)
         goto end;
@@ -162,21 +161,26 @@ static void Close( filter_t *filter )
     }
 }
 
-static vlc_gl_t *CreateGL(vlc_object_t *obj, struct vlc_decoder_device *device,
+static vlc_gl_t *CreateGL(filter_t *filter, struct vlc_decoder_device *device,
                           unsigned width, unsigned height)
 {
 
+    static const struct vlc_gl_callbacks gl_cbs =
+    {
+        .render = RenderNext,
+    };
+
 #ifdef USE_OPENGL_ES2
-    char *opengles_name = var_InheritString(obj, "opengl-gles");
+    char *opengles_name = var_InheritString(&filter->obj, "opengl-gles");
     vlc_gl_t *gl = vlc_gl_CreateOffscreen(obj, device, width, height,
                                           VLC_OPENGL_ES2, opengles_name, NULL,
-                                          NULL, NULL);
+                                          &gl_cbs, filter);
     free(opengles_name);
     return gl;
 #else
     vlc_gl_t *gl = NULL;
-    char *opengl_name = var_InheritString(obj, "opengl-gl");
-    char *opengles_name = var_InheritString(obj, "opengl-gles");
+    char *opengl_name = var_InheritString(&filter->obj, "opengl-gl");
+    char *opengles_name = var_InheritString(&filter->obj, "opengl-gles");
 
     const char *gl_module = opengl_name;
     const char *gles_module = opengles_name;
@@ -209,16 +213,16 @@ static vlc_gl_t *CreateGL(vlc_object_t *obj, struct vlc_decoder_device *device,
         opengl_name = strdup("");
 
     if (gl_module != NULL)
-        gl = vlc_gl_CreateOffscreen(obj, device, width, height,
+        gl = vlc_gl_CreateOffscreen(&filter->obj, device, width, height,
                                     VLC_OPENGL, gl_module, NULL,
-                                    NULL, NULL);
+                                    &gl_cbs, filter);
     if (gl != NULL)
         goto end;
 
     if (gles_module != NULL)
-        gl = vlc_gl_CreateOffscreen(obj, device, width, height,
+        gl = vlc_gl_CreateOffscreen(&filter->obj, device, width, height,
                                     VLC_OPENGL_ES2, opengles_name, NULL,
-                                    NULL, NULL);
+                                    &gl_cbs, filter);
 end:
     free(opengl_name);
     free(opengles_name);
@@ -241,7 +245,7 @@ static int OpenOpenGL(filter_t *filter)
 
     struct vlc_decoder_device *device = filter_HoldDecoderDevice(filter);
 
-    sys->gl = CreateGL(VLC_OBJECT(filter), device, width, height);
+    sys->gl = CreateGL(filter, device, width, height);
 
     /* The vlc_gl_t instance must have hold the device if it needs it. */
     if (device)
