@@ -57,6 +57,7 @@
 #include <vlc_subpicture.h> // vlc_spu_highlight_t
 
 #include <dvdnav/dvdnav.h>
+#include <dvdread/nav_print.h>
 /* Expose without patching headers */
 dvdnav_status_t dvdnav_jump_to_sector_by_time(dvdnav_t *, uint64_t, int32_t);
 
@@ -1357,6 +1358,8 @@ static void ButtonUpdate( demux_t *p_demux, bool b_mode )
     if( i_button > 0 && i_title ==  0 )
     {
         pci_t *pci = dvdnav_get_current_nav_pci( p_sys->dvdnav );
+
+        //navPrint_PCI(pci);
 
         b_button_ok = DVDNAV_STATUS_OK ==
                   dvdnav_get_highlight_area( pci, i_button, b_mode, &hl );

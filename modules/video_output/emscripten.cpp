@@ -32,6 +32,7 @@
 #include <vlc_common.h>
 #include <vlc_plugin.h>
 #include <vlc_window.h>
+#include <vlc_actions.h>
 #include <vlc_vout_display.h>
 #include <vlc_opengl.h>
 
@@ -212,6 +213,22 @@ static void Close (vlc_gl_t *gl)
     delete sys;
 }
 
+extern "C" 
+{
+EMSCRIPTEN_KEEPALIVE void printhello(vlc_window_t *window) {
+    vlc_window_ReportKeyPress(window, KEY_ENTER);
+}
+EMSCRIPTEN_KEEPALIVE void mousemove(vlc_window_t *window, int x, int y) {
+    vlc_window_ReportMouseMoved(window, x, y);
+}
+EMSCRIPTEN_KEEPALIVE void mousedown(vlc_window_t *window) {
+    vlc_window_ReportMousePressed(window, MOUSE_BUTTON_LEFT);
+}
+EMSCRIPTEN_KEEPALIVE void mouseup(vlc_window_t *window) {
+    vlc_window_ReportMouseReleased(window, MOUSE_BUTTON_LEFT);
+}
+}
+
 static void RunloopRender(void *opaque)
 {
     auto gl = static_cast<vlc_gl_t*>(opaque);
@@ -264,10 +281,28 @@ static void OpenglInitialize(vlc_gl_t *gl, unsigned width, unsigned height)
     attr.explicitSwapControl = 1;
 
     MAIN_THREAD_EM_ASM({
+        let canvasName = UTF8ToString($1);
+        let canvas = document.getElementById(canvasName);
         if (Module.canvasCtx === undefined) {
-            let canvasName = UTF8ToString($1);
-            Module.canvasCtx = document.getElementById(canvasName).getContext('2d');
+            Module.canvasCtx = canvas.getContext('2d');
         }
+        //_bindEvents();
+        //console.log(canvas);
+        window.addEventListener("keypress", function(ev) {
+                console.log(ev.code);
+                _printhello($2);
+        });
+        window.addEventListener("mousemove", function(ev) {
+                _mousemove($2, ev.offsetX, ev.offsetY);
+        });
+        window.addEventListener("mousedown", function(ev) {
+                console.log("MOUSE DOWN");
+                _mousedown($2);
+        });
+        window.addEventListener("mouseup", function(ev) {
+                console.log("MOUSE UP");
+                _mouseup($2);
+        });
         function onVoutMessage(msg) {
             let data = msg['data'];
             if (data.customCmd == 'commitFrame') {
@@ -294,7 +329,7 @@ static void OpenglInitialize(vlc_gl_t *gl, unsigned width, unsigned height)
                 }, [msgChannel.port2]);
             }
         });
-    }, pthread_self(), wnd->handle.canvas ? wnd->handle.canvas : "canvas");
+    }, pthread_self(), wnd->handle.canvas ? wnd->handle.canvas : "canvas", wnd);
 
     getVoutMessagePort();
 
