@@ -72,7 +72,6 @@ static void OpenglSwap (vlc_gl_t *gl);
     vlc_gl_t *gl;
 }
 - (void)setVoutGl:(vlc_gl_t *)gl;
-- (void)setVoutFlushing:(BOOL)flushing;
 - (void)render;
 @end
 
@@ -334,16 +333,6 @@ static void OpenglSwap (vlc_gl_t *gl)
     @synchronized(self) {
         gl = aGl;
     }
-}
-
-/**
- * Gets called when the vout will acquire the lock and flush.
- * (Non main thread).
- */
-- (void)setVoutFlushing:(BOOL)flushing
-{
-    if (!flushing)
-        return;
 }
 
 /**
