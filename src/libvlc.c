@@ -71,6 +71,9 @@
 
 #include <assert.h>
 
+#include <emscripten.h>
+#include <emscripten/html5.h>
+
 /*****************************************************************************
  * Local prototypes
  *****************************************************************************/
@@ -160,6 +163,10 @@ int libvlc_InternalInit( libvlc_int_t *p_libvlc, int i_argc,
      * saved settings handling can function properly.
      */
     module_LoadPlugins (p_libvlc);
+
+    //emscripten_log(EM_LOG_CONSOLE, "BINDING KEYPRESS");
+    //emscripten_set_mousemove_callback("#canvas", NULL, true, MouseMoveCallback);
+    //emscripten_log(EM_LOG_CONSOLE, "BINDING KEYPRESS DONE");
 
     /*
      * Fully process command line settings.

@@ -2134,16 +2134,21 @@ static void DeleteDecoder( vlc_input_decoder_t *p_owner, enum es_format_category
 
             if (vout != NULL)
             {
+                printf("vout hold\n");
                 /* Hold the vout since PutVout will likely release it and a
                  * last reference is needed for notify callbacks */
                 vout_Hold(vout);
 
+                printf("put vout\n");
                 enum input_resource_vout_state vout_state;
                 input_resource_PutVout(p_owner->p_resource, vout, &vout_state);
+                printf("notify\n");
                 if (vout_state == INPUT_RESOURCE_VOUT_STOPPED)
                     decoder_Notify(p_owner, on_vout_stopped, vout);
 
+                printf("release\n");
                 vout_Release(vout);
+                printf("released\n");
             }
             break;
         }
@@ -2175,8 +2180,11 @@ static void DeleteDecoder( vlc_input_decoder_t *p_owner, enum es_format_category
         vlc_meta_Delete( p_owner->p_description );
 
     block_FifoRelease( p_owner->p_fifo );
+    printf("dtor1\n");
     decoder_Destroy( p_owner->p_packetizer );
+    printf("dtor2\n");
     decoder_Destroy( &p_owner->dec );
+    printf("dtor3\n");
 }
 
 /* */
@@ -2302,20 +2310,25 @@ static void RemoveCcDecoder(vlc_input_decoder_t *owner,
 
 void vlc_input_decoder_Delete( vlc_input_decoder_t *p_owner )
 {
+    printf("dec del 1\n");
     if (p_owner->master_dec != NULL)
         RemoveCcDecoder(p_owner->master_dec, p_owner);
 
+    printf("dec del 2\n");
     vlc_fifo_Lock( p_owner->p_fifo );
     p_owner->aborting = true;
     p_owner->b_waiting = false;
     vlc_fifo_Signal( p_owner->p_fifo );
 
+    printf("dec del 3\n");
     /* Make sure we aren't waiting/decoding anymore */
     vlc_cond_signal( &p_owner->wait_request );
     vlc_fifo_Unlock( p_owner->p_fifo );
 
+    printf("dec del 4\n");
     if( !vlc_input_decoder_IsSynchronous( p_owner ) )
         vlc_join( p_owner->thread, NULL );
+    printf("dec del 5\n");
 
 #ifndef NDEBUG
     vlc_mutex_lock(&p_owner->subdecs.lock);
@@ -2324,8 +2337,10 @@ void vlc_input_decoder_Delete( vlc_input_decoder_t *p_owner )
     vlc_mutex_unlock(&p_owner->subdecs.lock);
 #endif
 
+    printf("dec del 6\n");
     /* Delete decoder */
     DeleteDecoder(p_owner, p_owner->dec_fmt_in.i_cat);
+    printf("dec del 7\n");
 }
 
 void vlc_subdec_desc_Clean(struct vlc_subdec_desc *desc)
@@ -2505,6 +2520,7 @@ void vlc_input_decoder_Drain( vlc_input_decoder_t *p_owner )
         return;
     }
 
+    printf("drain\n");
     vlc_fifo_Lock( p_owner->p_fifo );
     p_owner->b_draining = true;
     vlc_fifo_Signal( p_owner->p_fifo );
@@ -2516,6 +2532,7 @@ void vlc_input_decoder_Flush( vlc_input_decoder_t *p_owner )
     vlc_fifo_Lock( p_owner->p_fifo );
     enum es_format_category_e cat = p_owner->dec.fmt_in->i_cat;
 
+    printf("flush\n");
     /* Empty the fifo */
     block_ChainRelease( vlc_fifo_DequeueAllUnlocked( p_owner->p_fifo ) );
 
@@ -2554,6 +2571,7 @@ void vlc_input_decoder_Flush( vlc_input_decoder_t *p_owner )
             vout_FlushSubpictureChannel( p_owner->p_vout, p_owner->i_spu_channel );
         }
     }
+    printf("flush2\n");
     vlc_fifo_Signal( p_owner->p_fifo );
 
     if (unlikely(p_owner->b_waiting && p_owner->b_has_data))
@@ -2571,6 +2589,7 @@ void vlc_input_decoder_Flush( vlc_input_decoder_t *p_owner )
         while (p_owner->b_has_data)
             vlc_fifo_WaitCond(p_owner->p_fifo, &p_owner->wait_acknowledge);
     }
+    printf("flush3\n");
 
     vlc_fifo_Unlock( p_owner->p_fifo );
 
@@ -2585,6 +2604,7 @@ void vlc_input_decoder_Flush( vlc_input_decoder_t *p_owner )
         p_owner->i_preroll_end = PREROLL_NONE;
         vlc_fifo_Unlock(p_owner->p_fifo);
     }
+    printf("flush4\n");
 }
 
 vlc_input_decoder_t *

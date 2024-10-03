@@ -864,20 +864,25 @@ void vout_display_Delete(vout_display_t *vd)
 
     if (osys->src_vctx)
     {
+        printf("destroy context\n");
         vlc_video_context_Release( osys->src_vctx );
         osys->src_vctx = NULL;
     }
 
     if (osys->converter != NULL)
     {
+        printf("destroy convert\n");
         VoutConverterRelease(osys->converter);
     }
 
+        printf("close\n");
     if (vd->ops->close != NULL)
         vd->ops->close(vd);
+        printf("closed\n");
     vlc_objres_clear(VLC_OBJECT(vd));
 
     video_format_Clean(&osys->source);
     video_format_Clean(&osys->display_fmt);
     vlc_object_delete(vd);
+        printf("yay\n");
 }

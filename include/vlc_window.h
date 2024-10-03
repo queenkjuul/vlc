@@ -728,7 +728,11 @@ static inline void vlc_window_ReportMouseDoubleClick(vlc_window_t *window,
 static inline void vlc_window_ReportKeyPress(vlc_window_t *window, int key)
 {
     if (window->owner.cbs->keyboard_event != NULL)
+    {
+        printf("no\n");
         window->owner.cbs->keyboard_event(window, key);
+    }
+    printf("yes\n");
 }
 
 /**
