@@ -68,21 +68,6 @@ static void OpenglUnlock (vlc_gl_t *gl);
 static void OpenglSwap (vlc_gl_t *gl);
 
 /**
- * Module declaration
- */
-vlc_module_begin ()
-    /* Will be loaded even without interface module. see voutgl.m */
-    set_shortname ("Mac OS X")
-    set_description (N_("Mac OS X OpenGL video output"))
-    set_subcategory (SUBCAT_VIDEO_VOUT)
-    set_callback_display(Open, 290)
-    add_shortcut ("macosx", "vout_macosx")
-    add_glopts ()
-
-    add_opengl_submodule_renderer()
-vlc_module_end ()
-
-/**
  * Obj-C protocol declaration that drawable-nsobject should follow
  */
 @protocol VLCVideoViewEmbedding <NSObject>
@@ -645,3 +630,18 @@ static void OpenglSwap (vlc_gl_t *gl)
 }
 
 @end
+
+/**
+ * Module declaration
+ */
+vlc_module_begin ()
+    /* Will be loaded even without interface module. see voutgl.m */
+    set_shortname ("Mac OS X")
+    set_description (N_("Mac OS X OpenGL video output"))
+    set_subcategory (SUBCAT_VIDEO_VOUT)
+    set_callback_display(Open, 290)
+    add_shortcut ("macosx", "vout_macosx")
+    add_glopts ()
+
+    add_opengl_submodule_renderer()
+vlc_module_end ()
