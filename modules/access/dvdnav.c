@@ -57,6 +57,7 @@
 #include <vlc_subpicture.h> // vlc_spu_highlight_t
 
 #include <dvdnav/dvdnav.h>
+#include <dvdread/nav_print.h>
 /* Expose without patching headers */
 dvdnav_status_t dvdnav_jump_to_sector_by_time(dvdnav_t *, uint64_t, int32_t);
 
@@ -608,6 +609,7 @@ static int Control( demux_t *p_demux, int i_query, va_list args )
         case DEMUX_GET_POSITION:
         case DEMUX_GET_LENGTH:
         {
+            //printf("demux get length\n");
             uint32_t pos, len;
             if( dvdnav_get_position( p_sys->dvdnav, &pos, &len ) !=
                   DVDNAV_STATUS_OK || len == 0 )
@@ -643,6 +645,7 @@ static int Control( demux_t *p_demux, int i_query, va_list args )
         }
 
         case DEMUX_GET_TIME:
+            //printf("demux get time\n");
             if( p_sys->i_pgc_length > 0 )
             {
                 *va_arg( args, vlc_tick_t * ) =
@@ -653,6 +656,7 @@ static int Control( demux_t *p_demux, int i_query, va_list args )
 
         case DEMUX_SET_TIME:
         {
+            printf("demux set time\n");
             vlc_tick_t i_time = va_arg( args, vlc_tick_t );
             if( dvdnav_jump_to_sector_by_time( p_sys->dvdnav,
                                                i_time * 9 / 100,
@@ -674,6 +678,7 @@ static int Control( demux_t *p_demux, int i_query, va_list args )
             return VLC_SUCCESS;
 
         case DEMUX_GET_TITLE_INFO:
+            //printf("demux get title\n");
             ppp_title = va_arg( args, input_title_t*** );
 
             /* Duplicate title infos */
@@ -697,6 +702,7 @@ static int Control( demux_t *p_demux, int i_query, va_list args )
             return VLC_SUCCESS;
 
         case DEMUX_SET_TITLE:
+            printf("demux set title\n");
             i = va_arg( args, int );
             if( i == 0 && dvdnav_menu_call( p_sys->dvdnav, DVD_MENU_Root )
                   != DVDNAV_STATUS_OK )
@@ -725,6 +731,7 @@ static int Control( demux_t *p_demux, int i_query, va_list args )
             return VLC_SUCCESS;
 
         case DEMUX_SET_SEEKPOINT:
+            printf("demux set seekpoint\n");
             i = va_arg( args, int );
             if( p_sys->cur_title == 0 )
             {
@@ -753,20 +760,24 @@ static int Control( demux_t *p_demux, int i_query, va_list args )
         }
 
         case DEMUX_GET_TITLE:
+            //printf("demux get title\n");
             *va_arg( args, int * ) = p_sys->cur_title;
             break;
 
         case DEMUX_GET_SEEKPOINT:
+            //printf("demux get seekpoint\n");
             *va_arg( args, int * ) = p_sys->cur_seekpoint;
             break;
 
         case DEMUX_GET_PTS_DELAY:
+            printf("demux get pts delay\n");
             *va_arg( args, vlc_tick_t * ) =
                 VLC_TICK_FROM_MS( var_InheritInteger( p_demux, "disc-caching" ) );
             return VLC_SUCCESS;
 
         case DEMUX_GET_META:
         {
+            printf("demux get meta\n");
             const char *title_name = NULL;
 
             dvdnav_get_title_string(p_sys->dvdnav, &title_name);
@@ -781,6 +792,7 @@ static int Control( demux_t *p_demux, int i_query, va_list args )
 
         case DEMUX_NAV_ACTIVATE:
         {
+            printf("demux nav activate\n");
             pci_t *pci = dvdnav_get_current_nav_pci( p_sys->dvdnav );
 
             if( dvdnav_button_activate( p_sys->dvdnav, pci ) != DVDNAV_STATUS_OK )
@@ -793,6 +805,7 @@ static int Control( demux_t *p_demux, int i_query, va_list args )
 
         case DEMUX_NAV_UP:
         {
+            printf("demux nav up\n");
             pci_t *pci = dvdnav_get_current_nav_pci( p_sys->dvdnav );
 
             if( dvdnav_upper_button_select( p_sys->dvdnav, pci ) != DVDNAV_STATUS_OK )
@@ -802,6 +815,7 @@ static int Control( demux_t *p_demux, int i_query, va_list args )
 
         case DEMUX_NAV_DOWN:
         {
+            printf("demux nav down\n");
             pci_t *pci = dvdnav_get_current_nav_pci( p_sys->dvdnav );
 
             if( dvdnav_lower_button_select( p_sys->dvdnav, pci ) != DVDNAV_STATUS_OK )
@@ -811,6 +825,7 @@ static int Control( demux_t *p_demux, int i_query, va_list args )
 
         case DEMUX_NAV_LEFT:
         {
+            printf("demux nav left\n");
             pci_t *pci = dvdnav_get_current_nav_pci( p_sys->dvdnav );
 
             if( dvdnav_left_button_select( p_sys->dvdnav, pci ) != DVDNAV_STATUS_OK )
@@ -820,6 +835,7 @@ static int Control( demux_t *p_demux, int i_query, va_list args )
 
         case DEMUX_NAV_RIGHT:
         {
+            printf("demux nav right\n");
             pci_t *pci = dvdnav_get_current_nav_pci( p_sys->dvdnav );
 
             if( dvdnav_right_button_select( p_sys->dvdnav, pci ) != DVDNAV_STATUS_OK )
@@ -829,6 +845,7 @@ static int Control( demux_t *p_demux, int i_query, va_list args )
 
         case DEMUX_NAV_MENU:
         {
+            printf("demux nav menu\n");
             if( CallRootTitleMenu( p_sys->dvdnav, &p_sys->cur_title,
                                                   &p_sys->cur_seekpoint ) )
             {
@@ -841,6 +858,7 @@ static int Control( demux_t *p_demux, int i_query, va_list args )
 
         case DEMUX_GET_TYPE:
         {
+            printf("demux get type \n");
             *va_arg( args, int* ) = ITEM_TYPE_DISC;
             break;
         }
@@ -1356,6 +1374,8 @@ static void ButtonUpdate( demux_t *p_demux, bool b_mode )
     {
         pci_t *pci = dvdnav_get_current_nav_pci( p_sys->dvdnav );
 
+        //navPrint_PCI(pci);
+
         b_button_ok = DVDNAV_STATUS_OK ==
                   dvdnav_get_highlight_area( pci, i_button, b_mode, &hl );
     }
@@ -1371,6 +1391,7 @@ static void ButtonUpdate( demux_t *p_demux, bool b_mode )
                 .i_entries = 4,
             }
         };
+        //printf("%d, %d, %d, %d\n", hl.sx, hl.ex, hl.sy ,hl.ey);
 
         for( unsigned i = 0; i < 4; i++ )
         {
@@ -1414,6 +1435,7 @@ static void ESSubtitleUpdate( demux_t *p_demux )
     if( dvdnav_current_title_info( p_sys->dvdnav, &i_title, &i_part )
             != DVDNAV_STATUS_OK || i_title > 0 )
         return;
+
 
     /* dvdnav_get_active_spu_stream sets (in)visibility flag as 0xF0 */
     if( i_spu >= 0 && i_spu <= 0x1f )
@@ -1709,7 +1731,10 @@ static void EventMouse( const vlc_mouse_t *newmouse, void *p_data )
     pci_t *pci = dvdnav_get_current_nav_pci( p_sys->dvdnav );
 
     if( vlc_mouse_HasMoved( &p_sys->oldmouse, newmouse ) )
+    {
+        //printf("HAS MOVED %d %d\n", newmouse->i_x, newmouse->i_y);
         dvdnav_mouse_select( p_sys->dvdnav, pci, newmouse->i_x, newmouse->i_y );
+    }
     if( vlc_mouse_HasPressed( &p_sys->oldmouse, newmouse, MOUSE_BUTTON_LEFT ) )
     {
         vlc_mutex_lock( &p_sys->event_lock );

@@ -32,6 +32,7 @@
 #include <vlc_common.h>
 #include <vlc_plugin.h>
 #include <vlc_window.h>
+#include <vlc_actions.h>
 #include <vlc_vout_display.h>
 #include <vlc_opengl.h>
 
@@ -44,13 +45,18 @@
 #include <emscripten/html5.h>
 #undef typeof // FIXME Remove once val::typeof is finally removed
 #include <emscripten/val.h>
+#include <emscripten/bind.h>
 #include <webgl/webgl2.h>
 // eglGetProcAddress
 #include <EGL/egl.h>
 
+void Resize(struct vlc_window *w, unsigned width, unsigned height) {
+    vlc_window_ReportSize(w, width, height);
+}
 static const struct vlc_window_operations ops = {
     //TODO: Implement canvas operations
     //vlc_window_ReportSize() should be called from here
+    .resize = Resize,
 };
 
 //MAIN_THREAD_
@@ -65,6 +71,21 @@ typedef struct emscripten_gl_sys_t
 {
     EMSCRIPTEN_WEBGL_CONTEXT_HANDLE context;
 } emscripten_gl_sys_t;
+
+extern "C" {
+EMSCRIPTEN_KEEPALIVE EM_BOOL KeyCallback(int event_type, const EmscriptenKeyboardEvent *key_event, void *user_data) {
+    //vlc_window_t *wnd = static_cast<vlc_window_t*>(user_data);
+
+    //emscripten_log(EM_LOG_CONSOLE, "KEYPRESS %s", key_event->key);
+    return 0;
+}
+
+EMSCRIPTEN_KEEPALIVE EM_BOOL MouseMoveCallback(int eventType, const EmscriptenMouseEvent *mouseEvent, void *userData) {
+    printf("oui\n");
+    //emscripten_log(EM_LOG_CONSOLE, "MOUSE %ld %ld", mouseEvent->targetX, mouseEvent->targetY);
+    return 0;
+}
+}
 
 static int OpenWindow(vlc_window_t *wnd)
 {
@@ -91,10 +112,12 @@ static void *GetProcAddress(vlc_gl_t *gl, const char *name)
 
 static int MakeCurrent(vlc_gl_t *gl)
 {
+    emscripten_log(EM_LOG_CONSOLE, "vout make current %x\n", pthread_self());
     auto sys = static_cast<emscripten_gl_sys_t*>( gl->sys );
 
     if (emscripten_webgl_make_context_current(sys->context) != EMSCRIPTEN_RESULT_SUCCESS)
         return VLC_EGENERIC;
+    printf("vout make current2\n");
     return VLC_SUCCESS;
 }
 
@@ -148,6 +171,7 @@ EM_ASYNC_JS(void, getVoutMessagePort, (), {
 
 EM_JS(int, createGlContext, (int width, int height), {
     Module.offscreenCanvas = new OffscreenCanvas(width, height);
+    console.log("NEW CONTEXT");
     Module.glCtx = Module.offscreenCanvas.getContext('webgl2');
 
     return GL.registerContext(Module.glCtx, {
@@ -157,8 +181,32 @@ EM_JS(int, createGlContext, (int width, int height), {
 
 static void Close (vlc_gl_t *gl)
 {
+    printf("CLOSE GL ES2\n");
     auto sys = static_cast<emscripten_gl_sys_t*>( gl->sys );
     delete sys;
+}
+
+extern "C" 
+{
+EMSCRIPTEN_KEEPALIVE void printhello(vlc_window_t *window) {
+    vlc_window_ReportKeyPress(window, KEY_ENTER);
+}
+EMSCRIPTEN_KEEPALIVE void mousemove(vlc_window_t *window, int x, int y) {
+    vlc_window_ReportMouseMoved(window, x, y);
+}
+EMSCRIPTEN_KEEPALIVE void mousedown(vlc_window_t *window) {
+    vlc_window_ReportMousePressed(window, MOUSE_BUTTON_LEFT);
+}
+EMSCRIPTEN_KEEPALIVE void mouseup(vlc_window_t *window) {
+    vlc_window_ReportMouseReleased(window, MOUSE_BUTTON_LEFT);
+}
+
+EMSCRIPTEN_KEEPALIVE void bindEvents() {
+    emscripten_log(EM_LOG_CONSOLE, "BINDING KEYPRESS");
+    //emscripten_set_keypress_callback("#window", nullptr, true, KeyCallback);
+    emscripten_set_mousemove_callback("#canvas", nullptr, false, MouseMoveCallback);
+    emscripten_log(EM_LOG_CONSOLE, "BINDING KEYPRESS DONE");
+}
 }
 
 static int Open (vlc_gl_t *gl, unsigned width, unsigned height, const struct vlc_gl_cfg *cfg)
@@ -175,8 +223,10 @@ static int Open (vlc_gl_t *gl, unsigned width, unsigned height, const struct vlc
 
     vlc_window_t *wnd = gl->surface;
 
+    EMSCRIPTEN_RESULT status;
     if (wnd->type != VLC_WINDOW_TYPE_EMSCRIPTEN_WEBGL)
         goto error;
+
 
     emscripten_gl_sys_t *sys;
 
@@ -185,10 +235,28 @@ static int Open (vlc_gl_t *gl, unsigned width, unsigned height, const struct vlc
         return VLC_ENOMEM;
 
     MAIN_THREAD_EM_ASM({
+        let canvasName = UTF8ToString($1);
+        let canvas = document.getElementById(canvasName);
         if (Module.canvasCtx === undefined) {
-            let canvasName = UTF8ToString($1);
-            Module.canvasCtx = document.getElementById(canvasName).getContext('2d');
+            Module.canvasCtx = canvas.getContext('2d');
         }
+        //_bindEvents();
+        //console.log(canvas);
+        window.addEventListener("keypress", function(ev) {
+                console.log(ev.code);
+                _printhello($2);
+        });
+        window.addEventListener("mousemove", function(ev) {
+                _mousemove($2, ev.offsetX, ev.offsetY);
+        });
+        window.addEventListener("mousedown", function(ev) {
+                console.log("MOUSE DOWN");
+                _mousedown($2);
+        });
+        window.addEventListener("mouseup", function(ev) {
+                console.log("MOUSE UP");
+                _mouseup($2);
+        });
         function onVoutMessage(msg) {
             let data = msg['data'];
             if (data.customCmd == 'commitFrame') {
@@ -209,7 +277,7 @@ static int Open (vlc_gl_t *gl, unsigned width, unsigned height, const struct vlc
                 }, [msgChannel.port2]);
             }
         });
-    }, pthread_self(), wnd->handle.canvas ? wnd->handle.canvas : "canvas");
+    }, pthread_self(), wnd->handle.canvas ? wnd->handle.canvas : "canvas", wnd);
 
     getVoutMessagePort();
     sys->context = createGlContext(width, height);
@@ -227,6 +295,7 @@ static int Open (vlc_gl_t *gl, unsigned width, unsigned height, const struct vlc
     emscripten_webgl_make_context_current(0);
     wnd->handle.em_context = sys->context;
 
+//    emscripten_set_mousemove_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr, false, MouseMoveCallback);
     // Implement gl routines:
     static const struct vlc_gl_operations ops =
     {

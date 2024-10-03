@@ -1792,10 +1792,12 @@ static void ControlNav( input_thread_t *p_input, int i_type )
 {
     input_thread_private_t *priv = input_priv(p_input);
 
+    printf("ControlNav\n");
     if( !demux_Control( priv->master->p_demux, i_type
                         - INPUT_CONTROL_NAV_ACTIVATE + DEMUX_NAV_ACTIVATE ) )
         return; /* The demux handled the navigation control */
 
+    printf("ControlNav2\n");
     input_SendEvent(p_input, &(struct vlc_input_event) {
         .type = INPUT_EVENT_NAV_FAILED,
         .nav_type = i_type,

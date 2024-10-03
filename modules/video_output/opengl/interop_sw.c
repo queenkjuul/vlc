@@ -140,6 +140,7 @@ pbo_data_alloc(const struct vlc_gl_interop *interop, picture_t *pic)
     const struct priv *priv = interop->priv;
     picture_sys_t *picsys = pic->p_sys;
 
+    printf("GET ERROR\n");
     priv->gl.GetError();
 
     for (int i = 0; i < pic->i_planes; ++i)
@@ -148,6 +149,7 @@ pbo_data_alloc(const struct vlc_gl_interop *interop, picture_t *pic)
         priv->gl.BufferData(GL_PIXEL_UNPACK_BUFFER, picsys->bytes[i], NULL,
                                 GL_DYNAMIC_DRAW);
 
+        printf("GET ERROR2\n");
         if (priv->gl.GetError() != GL_NO_ERROR)
         {
             msg_Err(interop->gl, "could not alloc PBO buffers");
@@ -239,6 +241,7 @@ static int
 tc_common_allocate_textures(const struct vlc_gl_interop *interop, uint32_t textures[],
                             const int32_t tex_width[], const int32_t tex_height[])
 {
+    printf("ALLOC\n");
     const struct priv *priv = interop->priv;
     for (unsigned i = 0; i < interop->tex_count; i++)
     {
@@ -326,6 +329,7 @@ tc_common_update(const struct vlc_gl_interop *interop, uint32_t textures[],
                  const int32_t tex_width[], const int32_t tex_height[],
                  picture_t *pic, const size_t *plane_offset)
 {
+    printf("UPDATE\n");
     const struct priv *priv = interop->priv;
     int ret = VLC_SUCCESS;
     for (int i = 0; i < pic->i_planes && ret == VLC_SUCCESS; i++)
@@ -679,6 +683,7 @@ opengl_interop_init(struct vlc_gl_interop *interop,
 static void
 opengl_interop_generic_deinit(struct vlc_gl_interop *interop)
 {
+    printf("DEINIT\n");
     struct priv *priv = interop->priv;
     for (size_t i = 0; i < PBO_DISPLAY_COUNT && priv->pbo.display_pics[i]; ++i)
         picture_Release(priv->pbo.display_pics[i]);

@@ -1885,8 +1885,10 @@ static void vout_ReleaseDisplay(vout_thread_sys_t *vout)
 
     assert(sys->display != NULL);
 
+    printf("rdp1\n");
     if (sys->spu_blend != NULL)
         filter_DeleteBlend(sys->spu_blend);
+    printf("rdp2\n");
 
     /* Destroy the rendering display */
     if (sys->private_pool != NULL)
@@ -1896,25 +1898,30 @@ static void vout_ReleaseDisplay(vout_thread_sys_t *vout)
         picture_pool_Release(sys->private_pool);
         sys->private_pool = NULL;
     }
+    printf("rdp3\n");
 
     vlc_queuedmutex_lock(&sys->display_lock);
     vout_CloseWrapper(&vout->obj, sys->display);
     sys->display = NULL;
     vlc_queuedmutex_unlock(&sys->display_lock);
 
+    printf("rdp4\n");
     /* Destroy the video filters */
     DelAllFilterCallbacks(vout);
+    printf("rdp5\n");
     vlc_mutex_lock(&sys->filter.lock);
     ci = sys->filter.chain_interactive;
     cs = sys->filter.chain_static;
     sys->filter.chain_interactive = NULL;
     sys->filter.chain_static = NULL;
     vlc_mutex_unlock(&sys->filter.lock);
+    printf("rdp6\n");
     filter_chain_Delete(ci);
     filter_chain_Delete(cs);
     video_format_Clean(&sys->filter.src_fmt);
     if (sys->filter.src_vctx)
     {
+    printf("rdp7\n");
         vlc_video_context_Release(sys->filter.src_vctx);
         sys->filter.src_vctx = NULL;
     }
@@ -1922,12 +1929,14 @@ static void vout_ReleaseDisplay(vout_thread_sys_t *vout)
 
     if (sys->decoder_fifo != NULL)
     {
+    printf("rdp8\n");
         picture_fifo_Delete(sys->decoder_fifo);
         sys->decoder_fifo = NULL;
     }
     assert(sys->private_pool == NULL);
 
     vlc_mutex_lock(&sys->window_lock);
+    printf("rdp9\n");
     vout_display_window_SetMouseHandler(sys->display_cfg.window, NULL, NULL);
     vlc_mutex_unlock(&sys->window_lock);
 
@@ -1942,6 +1951,7 @@ static void vout_ReleaseDisplay(vout_thread_sys_t *vout)
         sys->clock_listener_id = NULL;
     }
 
+    printf("rdp10\n");
     vlc_mutex_lock(&sys->clock_lock);
     sys->clock = NULL;
     vlc_mutex_unlock(&sys->clock_lock);
@@ -1952,12 +1962,17 @@ void vout_StopDisplay(vout_thread_t *vout)
 {
     vout_thread_sys_t *sys = VOUT_THREAD_TO_SYS(vout);
 
+    printf("stop display\n");
     atomic_store(&sys->control_is_terminated, true);
     // wake up so it goes back to the loop that will detect the terminated state
+    printf("stop display2\n");
     vout_control_Wake(&sys->control);
+    printf("stop display3\n");
     vlc_join(sys->thread, NULL);
+    printf("stop display4\n");
 
     vout_ReleaseDisplay(sys);
+    printf("stop display5\n");
 }
 
 static void vout_DisableWindow(vout_thread_sys_t *sys)

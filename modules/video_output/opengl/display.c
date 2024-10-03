@@ -190,6 +190,7 @@ static void PlacePicture(vout_display_t *vd, vout_display_place_t *place,
 static int Open(vout_display_t *vd,
                 video_format_t *fmt, vlc_video_context *context)
 {
+    printf("OPENING EGL\n");
 #if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
     if (fmt->i_chroma == VLC_CODEC_CVPX_P010)
         return VLC_EGENERIC;
@@ -278,14 +279,19 @@ error:
  */
 static void Close(vout_display_t *vd)
 {
+    printf("Closing display\n");
     vout_display_sys_t *sys = vd->sys;
     vlc_gl_t *gl = sys->gl;
 
     vlc_gl_MakeCurrent (gl);
+    printf("Closing display1\n");
     vout_display_opengl_Delete (sys->vgl);
+    printf("Closing display2\n");
     vlc_gl_ReleaseCurrent (gl);
+    printf("Closing display3\n");
 
     vlc_gl_Delete(gl);
+    printf("Closing display4\n");
     free (sys);
 }
 

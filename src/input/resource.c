@@ -363,19 +363,23 @@ static void input_resource_PutVoutLocked(input_resource_t *p_resource,
                                          vout_thread_t *vout,
                                          enum input_resource_vout_state *vout_state)
 {
+    printf("1\n");
     assert(vout != NULL);
     struct vout_resource *vout_rsc = resource_GetVoutRsc(p_resource, vout);
     assert(vout_rsc != NULL);
+    printf("2\n");
 
     if (vout_state != NULL)
         *vout_state = vout_rsc->started ? INPUT_RESOURCE_VOUT_STOPPED
                                         : INPUT_RESOURCE_VOUT_NOTCHANGED;
 
+    printf("3\n");
     if (vout_rsc->started)
     {
         vout_StopDisplay(vout_rsc->vout);
         vout_rsc->started = false;
     }
+    printf("4\n");
 
     if (vout_rsc == resource_GetFirstVoutRsc(p_resource))
     {
