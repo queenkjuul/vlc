@@ -52,17 +52,9 @@
 /**
  * Forward declarations
  */
-static int Open(vout_display_t *vd,
-                video_format_t *fmt, vlc_video_context *context);
-static void Close(vout_display_t *vd);
-
-static void PictureRender (vout_display_t *vd, picture_t *pic, const vlc_render_subpicture *subpicture,
-                           vlc_tick_t date);
-static void PictureDisplay (vout_display_t *vd, picture_t *pic);
-static int Control (vout_display_t *vd, int query);
+static void Close(vlc_gl_t *gl);
 
 static void *OurGetProcAddress(vlc_gl_t *, const char *);
-
 static int OpenglLock (vlc_gl_t *gl);
 static void OpenglUnlock (vlc_gl_t *gl);
 static void OpenglSwap (vlc_gl_t *gl);
@@ -77,9 +69,9 @@ static void OpenglSwap (vlc_gl_t *gl);
 
 @interface VLCOpenGLVideoView : NSOpenGLView
 {
-    vout_display_t *vd;
+    vlc_gl_t *gl;
 }
-- (void)setVoutDisplay:(vout_display_t *)vd;
+- (void)setVoutGl:(vlc_gl_t *)gl;
 - (void)setVoutFlushing:(BOOL)flushing;
 - (void)render;
 @end
@@ -113,28 +105,17 @@ static void *OurGetProcAddress(vlc_gl_t *gl, const char *name)
     return dlsym(RTLD_DEFAULT, name);
 }
 
-static int SetViewpoint(vout_display_t *vd, const vlc_viewpoint_t *vp)
-{
-    vout_display_sys_t *sys = vd->sys;
-    return vout_display_opengl_SetViewpoint (sys->vgl, vp);
-}
-
-static const struct vlc_display_operations ops = {
-    Close, PictureRender, PictureDisplay, Control, NULL, SetViewpoint, NULL,
-};
-
-static int Open (vout_display_t *vd,
-                 video_format_t *fmt, vlc_video_context *context)
+static int Open(vlc_gl_t *gl, unsigned width, unsigned height,
+                const struct vlc_gl_cfg *gl_cfg)
 {
 
-    if (vd->cfg->window->type != VLC_WINDOW_TYPE_NSOBJECT)
+    if (gl->surface->type != VLC_WINDOW_TYPE_NSOBJECT)
         return VLC_EGENERIC;
 
     vout_display_sys_t *sys = calloc(1, sizeof(*sys));
 
     if (!sys)
         return VLC_ENOMEM;
-    sys->cfg = *vd->cfg;
     sys->has_first_frame = false;
     sys->current = NULL;
     sys->vgl = NULL;
@@ -142,12 +123,12 @@ static int Open (vout_display_t *vd,
 
     @autoreleasepool {
         if (!CGDisplayUsesOpenGLAcceleration (kCGDirectMainDisplay))
-            msg_Err (vd, "no OpenGL hardware acceleration found. this can lead to slow output and unexpected results");
+            msg_Err (gl, "no OpenGL hardware acceleration found. this can lead to slow output and unexpected results");
 
-        vd->sys = sys;
+        gl->sys = sys;
 
         /* Get the drawable object */
-        id container = (__bridge id)vd->cfg->window->handle.nsobject;
+        id container = (__bridge id)gl->surface->handle.nsobject;
         assert(container != nil);
 
         /* This will be released in Close(), on
@@ -160,11 +141,11 @@ static int Open (vout_display_t *vd,
         });
 
         if (!sys->glView) {
-            msg_Err(vd, "Initialization of open gl view failed");
+            msg_Err(gl, "Initialization of open gl view failed");
             goto error;
         }
 
-        [sys->glView setVoutDisplay:vd];
+        [sys->glView setVoutGl:gl];
 
         /* We don't wait, that means that we'll have to be careful about releasing
          * container.
@@ -181,22 +162,14 @@ static int Open (vout_display_t *vd,
                 [sys->glView setFrame:[parentView bounds]];
             });
         } else {
-            msg_Err(vd, "Invalid drawable-nsobject object. drawable-nsobject must either be an NSView or comply to the @protocol VLCVideoViewEmbedding.");
+            msg_Err(gl, "Invalid drawable-nsobject object. drawable-nsobject must either be an NSView or comply to the @protocol VLCVideoViewEmbedding.");
             goto error;
         }
 
-        /* Initialize common OpenGL video display */
-        sys->gl = vlc_object_create(vd, sizeof(*sys->gl));
-
-        if( unlikely( !sys->gl ) )
+        struct gl_sys *glsys = gl->sys = malloc(sizeof(struct gl_sys));
+        if (unlikely(!gl->sys))
             goto error;
 
-        struct gl_sys *glsys = sys->gl->sys = malloc(sizeof(struct gl_sys));
-        if( unlikely( !sys->gl->sys ) )
-        {
-            vlc_object_delete(sys->gl);
-            goto error;
-        }
         glsys->locked_ctx = NULL;
         glsys->glView = sys->glView;
 
@@ -207,59 +180,26 @@ static int Open (vout_display_t *vd,
             .swap = OpenglSwap,
             .get_proc_address = OurGetProcAddress,
         };
-        sys->gl->ops = &gl_ops;
-        sys->gl->api_type = VLC_OPENGL;
-
-        const vlc_fourcc_t *subpicture_chromas;
-
-        if (vlc_gl_MakeCurrent(sys->gl) != VLC_SUCCESS)
-        {
-            msg_Err(vd, "Can't attach gl context");
-            goto error;
-        }
-        sys->vgl = vout_display_opengl_New (fmt, &subpicture_chromas, sys->gl,
-                                            &vd->cfg->viewpoint, context);
-        vlc_gl_ReleaseCurrent(sys->gl);
-        if (!sys->vgl) {
-            msg_Err(vd, "Error while initializing opengl display.");
-            goto error;
-        }
-
-        /* Setup vout_display_t once everything is fine */
-        vd->info.subpicture_chromas = subpicture_chromas;
-
-        vd->ops = &ops;
+        gl->ops = &gl_ops;
+        gl->api_type = VLC_OPENGL;
 
         return VLC_SUCCESS;
 
     error:
-        Close(vd);
+        Close(gl);
         return VLC_EGENERIC;
     }
 }
 
-static void Close(vout_display_t *vd)
+static void Close(vlc_gl_t *gl)
 {
-    vout_display_sys_t *sys = vd->sys;
+    vout_display_sys_t *sys = gl->sys;
 
     @autoreleasepool {
-        [sys->glView setVoutDisplay:nil];
+        [sys->glView setVoutGl:nil];
 
-        var_Destroy (vd, "drawable-nsobject");
-
-        if (sys->vgl != NULL)
-        {
-            vlc_gl_MakeCurrent(sys->gl);
-            vout_display_opengl_Delete (sys->vgl);
-            vlc_gl_ReleaseCurrent(sys->gl);
-        }
-
-        if (sys->gl != NULL)
-        {
-            assert(((struct gl_sys *)sys->gl->sys)->locked_ctx == NULL);
-            free(sys->gl->sys);
-            vlc_object_delete(sys->gl);
-        }
+        var_Destroy(gl, "drawable-nsobject");
+        assert(((struct gl_sys *)sys->gl->sys)->locked_ctx == NULL);
 
         dispatch_async(dispatch_get_main_queue(), ^{
             if ([sys->container respondsToSelector:@selector(removeVoutSubview:)]) {
@@ -273,89 +213,6 @@ static void Close(vout_display_t *vd)
             sys->glView = nil;
             free(sys);
         });
-    }
-}
-
-/*****************************************************************************
- * vout display callbacks
- *****************************************************************************/
-
-static void PictureRender (vout_display_t *vd, picture_t *pic,
-                           const vlc_render_subpicture *subpicture,
-                           vlc_tick_t date)
-{
-    VLC_UNUSED(date);
-    vout_display_sys_t *sys = vd->sys;
-
-    if (vlc_gl_MakeCurrent(sys->gl) == VLC_SUCCESS)
-    {
-        vout_display_opengl_Prepare (sys->vgl, pic, subpicture);
-        vlc_gl_ReleaseCurrent(sys->gl);
-    }
-}
-
-static void PictureDisplay (vout_display_t *vd, picture_t *pic)
-{
-    vout_display_sys_t *sys = vd->sys;
-    (void)pic;
-
-    @synchronized(sys->glView)
-    {
-        [sys->glView setVoutFlushing:YES];
-        if (vlc_gl_MakeCurrent(sys->gl) == VLC_SUCCESS)
-        {
-            [sys->glView render];
-            vlc_gl_ReleaseCurrent(sys->gl);
-        }
-        [sys->glView setVoutFlushing:NO];
-        sys->has_first_frame = true;
-    }
-}
-
-static void UpdatePlace (vout_display_t *vd, const vout_display_cfg_t *cfg)
-{
-    vout_display_sys_t *sys = vd->sys;
-    vout_display_place_t place;
-    /* We never receive resize from the core, so provide the size ourselves */
-    vout_display_PlacePicture(&place, vd->source, &cfg->display);
-    /* Reverse vertical alignment as the GL tex are Y inverted */
-    place.y = cfg->display.height - (place.y + place.height);
-    sys->place = place;
-}
-
-static int Control (vout_display_t *vd, int query)
-{
-    vout_display_sys_t *sys = vd->sys;
-
-    if (!vd->sys)
-        return VLC_EGENERIC;
-
-    @autoreleasepool {
-        switch (query)
-        {
-            /* We handle the resizing ourselves, nothing to report either. */
-            case VOUT_DISPLAY_CHANGE_DISPLAY_SIZE:
-                return VLC_SUCCESS;
-
-            case VOUT_DISPLAY_CHANGE_SOURCE_ASPECT:
-            case VOUT_DISPLAY_CHANGE_SOURCE_CROP:
-            case VOUT_DISPLAY_CHANGE_SOURCE_PLACE:
-            {
-                @synchronized(sys->glView) {
-                    vout_display_cfg_t cfg;
-                    cfg = *vd->cfg;
-                    cfg.display.width = sys->cfg.display.width;
-                    cfg.display.height = sys->cfg.display.height;
-                    sys->cfg = cfg;
-                    UpdatePlace(vd, &cfg);
-                }
-                return VLC_SUCCESS;
-            }
-
-            default:
-                msg_Err (vd, "Unknown request in Mac OS X vout display");
-                return VLC_EGENERIC;
-        }
     }
 }
 
@@ -472,10 +329,10 @@ static void OpenglSwap (vlc_gl_t *gl)
  * Gets called by the Close and Open methods.
  * (Non main thread).
  */
-- (void)setVoutDisplay:(vout_display_t *)aVd
+- (void)setVoutGl:(vlc_gl_t *)aGl
 {
     @synchronized(self) {
-        vd = aVd;
+        gl = aGl;
     }
 }
 
@@ -519,22 +376,20 @@ static void OpenglSwap (vlc_gl_t *gl)
  */
 - (void)render
 {
-    if (!vd) {
+    if (!gl) {
         glClear (GL_COLOR_BUFFER_BIT);
         return;
     }
 
-    vout_display_sys_t *sys = vd->sys;
+    vlc_gl_ReportRender(gl);
 
-    vout_display_opengl_Viewport(sys->vgl, sys->place.x, sys->place.y,
-                                 sys->place.width, sys->place.height);
-    vout_display_opengl_SetOutputSize(sys->vgl, sys->cfg.display.width, sys->cfg.display.height);
-
+    /*
     if (sys->has_first_frame)
         vout_display_opengl_Display (sys->vgl);
     else
         glClear (GL_COLOR_BUFFER_BIT);
-    vlc_gl_Swap(sys->gl);
+    */
+    vlc_gl_Swap(gl);
 }
 
 /**
@@ -548,11 +403,10 @@ static void OpenglSwap (vlc_gl_t *gl)
     NSRect bounds = [self convertRectToBacking:[self bounds]];
 
     @synchronized(self) {
-        if (vd == NULL) return;
-        vout_display_sys_t *sys = vd->sys;
+        if (gl == NULL) return;
+        vout_display_sys_t *sys = gl->sys;
         sys->cfg.display.width  = bounds.size.width;
         sys->cfg.display.height = bounds.size.height;
-        UpdatePlace(vd, &sys->cfg);
     }
     [super reshape];
 }
@@ -639,7 +493,7 @@ vlc_module_begin ()
     set_shortname ("Mac OS X")
     set_description (N_("Mac OS X OpenGL video output"))
     set_subcategory (SUBCAT_VIDEO_VOUT)
-    set_callback_display(Open, 290)
+    set_callback_opengl(Open, 290)
     add_shortcut ("macosx", "vout_macosx")
     add_glopts ()
 
