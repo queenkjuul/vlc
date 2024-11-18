@@ -638,6 +638,20 @@ static void* GetSymbol(vlc_gl_t* gl, const char* procname)
     return (void*)eglGetProcAddress(procname);
 }
 
+static void RenderNext(vlc_gl_t *gl)
+{
+    MakeCurrent(gl);
+    vlc_gl_ReportRender(gl);
+    ReleaseCurrent(gl);
+}
+
+static void InitRenderer(vlc_gl_t *gl)
+{
+    MakeCurrent(gl);
+    vlc_gl_ReportRender(gl);
+    ReleaseCurrent(gl);
+}
+
 static void Close(vlc_gl_t* gl)
 {
     vlc_gl_sys_t* sys = gl->sys;
@@ -761,6 +775,8 @@ static int Open(vlc_gl_t* gl, const struct gl_api* api,
 
     /* Initialize OpenGL callbacks */
     static const struct vlc_gl_operations ops = {
+        //.init_renderer = InitRenderer,
+        .render_next = RenderNext,
         .make_current = MakeCurrent,
         .release_current = ReleaseCurrent,
         .resize = Resize,

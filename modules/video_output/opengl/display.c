@@ -257,6 +257,7 @@ static void PicturePrepare(vout_display_t *vd, picture_t *pic,
     sys->latch.subpicture = subpicture;
 
     vlc_gl_RenderNext(sys->gl);
+    sys->is_dirty = true;
     // TODO: what to do in case of error
     /*
     if (vlc_gl_MakeCurrent (sys->gl) == VLC_SUCCESS)
@@ -273,8 +274,10 @@ static void PictureDisplay (vout_display_t *vd, picture_t *pic)
     VLC_UNUSED(pic);
 
     /* Present on screen */
-    if (sys->is_dirty)
-        vlc_gl_Swap(sys->gl);
+    //if (sys->is_dirty)
+    vlc_gl_MakeCurrent(sys->gl);
+    vlc_gl_Swap(sys->gl);
+    vlc_gl_ReleaseCurrent(sys->gl);
 }
 
 static int Control (vout_display_t *vd, int query)
@@ -376,23 +379,6 @@ static int Open(vout_display_t *vd,
 
     /* Initialize video display */
     const vlc_fourcc_t *spu_chromas;
-
-    if (vlc_gl_MakeCurrent (sys->gl))
-        goto error;
-
-    sys->vt.Flush = vlc_gl_GetProcAddress(sys->gl, "glFlush");
-    if (sys->vt.Flush == NULL)
-    {
-        vlc_gl_ReleaseCurrent (sys->gl);
-        goto error;
-    }
-
-    sys->vgl = vout_display_opengl_New (fmt, &spu_chromas, sys->gl,
-                                        &vd->cfg->viewpoint, context);
-    vlc_gl_ReleaseCurrent (sys->gl);
-
-    if (sys->vgl == NULL)
-        goto error;
 
     sys->viewpoint = vd->cfg->viewpoint;
 

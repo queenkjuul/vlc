@@ -204,24 +204,26 @@ void vlc_gl_Delete(vlc_gl_t *gl)
 void vlc_gl_RenderNext(vlc_gl_t *gl)
 {
     struct vlc_gl_priv_t *glpriv = (struct vlc_gl_priv_t *)gl;
+    fprintf(stderr, "%s:%d -- \n", __func__, __LINE__);
 
     atomic_store_explicit(&glpriv->dirty, true, memory_order_release);
     if (gl->ops && gl->ops->render_next)
         gl->ops->render_next(gl);
-    vlc_sem_wait(&glpriv->sem_client);
+    //vlc_sem_wait(&glpriv->sem_client);
 }
 
 void vlc_gl_ReportRender(vlc_gl_t *gl)
 {
     struct vlc_gl_priv_t *glpriv = (struct vlc_gl_priv_t *)gl;
 
+    fprintf(stderr, "%s:%d -- \n", __func__, __LINE__);
     bool dirty = atomic_exchange_explicit(&glpriv->dirty, false, memory_order_acquire);
-    if (!dirty)
-        return;
+    //if (!dirty)
+    //    return;
 
     if (gl->owner.cbs && gl->owner.cbs->render)
         gl->owner.cbs->render(gl);
-    vlc_sem_post(&glpriv->sem_client);
+    //vlc_sem_post(&glpriv->sem_client);
 }
 
 typedef struct vlc_gl_surface
