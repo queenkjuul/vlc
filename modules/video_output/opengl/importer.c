@@ -416,7 +416,6 @@ vlc_gl_importer_Update(struct vlc_gl_importer *importer, picture_t *picture)
                                             glfmt->tex_widths,
                                             glfmt->tex_heights, picture,
                                             NULL);
-    GL_ASSERT_NOERROR(importer->vt);
 
     const float *tm = GetTransformMatrix(interop);
     if (tm) {
@@ -439,6 +438,5 @@ vlc_gl_importer_Update(struct vlc_gl_importer *importer, picture_t *picture)
     else
         pic->mtx_has_changed = false;
 
-    GL_ASSERT_NOERROR(importer->vt);
     return ret;
 }
