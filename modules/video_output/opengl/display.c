@@ -258,14 +258,6 @@ static void PicturePrepare(vout_display_t *vd, picture_t *pic,
 
     vlc_gl_RenderNext(sys->gl);
     sys->is_dirty = true;
-    // TODO: what to do in case of error
-    /*
-    if (vlc_gl_MakeCurrent (sys->gl) == VLC_SUCCESS)
-    {
-        PictureRender(sys->gl, vd);
-        sys->is_dirty = true;
-    }
-    */
 }
 
 static void PictureDisplay (vout_display_t *vd, picture_t *pic)
@@ -274,10 +266,10 @@ static void PictureDisplay (vout_display_t *vd, picture_t *pic)
     VLC_UNUSED(pic);
 
     /* Present on screen */
-    //if (sys->is_dirty)
-    vlc_gl_MakeCurrent(sys->gl);
+    if (sys->is_dirty)
+    //vlc_gl_MakeCurrent(sys->gl);
     vlc_gl_Swap(sys->gl);
-    vlc_gl_ReleaseCurrent(sys->gl);
+    //vlc_gl_ReleaseCurrent(sys->gl);
 }
 
 static int Control (vout_display_t *vd, int query)
