@@ -27,6 +27,11 @@
 #include <QtGui/qpa/qplatformwindow_p.h>
 #endif
 
+
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+#include <QtCore/QNativeInterface.h>
+#endif
+
 #include "maininterface/mainctx.hpp"
 #include "util/csdmenu_module.h"
 #include "menus/menus.hpp"
@@ -155,7 +160,7 @@ public:
             info.data.x11.connection = reinterpret_cast<struct xcb_connection_t*>(native->nativeResourceForIntegration(QByteArrayLiteral("connection")));
         }
 
-#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0) && QT_CONFIG(wayland)
         if (m_plateform == QT_CSD_PLATFORM_WAYLAND)
         {
             info.platform = QT_CSD_PLATFORM_WAYLAND;
@@ -300,7 +305,7 @@ void CSDMenu::popup(const QPoint &pos)
             event.data.x11.window = window->winId();
         }
 
-#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0) && QT_CONFIG(wayland)
         if (d->m_plateform == QT_CSD_PLATFORM_WAYLAND)
         {
             event.platform = QT_CSD_PLATFORM_WAYLAND;
