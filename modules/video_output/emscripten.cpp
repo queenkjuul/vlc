@@ -125,22 +125,19 @@ static void ReleaseCurrent(vlc_gl_t *gl)
 static void Swap(vlc_gl_t *gl)
 {}
 
-static void SwapForReal(vlc_gl_t *gl)
-{
-    /**
-     * There is no way to commit/swapbuffer from an offscreen canvas, so instead
-     * we render the offscreen canvas onto a bitmap and let the actual canvas
-     * display that bitmap from the main thread.
-     */
-    VLC_UNUSED(gl);
-    EM_ASM({
-        let bitmap = Module.offscreenCanvas.transferToImageBitmap();
-        Module.voutMsgPort.postMessage({
-            customCmd: 'commitFrame',
-            bitmap: bitmap,
-        }, [bitmap]);
+
+EM_ASYNC_JS(void, SwapForReal, (vlc_gl_t *gl), {
+    let bitmap = Module.offscreenCanvas.transferToImageBitmap();
+    await new Promise((resolve) => {
+        setTimeout(() => {
+            Module.voutMsgPort.postMessage({
+                customCmd: 'commitFrame',
+                bitmap: bitmap,
+            }, [bitmap]);
+            resolve();
+        });
     });
-}
+})
 
 static int InitRenderer(vlc_gl_t *gl)
 {
@@ -318,9 +315,8 @@ static void OpenglInitialize(vlc_gl_t *gl, unsigned width, unsigned height)
             let data = msg['data'];
             if (data.customCmd == 'commitFrame') {
                 let bmp = data['bitmap'];
-                let ctx = document.getElementById(UTF8ToString($1)).getContext('2d');
-                ctx.drawImage(bmp, 0, 0);
-                bmp.close();
+                let ctx = document.getElementById(UTF8ToString($1)).getContext('bitmaprenderer');
+                ctx.transferFromImageBitmap(bmp, 0, 0);
            }
         }
 
