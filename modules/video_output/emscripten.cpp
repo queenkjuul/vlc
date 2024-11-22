@@ -49,13 +49,6 @@
 // eglGetProcAddress
 #include <EGL/egl.h>
 
-//MAIN_THREAD_
-//EM_JS(emscripten::EM_VAL, GetCanvasSize, (), {
-//    let canvas = document.getElementById('canvas');
-//    if (!canvas)
-//        return Emval.bindValue([]);
-//    return Emval.bindValue([canvas.width, canvas.height]);
-//});
 
 typedef struct emscripten_gl_sys_t
 {
@@ -71,9 +64,24 @@ static void CloseWindow(vlc_window_t *wnd)
     free(wnd->handle.canvas);
 }
 
+static int WindowEnable(vlc_window_t *wnd, const vlc_window_cfg_t *cfg)
+{
+    const unsigned w = MAIN_THREAD_EM_ASM_INT({
+        return document.getElementById(UTF8ToString($0)).width;
+    }, wnd->handle.canvas);
+    const unsigned h = MAIN_THREAD_EM_ASM_INT({
+        return document.getElementById(UTF8ToString($0)).height;
+    }, wnd->handle.canvas);
+
+    printf("window size %d %d\n", w, h);
+    vlc_window_ReportSize(wnd, w, h);
+    return VLC_SUCCESS;
+}
+
 static const struct vlc_window_operations ops = [] {
     struct vlc_window_operations o{};
     o.destroy = CloseWindow;
+    o.enable = WindowEnable;
     return o;
 }();
 
@@ -88,16 +96,8 @@ static int OpenWindow(vlc_window_t *wnd)
     wnd->ops = &ops;
     wnd->handle.canvas = canvas;
 
-    //emscripten::val size = GetCanvasSize();
-    //std::vector<int> vec_size = emscripten::vecFromJSArray(size);
-    //if (vec_size.size() != 2)
-    //    return VLC_EGENERIC;
-
-    //vlc_window_ReportSize(wnd, vec_size[0], vec_size[1]);
-    vlc_window_ReportSize(wnd, 1280, 720);
     return VLC_SUCCESS;
 }
-
 
 static void *GetProcAddress(vlc_gl_t *gl, const char *name)
 {
