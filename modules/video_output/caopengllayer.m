@@ -66,8 +66,6 @@
     atomic_bool _is_ready;
 }
 
-@property (nonatomic, copy) void (^render)(NSSize displaySize);
-
 - (instancetype)init:(vlc_gl_t *)gl context:(CGLContextObj)context;
 - (void)displayFromVout;
 - (void)vlcClose;
@@ -100,16 +98,6 @@
 - (void)unlockContext;
 - (void)swap;
 @end
-
-typedef struct vout_display_sys_t {
-
-    vlc_gl_t *gl;
-    vout_display_opengl_t *vgl;
-
-    vout_display_place_t place;
-    vout_display_cfg_t cfg;
-
-} vout_display_sys_t;
 
 #pragma mark -
 #pragma mark OpenGL context helpers
@@ -229,17 +217,6 @@ static CGLContextObj vlc_CreateCGLContext(void)
     return ctx;
 }
 
-static int SetViewpoint(vout_display_t *vd, const vlc_viewpoint_t *vp)
-{
-    vout_display_sys_t *sys = vd->sys;
-    if (vlc_gl_MakeCurrent(sys->gl) != VLC_SUCCESS)
-        return VLC_EGENERIC;
-
-    int ret = vout_display_opengl_SetViewpoint(sys->vgl, vp);
-    vlc_gl_ReleaseCurrent(sys->gl);
-    return ret;
-}
-
 /**
  * Flush the OpenGL context
  * In case of double-buffering swaps the back buffer with the front buffer.
@@ -248,6 +225,8 @@ static int SetViewpoint(vout_display_t *vd, const vlc_viewpoint_t *vp)
 static void gl_cb_Swap(vlc_gl_t *vlc_gl)
 {
     VLCVideoLayerView *view = (__bridge VLCVideoLayerView *)vlc_gl->sys;
+    VLCCAOpenGLLayer *layer = (VLCCAOpenGLLayer *)[view layer];
+    [layer markReady];
     [view swap];
 }
 
@@ -282,12 +261,19 @@ static void *gl_cb_GetProcAddress(vlc_gl_t *vlc_gl, const char *name)
     return dlsym(RTLD_DEFAULT, name);
 }
 
+static void gl_cb_RenderNext(vlc_gl_t *vlc_gl)
+{
+    VLCVideoLayerView *view = (__bridge VLCVideoLayerView *)vlc_gl->sys;
+    VLCCAOpenGLLayer *layer = (VLCCAOpenGLLayer *)[view layer];
+    [layer markReady];
+    [layer displayFromVout];
+}
+
 static void CloseOpenGL(vlc_gl_t *gl)
 {
     VLCVideoLayerView *view = (__bridge_transfer VLCVideoLayerView *)gl->sys;
     [view vlcClose];
     view = nil;
-
 }
 
 static int OpenOpenGL(vlc_gl_t *gl, unsigned width, unsigned height,
@@ -313,232 +299,17 @@ static int OpenOpenGL(vlc_gl_t *gl, unsigned width, unsigned height,
 
     static const struct vlc_gl_operations gl_ops =
     {
+        .render_next = gl_cb_RenderNext,
         .make_current = gl_cb_MakeCurrent,
         .release_current = gl_cb_ReleaseCurrent,
         .swap = gl_cb_Swap,
         .get_proc_address = gl_cb_GetProcAddress,
+        .close = CloseOpenGL,
     };
     gl->ops = &gl_ops;
     gl->api_type = VLC_OPENGL;
 
     return VLC_SUCCESS;
-}
-
-#pragma mark -
-#pragma mark Module functions
-
-static void Close(vout_display_t *vd)
-{
-    vout_display_sys_t *sys = vd->sys;
-
-    if (sys->vgl && !vlc_gl_MakeCurrent(sys->gl)) {
-        vout_display_opengl_Delete(sys->vgl);
-        vlc_gl_ReleaseCurrent(sys->gl);
-    }
-
-
-    if (sys->gl) {
-        CloseOpenGL(sys->gl);
-        vlc_object_delete(sys->gl);
-    }
-}
-
-static void PictureRender (vout_display_t *vd, picture_t *pic,
-                           const vlc_render_subpicture *subpicture,
-                           vlc_tick_t date)
-{
-    VLC_UNUSED(date);
-    vout_display_sys_t *sys = vd->sys;
-
-    if (vlc_gl_MakeCurrent(sys->gl) == VLC_SUCCESS)
-    {
-        vout_display_opengl_Prepare(sys->vgl, pic, subpicture);
-        vlc_gl_ReleaseCurrent(sys->gl);
-
-        VLCVideoLayerView *view = (__bridge VLCVideoLayerView *)sys->gl->sys;
-        VLCCAOpenGLLayer *layer = (VLCCAOpenGLLayer *)[view layer];
-        [layer markReady];
-    }
-}
-
-static void PictureDisplay (vout_display_t *vd, picture_t *pic)
-{
-    vout_display_sys_t *sys = vd->sys;
-    VLC_UNUSED(pic);
-
-    VLCVideoLayerView *view = (__bridge VLCVideoLayerView *)sys->gl->sys;
-    VLCCAOpenGLLayer *layer = (VLCCAOpenGLLayer *)[view layer];
-    [layer displayFromVout];
-}
-
-static int Control (vout_display_t *vd, int query)
-{
-    vout_display_sys_t *sys = vd->sys;
-
-    if (!vd->sys)
-        return VLC_EGENERIC;
-
-    VLCVideoLayerView *view = (__bridge VLCVideoLayerView *)sys->gl->sys;
-    VLCCAOpenGLLayer *layer = (VLCCAOpenGLLayer *)[view layer];
-
-    switch (query)
-    {
-        case VOUT_DISPLAY_CHANGE_DISPLAY_SIZE:
-            return VLC_SUCCESS;
-
-        case VOUT_DISPLAY_CHANGE_SOURCE_ASPECT:
-        case VOUT_DISPLAY_CHANGE_SOURCE_CROP:
-        case VOUT_DISPLAY_CHANGE_SOURCE_PLACE:
-        {
-            @synchronized(layer)
-            {
-                vout_display_cfg_t cfg = *vd->cfg;
-                cfg.display.width = sys->cfg.display.width;
-                cfg.display.height = sys->cfg.display.height;
-
-                sys->cfg = cfg;
-
-                vout_display_PlacePicture(&sys->place, vd->source, &cfg.display);
-                // Reverse vertical alignment as the GL tex are Y inverted
-                sys->place.y = cfg.display.height - (sys->place.y + sys->place.height);
-            }
-
-            // Note!
-            // No viewport or aspect ratio is set here, as that needs to be set
-            // when rendering. The viewport is always set to match the layer
-            // size by the OS right before the OpenGL render callback, so
-            // setting it here has no effect.
-            return VLC_SUCCESS;
-        }
-
-        default:
-            msg_Err (vd, "Unhandled request %d", query);
-            return VLC_EGENERIC;
-    }
-
-    return VLC_SUCCESS;
-}
-
-/*****************************************************************************
- * Open: This function allocates and initializes the OpenGL vout method.
- *****************************************************************************/
-static int Open (vout_display_t *vd,
-                 video_format_t *fmt, vlc_video_context *context)
-{
-    vout_display_sys_t *sys;
-    if (vd->cfg->window->type != VLC_WINDOW_TYPE_NSOBJECT)
-        return VLC_EGENERIC;
-
-    @autoreleasepool {
-        vout_display_sys_t *sys;
-
-        // Only use this video output on macOS 10.14 or higher
-        // currently, as it has some issues on at least macOS 10.7
-        // and the old NSView based output still works fine on old
-        // macOS versions.
-        if (@available(macOS 10.14, *)) {
-            // This is intentionally left empty, as the check
-            // can not be negated or combined with other conditions!
-        } else if (!vd->obj.force) {
-            return VLC_EGENERIC;
-        }
-
-        vd->sys = sys = calloc(1, sizeof(*sys));
-        if (sys == NULL)
-            return VLC_ENOMEM;
-
-        id container = (__bridge id)vd->cfg->window->handle.nsobject;
-        if (!container) {
-            msg_Err(vd, "No drawable-nsobject found!");
-            Close(vd);
-            return VLC_EGENERIC;
-        }
-
-        // Create a pseudo-context object which provides needed callbacks
-        // for VLC to deal with the CGL context. Usually this should be done
-        // by a proper opengl provider module, but we do not have that currently.
-        sys->gl = vlc_object_create(vd, sizeof(*sys->gl));
-        if (unlikely(!sys->gl))
-        {
-            Close(vd);
-            return VLC_ENOMEM;
-        }
-        sys->gl->surface = vd->cfg->window;
-
-        const struct vlc_gl_cfg gl_cfg = {
-            .need_alpha = false,
-        };
-
-        int ret = OpenOpenGL(sys->gl, vd->cfg->display.width, vd->cfg->display.height, &gl_cfg);
-        if (ret != VLC_SUCCESS) {
-            Close(vd);
-            return ret;
-        }
-
-        dispatch_sync(dispatch_get_main_queue(), ^{
-
-            __weak VLCVideoLayerView *view = (__bridge VLCVideoLayerView *)sys->gl->sys;
-            __weak VLCCAOpenGLLayer *layer = (VLCCAOpenGLLayer *)[view layer];
-            sys->cfg = *vd->cfg;
-
-            vout_display_PlacePicture(&sys->place, vd->source, &vd->cfg->display);
-            // Reverse vertical alignment as the GL tex are Y inverted
-            sys->place.y = vd->cfg->display.height - (sys->place.y + sys->place.height);
-
-            @synchronized(layer) {
-                layer.render = ^(NSSize displaySize){
-                    @synchronized(layer)
-                    {
-                        sys->cfg.display.width = displaySize.width;
-                        sys->cfg.display.height = displaySize.height;
-
-                        vout_display_PlacePicture(&sys->place, vd->source, &sys->cfg.display);
-                    }
-
-                    // Ensure viewport and aspect ratio is correct
-                    vout_display_opengl_Viewport(sys->vgl, sys->place.x, sys->place.y,
-                                                sys->place.width, sys->place.height);
-                    vout_display_opengl_SetOutputSize(sys->vgl, sys->cfg.display.width, sys->cfg.display.height);
-
-                    vout_display_opengl_Display(sys->vgl);
-
-                };
-            }
-        });
-
-
-        // Initialize OpenGL video display
-        const vlc_fourcc_t *spu_chromas;
-
-        if (vlc_gl_MakeCurrent(sys->gl))
-        {
-            Close(vd);
-            return VLC_EGENERIC;
-        }
-
-        sys->vgl = vout_display_opengl_New(fmt, &spu_chromas, sys->gl,
-                                           &vd->cfg->viewpoint, context);
-        vlc_gl_ReleaseCurrent(sys->gl);
-
-        if (sys->vgl == NULL) {
-            msg_Err(vd, "Error while initializing OpenGL display");
-            Close(vd);
-            return VLC_EGENERIC;
-        }
-
-        vd->info.subpicture_chromas = spu_chromas;
-
-        static const struct vlc_display_operations ops = {
-            .close = Close,
-            .prepare = PictureRender,
-            .display = PictureDisplay,
-            .control = Control,
-            .set_viewpoint = SetViewpoint,
-        };
-        vd->ops = &ops;
-
-        return VLC_SUCCESS;
-    }
 }
 
 #pragma mark -
@@ -817,11 +588,14 @@ shouldInheritContentsScale:(CGFloat)newScale
             newSize.height *= scale;
         }
 
-        if (self.render != nil)
-            self.render(newSize);
+        vlc_gl_ReportRender(_gl, newSize.width, newSize.height);
 
         vlc_gl_ReleaseCurrent(_gl);
-        vlc_gl_Swap(_gl);
+
+        // Copies a double-buffered contexts back buffer to front buffer, calling
+        // glFlush before this is not needed and discouraged for performance reasons.
+        // An implicit glFlush happens before CGLFlushDrawable returns.
+        CGLFlushDrawable(_glContext);
     }
 }
 
@@ -845,7 +619,7 @@ shouldInheritContentsScale:(CGFloat)newScale
 vlc_module_begin()
     set_description(N_("Core Animation OpenGL Layer (Mac OS X)"))
     set_subcategory(SUBCAT_VIDEO_VOUT)
-    set_callback_display(Open, 300)
+    set_callback_opengl(OpenOpenGL, 300)
 
     add_opengl_submodule_renderer()
 vlc_module_end()
