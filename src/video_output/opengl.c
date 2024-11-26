@@ -93,6 +93,7 @@ vlc_gl_t *vlc_gl_Create(const struct vout_display_cfg *restrict cfg,
 
     vlc_gl_t *gl = &glpriv->gl;
     gl->api_type = api_type;
+    gl->api_mode = VLC_GL_SYNC_MODE;
     gl->orientation = ORIENT_NORMAL;
     gl->surface = wnd;
     gl->device = NULL;
@@ -111,8 +112,18 @@ vlc_gl_t *vlc_gl_Create(const struct vout_display_cfg *restrict cfg,
     }
 
     assert(gl->ops);
-    assert(gl->ops->make_current);
-    assert(gl->ops->release_current);
+
+    if (gl->api_mode == VLC_GL_SYNC_MODE)
+    {
+        assert(gl->ops->sync_mode.make_current != NULL);
+        assert(gl->ops->sync_mode.release_current != NULL);
+    }
+    else
+    {
+        assert(gl->ops->async_mode.init_renderer != NULL);
+        assert(gl->ops->async_mode.render_next != NULL);
+    }
+
     assert(gl->ops->swap);
     assert(gl->ops->get_proc_address);
 
@@ -179,8 +190,16 @@ vlc_gl_t *vlc_gl_CreateOffscreen(vlc_object_t *parent,
     assert(gl->offscreen_chroma_out != VLC_CODEC_UNKNOWN);
 
     assert(gl->ops);
-    assert(gl->ops->make_current);
-    assert(gl->ops->release_current);
+    if (gl->api_mode == VLC_GL_SYNC_MODE)
+    {
+        assert(gl->ops->sync_mode.make_current);
+        assert(gl->ops->sync_mode.release_current);
+    }
+    else
+    {
+        assert(gl->ops->async_mode.init_renderer != NULL);
+        assert(gl->ops->async_mode.render_next != NULL);
+    }
     assert(gl->ops->swap_offscreen);
     assert(gl->ops->get_proc_address);
 
@@ -206,9 +225,24 @@ void vlc_gl_RenderNext(vlc_gl_t *gl)
     struct vlc_gl_priv_t *glpriv = (struct vlc_gl_priv_t *)gl;
 
     atomic_store_explicit(&glpriv->dirty, true, memory_order_release);
-    if (gl->ops && gl->ops->render_next)
-        gl->ops->render_next(gl);
-    vlc_sem_wait(&glpriv->sem_client);
+    switch(gl->api_mode)
+    {
+        case VLC_GL_SYNC_MODE: {
+            assert(gl->ops->sync_mode.make_current != NULL);
+            assert(gl->ops->sync_mode.release_current != NULL);
+            // TODO
+            gl->ops->sync_mode.make_current(gl);
+            gl->owner.cbs->render(gl, width, height);
+            gl->ops->sync_mode.release_current(gl);
+            break;
+        }
+        case VLC_GL_ASYNC_MODE: {
+            assert(gl->ops->async_mode.render_next != NULL);
+            gl->ops->async_mode.render_next(gl);
+            vlc_sem_wait(&glpriv->sem_client);
+            break;
+        }
+    }
 }
 
 void vlc_gl_ReportRender(vlc_gl_t *gl, unsigned width, unsigned height)

@@ -51,6 +51,11 @@ enum vlc_gl_api_type {
     VLC_OPENGL_ES2,
 };
 
+enum vlc_gl_api_mode {
+    VLC_GL_SYNC_MODE,
+    VLC_GL_ASYNC_MODE,
+};
+
 struct vlc_gl_cfg
 {
     bool need_alpha; /* False by default */
@@ -110,8 +115,22 @@ struct vlc_gl_operations
         picture_t *(*swap_offscreen)(vlc_gl_t *);
     };
 
-    int  (*make_current)(vlc_gl_t *gl);
-    void (*release_current)(vlc_gl_t *gl);
+    union {
+        struct {
+            int  (*make_current)(vlc_gl_t *gl);
+            void (*release_current)(vlc_gl_t *gl);
+        } sync_mode;
+
+        struct {
+            int (*init_renderer)(vlc_gl_t *gl);
+
+            /* TODO: it might have been better to have an argument there, but it
+            * is not symmetric with (*init). Maybe a wait init function instead?
+            * Otherwise, having (*init) in callbacks might provide handling for
+            * context lost and such. */
+            void (*render_next)(vlc_gl_t *gl);
+        } async_mode;
+    };
 
     /**
      * Resize the OpenGL buffers from the provider.
@@ -137,14 +156,6 @@ struct vlc_gl_operations
      * Destroy the OpenGL provider resources.
      */
     void (*close)(vlc_gl_t *gl);
-
-    int (*init_renderer)(vlc_gl_t *gl);
-
-    /* TODO: it might have been better to have an argument there, but it
-     * is not symmetric with (*init). Maybe a wait init function instead?
-     * Otherwise, having (*init) in callbacks might provide handling for
-     * context lost and such. */
-    void (*render_next)(vlc_gl_t *gl);
 };
 
 struct vlc_gl_t
@@ -171,6 +182,7 @@ struct vlc_gl_t
 
     /* Defined by the core for libvlc_opengl API loading. */
     enum vlc_gl_api_type api_type;
+    enum vlc_gl_api_mode api_mode;
 
     const struct vlc_gl_operations *ops;
 
@@ -208,12 +220,14 @@ VLC_API void vlc_gl_Delete(vlc_gl_t *);
 
 static inline int vlc_gl_MakeCurrent(vlc_gl_t *gl)
 {
-    return gl->ops->make_current(gl);
+    vlc_assert(gl->api_mode == VLC_GL_SYNC_MODE);
+    return gl->ops->sync_mode.make_current(gl);
 }
 
 static inline void vlc_gl_ReleaseCurrent(vlc_gl_t *gl)
 {
-    gl->ops->release_current(gl);
+    vlc_assert(gl->api_mode == VLC_GL_SYNC_MODE);
+    gl->ops->sync_mode.release_current(gl);
 }
 
 static inline void vlc_gl_Resize(vlc_gl_t *gl, unsigned w, unsigned h)
@@ -234,9 +248,13 @@ static inline picture_t *vlc_gl_SwapOffscreen(vlc_gl_t *gl)
 
 static inline int vlc_gl_InitRenderer(vlc_gl_t *gl)
 {
-    if (gl->ops->init_renderer != NULL)
-        return gl->ops->init_renderer(gl);
+    if (gl->ops->async_mode.init_renderer != NULL)
+    {
+        vlc_assert(gl->api_mode == VLC_GL_ASYNC_MODE);
+        return gl->ops->async_mode.init_renderer(gl);
+    }
 
+    vlc_assert(gl->api_mode == VLC_GL_SYNC_MODE);
     if (gl->owner.cbs != NULL && gl->owner.cbs->init != NULL)
     {
         vlc_gl_MakeCurrent(gl);
