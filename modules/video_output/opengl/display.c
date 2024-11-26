@@ -220,10 +220,16 @@ static int RendererInit(vlc_gl_t *gl)
 }
 
 
-static void PictureRender(vlc_gl_t *gl)
+static void PictureRender(vlc_gl_t *gl, unsigned width, unsigned height)
 {
     vout_display_t *vd = gl->owner.sys;
     vout_display_sys_t *sys = vd->sys;
+
+    struct vout_display_placement dp = vd->cfg->display;
+    dp.width = width;
+    dp.height = height;
+    PlacePicture(vd, &sys->place, dp);
+    sys->place_changed = true;
 
     if (sys->latch.picture == NULL)
         return;
