@@ -211,7 +211,7 @@ void vlc_gl_RenderNext(vlc_gl_t *gl)
     vlc_sem_wait(&glpriv->sem_client);
 }
 
-void vlc_gl_ReportRender(vlc_gl_t *gl)
+void vlc_gl_ReportRender(vlc_gl_t *gl, unsigned width, unsigned height)
 {
     struct vlc_gl_priv_t *glpriv = (struct vlc_gl_priv_t *)gl;
 
@@ -220,7 +220,7 @@ void vlc_gl_ReportRender(vlc_gl_t *gl)
         return;
 
     if (gl->owner.cbs && gl->owner.cbs->render)
-        gl->owner.cbs->render(gl);
+        gl->owner.cbs->render(gl, width, height);
     vlc_sem_post(&glpriv->sem_client);
 }
 
