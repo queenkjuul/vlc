@@ -48,7 +48,7 @@
  *****************************************************************************/
 static int Open(vlc_object_t *);
 static void Close(filter_t *);
-static void RenderFrame(vlc_gl_t *gl);
+static void RenderFrame(vlc_gl_t *gl, unsigned width, unsigned height);
 
 #define WIDTH_TEXT N_("Video width")
 #define WIDTH_LONGTEXT N_("The width of the visualization window, in pixels.")
@@ -427,7 +427,7 @@ static void drawBars(filter_t *p_filter, float heights[])
     vt->PopMatrix();
 }
 
-static void RenderFrame(vlc_gl_t *gl)
+static void RenderFrame(vlc_gl_t *gl, unsigned width, unsigned height)
 {
     filter_t *filter = gl->owner.sys;
     filter_sys_t *sys = filter->p_sys;
