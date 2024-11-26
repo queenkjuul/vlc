@@ -50,7 +50,7 @@ typedef struct
     picture_t *input;
 } filter_sys_t;
 
-static void RenderNext(vlc_gl_t *gl)
+static void RenderNext(vlc_gl_t *gl, unsigned width, unsigned height)
 {
     filter_t *filter = gl->owner.sys;
     filter_sys_t *sys = filter->p_sys;
