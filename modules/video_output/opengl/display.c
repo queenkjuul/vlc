@@ -120,6 +120,7 @@ struct opengl_format_request {
 
 static int RequestFormatUpdate(vlc_gl_t *gl, void *opaque)
 {
+    (void)gl;
     struct opengl_format_request *request = opaque;
     vout_display_sys_t *sys = request->vd->sys;
 
@@ -387,8 +388,6 @@ static int Open(vout_display_t *vd,
     vlc_gl_Resize (sys->gl, vd->cfg->display.width, vd->cfg->display.height);
 
     /* Initialize video display */
-    const vlc_fourcc_t *spu_chromas;
-
     sys->viewpoint = vd->cfg->viewpoint;
 
     vd->info.subpicture_chromas = sys->cfg.spu_chromas;
