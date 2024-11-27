@@ -239,10 +239,7 @@ static inline void vlc_gl_Resize(vlc_gl_t *gl, unsigned w, unsigned h)
         gl->ops->resize(gl, w, h);
 }
 
-static inline void vlc_gl_Swap(vlc_gl_t *gl)
-{
-    gl->ops->swap(gl);
-}
+VLC_API void vlc_gl_Swap(vlc_gl_t *gl);
 
 static inline picture_t *vlc_gl_SwapOffscreen(vlc_gl_t *gl)
 {

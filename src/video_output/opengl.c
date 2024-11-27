@@ -37,6 +37,11 @@ static const struct vlc_gl_cfg gl_cfg_default = {
     .need_alpha = false
 };
 
+enum vlc_gl_command {
+    VLC_GL_COMMAND_NONE,
+    VLC_GL_COMMAND_SWAP,
+};
+
 struct vlc_gl_priv_t
 {
     vlc_gl_t gl;
@@ -59,6 +64,7 @@ struct vlc_gl_priv_t
         unsigned width;
         unsigned height;
         bool dirty;
+        enum vlc_gl_command command;
 
         bool running;
         vlc_thread_t thread;
@@ -73,7 +79,7 @@ static int vlc_gl_ReportInit(vlc_gl_t *gl)
         ret = gl->owner.cbs->init(gl);
     if (ret == VLC_SUCCESS)
     {
-        glpriv->renderer_initialized = true; // TODO: race
+        glpriv->renderer_initialized = true; // TODO: race? only used from internally for now
         vlc_cond_signal(&glpriv->sync_cond);
     }
     return ret;
@@ -89,7 +95,7 @@ int vlc_gl_RequestInit(vlc_gl_t *gl)
 {
     struct vlc_gl_priv_t *glpriv = container_of(gl, struct vlc_gl_priv_t, gl);
     vlc_mutex_lock(&glpriv->lock);
-    if (glpriv->renderer_initialized)
+    if (glpriv->renderer_initialized) 
     {
         vlc_mutex_unlock(&glpriv->lock);
         return VLC_EGENERIC;
@@ -170,22 +176,54 @@ static void* OpenglThread(void *opaque)
 
     while (glpriv->sync_mode.running)
     {
-        while (!glpriv->sync_mode.dirty)
+        while (glpriv->sync_mode.dirty == false &&
+               glpriv->sync_mode.command == VLC_GL_COMMAND_NONE)
         {
             vlc_cond_wait(&glpriv->client_cond, &glpriv->lock);
             if (!glpriv->sync_mode.running)
                 break;
         }
-        vlc_mutex_unlock(&glpriv->lock);
-        vlc_gl_ReportRender(gl, glpriv->sync_mode.width, glpriv->sync_mode.height);
-        vlc_mutex_lock(&glpriv->lock);
-        glpriv->sync_mode.dirty = false;
-        vlc_cond_signal(&glpriv->sync_cond);
+
+        if (glpriv->sync_mode.dirty)
+        {
+            vlc_mutex_unlock(&glpriv->lock);
+            vlc_gl_ReportRender(gl, glpriv->sync_mode.width, glpriv->sync_mode.height);
+            vlc_mutex_lock(&glpriv->lock);
+            glpriv->sync_mode.dirty = false;
+            vlc_cond_signal(&glpriv->sync_cond);
+        }
+
+        if (glpriv->sync_mode.command == VLC_GL_COMMAND_SWAP)
+        {
+            gl->ops->swap(gl);
+            glpriv->sync_mode.command = VLC_GL_COMMAND_NONE;
+        }
     }
     vlc_gl_ReportDestroy(gl);
     vlc_mutex_unlock(&glpriv->lock);
     vlc_gl_ReleaseCurrent(gl);
     return NULL;
+}
+
+void vlc_gl_Swap(vlc_gl_t *gl)
+{
+    struct vlc_gl_priv_t *glpriv = container_of(gl, struct vlc_gl_priv_t, gl);
+    vlc_mutex_lock(&glpriv->lock);
+
+    if (gl->api_mode == VLC_GL_SYNC_MODE)
+    {
+        assert(glpriv->sync_mode.command == VLC_GL_COMMAND_NONE);
+        glpriv->sync_mode.command = VLC_GL_COMMAND_SWAP;
+        while (glpriv->sync_mode.command != VLC_GL_COMMAND_NONE)
+            vlc_cond_wait(&glpriv->sync_cond, &glpriv->lock);
+    }
+    else
+    {
+        assert(gl->api_mode == VLC_GL_ASYNC_MODE);
+        gl->ops->swap(gl);
+    }
+
+    vlc_mutex_unlock(&glpriv->lock);
 }
 
 static int vlc_gl_start(void *func, bool forced, va_list ap)
@@ -217,6 +255,7 @@ static vlc_gl_t* CommonOpenglInit(vlc_object_t *parent,
     glpriv->sync_mode.dirty = false;
     glpriv->sync_mode.width = width;
     glpriv->sync_mode.height = height;
+    glpriv->sync_mode.command = VLC_GL_COMMAND_NONE;
     glpriv->renderer_available = false;
     vlc_mutex_init(&glpriv->lock);
     vlc_cond_init(&glpriv->client_cond);
@@ -368,6 +407,7 @@ void vlc_gl_Delete(vlc_gl_t *gl)
         glpriv->sync_mode.running = false;
         vlc_cond_signal(&glpriv->client_cond);
         vlc_mutex_unlock(&glpriv->lock);
+        vlc_join(glpriv->sync_mode.thread, NULL);
     }
 
     if (gl->ops->close != NULL)

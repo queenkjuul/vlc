@@ -283,9 +283,10 @@ static void PictureDisplay (vout_display_t *vd, picture_t *pic)
 
     /* Present on screen */
     if (sys->is_dirty)
-    //vlc_gl_MakeCurrent(sys->gl);
-    vlc_gl_Swap(sys->gl);
-    //vlc_gl_ReleaseCurrent(sys->gl);
+    {
+        vlc_gl_Swap(sys->gl);
+        sys->is_dirty = false;
+    }
 }
 
 static int Control (vout_display_t *vd, int query)
