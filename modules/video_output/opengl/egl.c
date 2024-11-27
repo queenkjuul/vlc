@@ -631,13 +631,6 @@ static void InitEGL(void)
     }
 }
 
-static void RenderNext(vlc_gl_t *gl)
-{
-    MakeCurrent(gl);
-    vlc_gl_ReportRender(gl);
-    ReleaseCurrent(gl);
-}
-
 /**
  * Probe EGL display availability
  */
@@ -730,10 +723,9 @@ static int Open(vlc_gl_t *gl, const struct gl_api *api,
     /* Initialize OpenGL callbacks */
     static const struct vlc_gl_operations ops =
     {
-        .make_current = MakeCurrent,
-        .release_current = ReleaseCurrent,
+        .sync_mode.make_current = MakeCurrent,
+        .sync_mode.release_current = ReleaseCurrent,
         .resize = Resize,
-        .render_next = RenderNext,
         .swap = SwapBuffers,
         .get_proc_address = GetSymbol,
         .close = Close,
