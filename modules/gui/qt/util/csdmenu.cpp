@@ -28,10 +28,6 @@
 #endif
 
 
-#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
-#include <QtCore/QNativeInterface.h>
-#endif
-
 #include "maininterface/mainctx.hpp"
 #include "util/csdmenu_module.h"
 #include "menus/menus.hpp"
