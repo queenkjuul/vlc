@@ -254,7 +254,6 @@ static int gl_cb_InitRenderer(vlc_gl_t *gl)
     dispatch_async(dispatch_get_main_queue(), ^{
         [view lockContext];
         vlc_gl_ReportInit(gl);
-        gl->owner.cbs->init(gl);
         [view unlockContext];
     });
 

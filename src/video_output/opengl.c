@@ -116,10 +116,17 @@ int vlc_gl_RequestInit(vlc_gl_t *gl)
         return VLC_EGENERIC;
     }
 
+    glpriv->renderer_available = true;
     if (gl->api_mode == VLC_GL_ASYNC_MODE)
     {
         assert(gl->ops->async_mode.init_renderer != NULL);
-        gl->ops->async_mode.init_renderer(gl);
+        int ret = gl->ops->async_mode.init_renderer(gl);
+        if (ret != VLC_SUCCESS)
+        {
+            glpriv->renderer_available = false;
+            vlc_mutex_unlock(&glpriv->lock);
+            return VLC_EGENERIC;
+        }
 
         while (glpriv->renderer_available && !glpriv->renderer_initialized)
             vlc_cond_wait(&glpriv->sync_cond, &glpriv->lock);
@@ -129,10 +136,10 @@ int vlc_gl_RequestInit(vlc_gl_t *gl)
         assert(gl->api_mode == VLC_GL_SYNC_MODE);
         if (gl->owner.cbs == NULL || gl->owner.cbs->init == NULL)
         {
+            glpriv->renderer_available = false;
             vlc_mutex_unlock(&glpriv->lock);
             return VLC_ENOTSUP;
         }
-        glpriv->renderer_available = true;
         vlc_cond_signal(&glpriv->client_cond);
 
         while (glpriv->renderer_available && !glpriv->renderer_initialized)
