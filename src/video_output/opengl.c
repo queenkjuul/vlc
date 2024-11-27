@@ -166,7 +166,9 @@ static void* OpenglThread(void *opaque)
     vlc_gl_MakeCurrent(gl);
 
     do {
-        vlc_cond_wait(&glpriv->client_cond, &glpriv->lock);
+        while (!glpriv->renderer_available && glpriv->sync_mode.running)
+            vlc_cond_wait(&glpriv->client_cond, &glpriv->lock);
+
         if (glpriv->renderer_available && vlc_gl_ReportInit(gl) != VLC_SUCCESS)
             glpriv->renderer_available = false;
     } while (!glpriv->renderer_initialized && glpriv->sync_mode.running);
@@ -197,6 +199,7 @@ static void* OpenglThread(void *opaque)
         {
             gl->ops->swap(gl);
             glpriv->sync_mode.command = VLC_GL_COMMAND_NONE;
+            vlc_cond_signal(&glpriv->sync_cond);
         }
     }
     vlc_gl_ReportDestroy(gl);
@@ -214,6 +217,7 @@ void vlc_gl_Swap(vlc_gl_t *gl)
     {
         assert(glpriv->sync_mode.command == VLC_GL_COMMAND_NONE);
         glpriv->sync_mode.command = VLC_GL_COMMAND_SWAP;
+        vlc_cond_signal(&glpriv->client_cond);
         while (glpriv->sync_mode.command != VLC_GL_COMMAND_NONE)
             vlc_cond_wait(&glpriv->sync_cond, &glpriv->lock);
     }
