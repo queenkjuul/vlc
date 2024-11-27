@@ -25,6 +25,7 @@
 #define VLC_GL_H 1
 
 #include <vlc_es.h>
+#include <assert.h>
 
 # ifdef __cplusplus
 extern "C" {
