@@ -234,7 +234,12 @@ static void* OpenglThread(void *opaque)
 
         if (glpriv->sync_mode.command == VLC_GL_COMMAND_SWAP)
         {
+            /* HACK: some current opengl implementation are relying on
+             *       the context being removed from the thread before swapping
+             *       and don't display anything without this. */
+            vlc_gl_ReleaseCurrent(gl);
             gl->ops->swap(gl);
+            vlc_gl_MakeCurrent(gl);
             glpriv->sync_mode.command = VLC_GL_COMMAND_NONE;
             vlc_cond_signal(&glpriv->sync_cond);
         }
