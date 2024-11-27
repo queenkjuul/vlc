@@ -44,22 +44,25 @@ struct vlc_gl_priv_t
     vlc_mutex_t lock;
     vlc_cond_t client_cond;
 
-    atomic_bool dirty;
+    bool renderer_available;
+    bool renderer_initialized;
 
     /* Only for synchronous implementations */
     struct {
         unsigned width;
         unsigned height;
+        bool dirty;
 
         bool running;
+        vlc_cond_t sync_cond;
         vlc_thread_t thread;
     } sync_mode;
 };
 
-static void vlc_gl_ReportInit(vlc_gl_t *gl)
+static int vlc_gl_ReportInit(vlc_gl_t *gl)
 {
     if (gl->owner.cbs != NULL && gl->owner.cbs->init != NULL)
-        gl->owner.cbs->init(gl);
+        return gl->owner.cbs->init(gl);
 }
 
 static void vlc_gl_ReportDestroy(vlc_gl_t *gl)
@@ -74,16 +77,27 @@ static void* OpenglThread(void *opaque)
     struct vlc_gl_priv_t *glpriv = container_of(gl, struct vlc_gl_priv_t, gl);
     vlc_mutex_lock(&glpriv->lock);
     vlc_gl_MakeCurrent(gl);
-    vlc_gl_ReportInit(gl);
+
+    do {
+        vlc_cond_wait(&glpriv->client_cond, &glpriv->lock);
+        if (glpriv->renderer_available && vlc_gl_ReportInit(gl) != VLC_SUCCESS)
+            glpriv->renderer_available = false;
+    } while (!glpriv->renderer_available && glpriv->sync_mode.running);
+
+    glpriv->renderer_initialized = true;
+    vlc_cond_signal(&glpriv->sync_mode.sync_cond);
+
     while (glpriv->sync_mode.running)
     {
-        while (!glpriv->dirty)
+        while (!glpriv->sync_mode.dirty)
         {
             vlc_cond_wait(&glpriv->client_cond, &glpriv->lock);
             if (!glpriv->sync_mode.running)
                 break;
         }
         vlc_gl_ReportRender(gl, glpriv->sync_mode.width, glpriv->sync_mode.height);
+        glpriv->sync_mode.dirty = false;
+        vlc_cond_signal(&glpriv->sync_mode.sync_cond);
     }
     vlc_gl_ReportDestroy(gl);
     vlc_mutex_unlock(&glpriv->lock);
@@ -107,45 +121,31 @@ static int vlc_gl_start(void *func, bool forced, va_list ap)
 }
 
 static vlc_gl_t* CommonOpenglInit(vlc_object_t *parent,
-                                  int flags, const struct vlc_gl_cfg *gl_cfg,
+                                  unsigned width, unsigned height,
                                   const struct vlc_gl_callbacks *cbs,
                                   void *owner)
 {
     struct vlc_gl_priv_t *glpriv;
-    const char *type;
-    if (gl_cfg == NULL)
-        gl_cfg = &gl_cfg_default;
-
-    enum vlc_gl_api_type api_type;
-
-    switch (flags /*& VLC_OPENGL_API_MASK*/)
-    {
-        case VLC_OPENGL:
-            type = "opengl";
-            api_type = VLC_OPENGL;
-            break;
-        case VLC_OPENGL_ES2:
-            type = "opengl es2";
-            api_type = VLC_OPENGL_ES2;
-            break;
-        default:
-            return NULL;
-    }
 
     glpriv = vlc_custom_create(parent, sizeof (*glpriv), "gl");
     if (unlikely(glpriv == NULL))
         return NULL;
 
+    glpriv->sync_mode.dirty = false;
+    glpriv->sync_mode.width = width;
+    glpriv->sync_mode.height = height;
+    glpriv->renderer_available = false;
+    vlc_mutex_init(&glpriv->lock);
+    vlc_cond_init(&glpriv->client_cond);
+    vlc_cond_init(&glpriv->sync_mode.sync_cond);
+
     vlc_gl_t *gl = &glpriv->gl;
-    gl->api_type = api_type;
+    gl->surface = NULL;
     gl->api_mode = VLC_GL_SYNC_MODE;
     gl->orientation = ORIENT_NORMAL;
     gl->device = NULL;
     gl->owner.cbs = cbs;
     gl->owner.sys = owner;
-    vlc_mutex_init(&glpriv->lock);
-    vlc_cond_init(&glpriv->client_cond);
-    atomic_init(&glpriv->dirty, false);
 
     return gl;
 }
@@ -170,7 +170,7 @@ static vlc_gl_t* CommonOpenglSetup(vlc_gl_t *gl)
     }
     else
     {
-        assert(gl->ops->async_mode.init_renderer != NULL);
+        //assert(gl->ops->async_mode.init_renderer != NULL);
         assert(gl->ops->async_mode.render_next != NULL);
     }
     assert(gl->ops->get_proc_address);
@@ -184,12 +184,30 @@ vlc_gl_t *vlc_gl_Create(const struct vout_display_cfg *restrict cfg,
                         const struct vlc_gl_callbacks *cbs, void *owner)
 {
     vlc_window_t *wnd = cfg->window;
-    struct vlc_gl_priv_t *glpriv;
     const char *type;
+    enum vlc_gl_api_type api_type;
+    if (gl_cfg == NULL)
+        gl_cfg = &gl_cfg_default;
 
-    vlc_gl_t *gl = CommonOpenglInit(VLC_OBJECT(wnd), flags, gl_cfg, cbs, owner);
+    switch (flags /*& VLC_OPENGL_API_MASK*/)
+    {
+        case VLC_OPENGL:
+            type = "opengl";
+            api_type = VLC_OPENGL;
+            break;
+        case VLC_OPENGL_ES2:
+            type = "opengl es2";
+            api_type = VLC_OPENGL_ES2;
+            break;
+        default:
+            return NULL;
+    }
+    vlc_gl_t *gl = CommonOpenglInit(VLC_OBJECT(wnd), 
+                                    cfg->display.width, cfg->display.height,
+                                    cbs, owner);
     if (gl == NULL)
         return NULL;
+    gl->api_type = api_type;
     gl->surface = wnd;
     gl->module = vlc_module_load(vlc_object_logger(gl), type, name, true,
                                  vlc_gl_start, gl,
@@ -202,7 +220,7 @@ vlc_gl_t *vlc_gl_Create(const struct vout_display_cfg *restrict cfg,
     assert(gl->ops);
     assert(gl->ops->swap);
 
-    return l;
+    return CommonOpenglSetup(gl);
 }
 
 vlc_gl_t *vlc_gl_CreateOffscreen(vlc_object_t *parent,
@@ -213,7 +231,6 @@ vlc_gl_t *vlc_gl_CreateOffscreen(vlc_object_t *parent,
                                  const struct vlc_gl_callbacks *cbs,
                                  void *owner)
 {
-    struct vlc_gl_priv_t *glpriv;
     const char *type;
 
     enum vlc_gl_api_type api_type;
@@ -234,24 +251,13 @@ vlc_gl_t *vlc_gl_CreateOffscreen(vlc_object_t *parent,
             return NULL;
     }
 
-    glpriv = vlc_custom_create(parent, sizeof (*glpriv), "gl");
-    if (unlikely(glpriv == NULL))
+    vlc_gl_t *gl = CommonOpenglInit(parent, width, height, cbs, owner);
+    if (unlikely(gl == NULL))
         return NULL;
 
-    vlc_sem_init(&glpriv->sem_client, 0);
-    atomic_init(&glpriv->dirty, false);
-
-    vlc_gl_t *gl = &glpriv->gl;
-
     gl->api_type = api_type;
-    gl->orientation = ORIENT_NORMAL;
-
     gl->offscreen_chroma_out = VLC_CODEC_UNKNOWN;
     gl->offscreen_vctx_out = NULL;
-    gl->owner.sys = owner;
-    gl->owner.cbs = cbs;
-
-    gl->surface = NULL;
     gl->device = device ? vlc_decoder_device_Hold(device) : NULL;
     gl->module = vlc_module_load(vlc_object_logger(gl), type, name, true,
                                  vlc_gl_start, gl, width, height, gl_cfg);
@@ -263,22 +269,10 @@ vlc_gl_t *vlc_gl_CreateOffscreen(vlc_object_t *parent,
 
     /* The implementation must initialize the output chroma */
     assert(gl->offscreen_chroma_out != VLC_CODEC_UNKNOWN);
-
     assert(gl->ops);
-    if (gl->api_mode == VLC_GL_SYNC_MODE)
-    {
-        assert(gl->ops->sync_mode.make_current);
-        assert(gl->ops->sync_mode.release_current);
-    }
-    else
-    {
-        assert(gl->ops->async_mode.init_renderer != NULL);
-        assert(gl->ops->async_mode.render_next != NULL);
-    }
     assert(gl->ops->swap_offscreen);
-    assert(gl->ops->get_proc_address);
 
-    return &glpriv->gl;
+    return CommonOpenglSetup(gl);
 }
 
 void vlc_gl_Delete(vlc_gl_t *gl)
@@ -308,22 +302,22 @@ void vlc_gl_RenderNext(vlc_gl_t *gl)
 {
     struct vlc_gl_priv_t *glpriv = (struct vlc_gl_priv_t *)gl;
 
-    atomic_store_explicit(&glpriv->dirty, true, memory_order_release);
     switch(gl->api_mode)
     {
         case VLC_GL_SYNC_MODE: {
             assert(gl->ops->sync_mode.make_current != NULL);
             assert(gl->ops->sync_mode.release_current != NULL);
-            // TODO
-            gl->ops->sync_mode.make_current(gl);
-            gl->owner.cbs->render(gl, 4, 4);// TODO
-            gl->ops->sync_mode.release_current(gl);
+            vlc_mutex_lock(&glpriv->lock);
+            glpriv->sync_mode.dirty = true;
+            vlc_cond_signal(&glpriv->client_cond);
+            while (glpriv->sync_mode.dirty)
+                vlc_cond_wait(&glpriv->sync_mode.sync_cond, &glpriv->lock);
+            vlc_mutex_unlock(&glpriv->lock);
             break;
         }
         case VLC_GL_ASYNC_MODE: {
             assert(gl->ops->async_mode.render_next != NULL);
             gl->ops->async_mode.render_next(gl);
-            vlc_sem_wait(&glpriv->sem_client);
             break;
         }
     }
@@ -333,13 +327,10 @@ void vlc_gl_ReportRender(vlc_gl_t *gl, unsigned width, unsigned height)
 {
     struct vlc_gl_priv_t *glpriv = (struct vlc_gl_priv_t *)gl;
 
-    bool dirty = atomic_exchange_explicit(&glpriv->dirty, false, memory_order_acquire);
-    if (!dirty)
-        return;
-
+    vlc_mutex_lock(&glpriv->lock);
     if (gl->owner.cbs && gl->owner.cbs->render)
         gl->owner.cbs->render(gl, width, height);
-    vlc_sem_post(&glpriv->sem_client);
+    vlc_mutex_unlock(&glpriv->lock);
 }
 
 typedef struct vlc_gl_surface

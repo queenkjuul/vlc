@@ -347,8 +347,8 @@ static void FreeCVBuffer(picture_t *picture)
 
     static const struct vlc_gl_operations gl_ops =
     {
-        .make_current = MakeCurrent,
-        .release_current = ReleaseCurrent,
+        .sync_mode.make_current = MakeCurrent,
+        .sync_mode.release_current = ReleaseCurrent,
         .resize = Resize,
         .swap_offscreen = Swap,
         .get_proc_address = GetSymbol,

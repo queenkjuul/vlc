@@ -269,6 +269,18 @@ static void gl_cb_RenderNext(vlc_gl_t *vlc_gl)
     [layer displayFromVout];
 }
 
+static int gl_cb_InitRenderer(vlc_gl_t *gl)
+{
+    VLCVideoLayerView *view = (__bridge VLCVideoLayerView *)gl->sys;
+    dispatch_sync(dispatch_get_main_queue(), ^{
+        [view lockContext];
+        gl->owner.cbs->init(gl);
+        [view unlockContext];
+    });
+
+    return VLC_SUCCESS;
+}
+
 static void CloseOpenGL(vlc_gl_t *gl)
 {
     VLCVideoLayerView *view = (__bridge_transfer VLCVideoLayerView *)gl->sys;
@@ -299,14 +311,14 @@ static int OpenOpenGL(vlc_gl_t *gl, unsigned width, unsigned height,
 
     static const struct vlc_gl_operations gl_ops =
     {
-        .render_next = gl_cb_RenderNext,
-        .make_current = gl_cb_MakeCurrent,
-        .release_current = gl_cb_ReleaseCurrent,
+        .async_mode.init_renderer = gl_cb_InitRenderer,                        
+        .async_mode.render_next = gl_cb_RenderNext,
         .swap = gl_cb_Swap,
         .get_proc_address = gl_cb_GetProcAddress,
         .close = CloseOpenGL,
     };
     gl->ops = &gl_ops;
+    gl->api_mode = VLC_GL_ASYNC_MODE;
     gl->api_type = VLC_OPENGL;
 
     return VLC_SUCCESS;

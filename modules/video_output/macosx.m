@@ -174,8 +174,8 @@ static int Open(vlc_gl_t *gl, unsigned width, unsigned height,
 
         static const struct vlc_gl_operations gl_ops =
         {
-            .make_current = OpenglLock,
-            .release_current = OpenglUnlock,
+            .sync_mode.make_current = OpenglLock,
+            .sync_mode.release_current = OpenglUnlock,
             .swap = OpenglSwap,
             .get_proc_address = OurGetProcAddress,
         };

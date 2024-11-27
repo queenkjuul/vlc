@@ -274,10 +274,9 @@ static CFRunLoopSourceContext source_context =
      * the get_proc_address symbol and a current context. */
     static const struct vlc_gl_operations gl_ops =
     {
-        .make_current = MakeCurrent,
-        .release_current = ReleaseCurrent,
+        .sync_mode.make_current = MakeCurrent,
+        .sync_module.release_current = ReleaseCurrent,
         .resize = Resize,
-        .render_next = RenderNext,
         .swap = Swap,
         .get_proc_address = GetSymbol,
         .close = Close,
