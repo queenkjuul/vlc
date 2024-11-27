@@ -370,7 +370,7 @@ static void OpenglSwap (vlc_gl_t *gl)
         return;
     }
 
-    vlc_gl_ReportRender(gl);
+    vlc_gl_ReportRender(gl, 4, 4); // TODO
 
     /*
     if (sys->has_first_frame)

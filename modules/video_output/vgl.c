@@ -130,7 +130,7 @@ static void RenderNext(vlc_gl_t *gl)
 {
     /* Compatibility with previous external providers. */
     MakeCurrent(gl);
-    vlc_gl_ReportRender(gl);
+    vlc_gl_ReportRender(gl, 4, 4); // TODO
     ReleaseCurrent(gl);
 }
 

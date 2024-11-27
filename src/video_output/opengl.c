@@ -316,7 +316,7 @@ void vlc_gl_RenderNext(vlc_gl_t *gl)
             assert(gl->ops->sync_mode.release_current != NULL);
             // TODO
             gl->ops->sync_mode.make_current(gl);
-            gl->owner.cbs->render(gl, width, height);
+            gl->owner.cbs->render(gl, 4, 4);// TODO
             gl->ops->sync_mode.release_current(gl);
             break;
         }
