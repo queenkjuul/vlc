@@ -249,24 +249,11 @@ static inline picture_t *vlc_gl_SwapOffscreen(vlc_gl_t *gl)
     return gl->ops->swap_offscreen(gl);
 }
 
+VLC_API int vlc_gl_RequestInit(vlc_gl_t *gl);
+
 static inline int vlc_gl_InitRenderer(vlc_gl_t *gl)
 {
-    if (gl->ops->async_mode.init_renderer != NULL)
-    {
-        vlc_assert(gl->api_mode == VLC_GL_ASYNC_MODE);
-        return gl->ops->async_mode.init_renderer(gl);
-    }
-
-    vlc_assert(gl->api_mode == VLC_GL_SYNC_MODE);
-    if (gl->owner.cbs != NULL && gl->owner.cbs->init != NULL)
-    {
-        vlc_gl_MakeCurrent(gl);
-        int ret = gl->owner.cbs->init(gl);
-        vlc_gl_ReleaseCurrent(gl);
-        return ret;
-    }
-
-    return VLC_SUCCESS;
+    return vlc_gl_RequestInit(gl);
 }
 
 typedef int (*vlc_gl_change_request)(vlc_gl_t *gl, void *opaque);
