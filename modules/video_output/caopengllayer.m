@@ -281,6 +281,17 @@ static int gl_cb_InitRenderer(vlc_gl_t *gl)
     return VLC_SUCCESS;
 }
 
+static void gl_cb_RequestChange(vlc_gl_t *gl)
+{
+    VLCVideoLayerView *view = (__bridge VLCVideoLayerView *)gl->sys;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [view lockContext];
+        vlc_gl_ApplyChanges(gl);
+        [view unlockContext];
+    });
+}
+
+
 static void CloseOpenGL(vlc_gl_t *gl)
 {
     VLCVideoLayerView *view = (__bridge_transfer VLCVideoLayerView *)gl->sys;
@@ -312,6 +323,7 @@ static int OpenOpenGL(vlc_gl_t *gl, unsigned width, unsigned height,
     static const struct vlc_gl_operations gl_ops =
     {
         .async_mode.init_renderer = gl_cb_InitRenderer,                        
+        .async_mode.request_change = gl_cb_RequestChange,
         .async_mode.render_next = gl_cb_RenderNext,
         .swap = gl_cb_Swap,
         .get_proc_address = gl_cb_GetProcAddress,
@@ -586,9 +598,6 @@ shouldInheritContentsScale:(CGFloat)newScale
         if (!_gl)
             return;
 
-        if (vlc_gl_MakeCurrent(_gl))
-            return;
-
         GLint dims[4] = { 0, 0, 0, 0 };
         glGetIntegerv(GL_VIEWPORT, dims);
         NSSize newSize = NSMakeSize(dims[2], dims[3]);
@@ -601,8 +610,6 @@ shouldInheritContentsScale:(CGFloat)newScale
         }
 
         vlc_gl_ReportRender(_gl, newSize.width, newSize.height);
-
-        vlc_gl_ReleaseCurrent(_gl);
 
         // Copies a double-buffered contexts back buffer to front buffer, calling
         // glFlush before this is not needed and discouraged for performance reasons.

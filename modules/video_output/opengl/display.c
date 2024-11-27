@@ -112,17 +112,18 @@ static int SetViewpoint(vout_display_t *vd, const vlc_viewpoint_t *vp)
     return VLC_SUCCESS;
 }
 
-static int
-UpdateFormat(vout_display_t *vd, const video_format_t *fmt,
-             vlc_video_context *vctx)
+struct opengl_format_request {
+    vout_display_t *vd;
+    const video_format_t *fmt;
+    vlc_video_context *vctx;
+};
+
+static int RequestFormatUpdate(vlc_gl_t *gl, void *opaque)
 {
-    vout_display_sys_t *sys = vd->sys;
+    struct opengl_format_request *request = opaque;
+    vout_display_sys_t *sys = request->vd->sys;
 
-    int ret = vlc_gl_MakeCurrent(sys->gl);
-    if (ret != VLC_SUCCESS)
-        return ret;
-
-    ret = vout_display_opengl_UpdateFormat(sys->vgl, fmt, vctx);
+    int ret = vout_display_opengl_UpdateFormat(sys->vgl, request->fmt, request->vctx);
 
     /* Force to recompute the viewport on next picture */
     sys->place_changed = true;
@@ -133,9 +134,17 @@ UpdateFormat(vout_display_t *vd, const video_format_t *fmt,
     assert(vp_ret == VLC_SUCCESS);
     (void) vp_ret;
 
-    vlc_gl_ReleaseCurrent(sys->gl);
-
     return ret;
+}
+
+static int
+UpdateFormat(vout_display_t *vd, const video_format_t *fmt,
+             vlc_video_context *vctx)
+{
+    vout_display_sys_t *sys = vd->sys;
+    return vlc_gl_RequestChange(sys->gl, RequestFormatUpdate, &(struct opengl_format_request){
+        .vd = vd, .vctx = vctx, .fmt = fmt,
+    });
 }
 
 static const struct vlc_display_operations ops = {
@@ -193,9 +202,10 @@ static void Close(vout_display_t *vd)
     vout_display_sys_t *sys = vd->sys;
     vlc_gl_t *gl = sys->gl;
 
-    vlc_gl_MakeCurrent (gl);
-    vout_display_opengl_Delete (sys->vgl);
-    vlc_gl_ReleaseCurrent (gl);
+    // TODO
+    //vlc_gl_MakeCurrent (gl);
+    //vout_display_opengl_Delete (sys->vgl);
+    //vlc_gl_ReleaseCurrent (gl);
 
     vlc_gl_Delete(gl);
     free (sys);

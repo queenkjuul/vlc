@@ -745,7 +745,9 @@ vlc_gl_Create
 vlc_gl_CreateOffscreen
 vlc_gl_Delete
 vlc_gl_RenderNext
+vlc_gl_RequestChange
 vlc_gl_ReportRender
+vlc_gl_ApplyChanges
 vlc_gl_surface_Create
 vlc_gl_surface_CheckSize
 vlc_gl_surface_Destroy

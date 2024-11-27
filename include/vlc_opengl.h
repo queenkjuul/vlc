@@ -131,6 +131,7 @@ struct vlc_gl_operations
             * Otherwise, having (*init) in callbacks might provide handling for
             * context lost and such. */
             void (*render_next)(vlc_gl_t *gl);
+            void (*request_change)(vlc_gl_t *gl);
         } async_mode;
     };
 
@@ -267,6 +268,11 @@ static inline int vlc_gl_InitRenderer(vlc_gl_t *gl)
 
     return VLC_SUCCESS;
 }
+
+typedef int (*vlc_gl_change_request)(vlc_gl_t *gl, void *opaque);
+VLC_API int vlc_gl_RequestChange(vlc_gl_t *gl, vlc_gl_change_request change_cb, void *opaque);
+
+VLC_API void vlc_gl_ApplyChanges(vlc_gl_t *gl);
 
 /**
  * Fetch a symbol or pointer function from the OpenGL implementation.
