@@ -100,6 +100,20 @@ int vlc_gl_ReportInit(vlc_gl_t *gl)
     return ret;
 }
 
+static void ReportRender(vlc_gl_t *gl, unsigned width, unsigned height)
+{
+    if (gl->owner.cbs && gl->owner.cbs->render)
+        gl->owner.cbs->render(gl, width, height);
+}
+
+void vlc_gl_ReportRender(vlc_gl_t *gl, unsigned width, unsigned height)
+{
+    struct vlc_gl_priv_t *glpriv = (struct vlc_gl_priv_t *)gl;
+    vlc_mutex_lock(&glpriv->lock);
+    ReportRender(gl, width, height);
+    vlc_mutex_unlock(&glpriv->lock);
+}
+
 static void vlc_gl_ReportDestroy(vlc_gl_t *gl)
 {
     if (gl->owner.cbs != NULL && gl->owner.cbs->destroy != NULL)
@@ -213,9 +227,7 @@ static void* OpenglThread(void *opaque)
 
         if (glpriv->sync_mode.dirty)
         {
-            vlc_mutex_unlock(&glpriv->lock);
-            vlc_gl_ReportRender(gl, glpriv->sync_mode.width, glpriv->sync_mode.height);
-            vlc_mutex_lock(&glpriv->lock);
+            ReportRender(gl, glpriv->sync_mode.width, glpriv->sync_mode.height);
             glpriv->sync_mode.dirty = false;
             vlc_cond_signal(&glpriv->sync_cond);
         }
@@ -232,6 +244,19 @@ static void* OpenglThread(void *opaque)
     vlc_gl_ReleaseCurrent(gl);
     return NULL;
 }
+
+
+void vlc_gl_Resize(vlc_gl_t *gl, unsigned w, unsigned h)
+{
+    struct vlc_gl_priv_t *glpriv = container_of(gl, struct vlc_gl_priv_t, gl);
+    vlc_mutex_lock(&glpriv->lock);
+    if (gl->ops->resize != NULL)
+        gl->ops->resize(gl, w, h);
+    glpriv->sync_mode.width = w;
+    glpriv->sync_mode.height = h;
+    vlc_mutex_unlock(&glpriv->lock);
+}
+
 
 void vlc_gl_Swap(vlc_gl_t *gl)
 {
@@ -474,16 +499,6 @@ void vlc_gl_RenderNext(vlc_gl_t *gl)
             break;
         }
     }
-}
-
-void vlc_gl_ReportRender(vlc_gl_t *gl, unsigned width, unsigned height)
-{
-    struct vlc_gl_priv_t *glpriv = (struct vlc_gl_priv_t *)gl;
-
-    vlc_mutex_lock(&glpriv->lock);
-    if (gl->owner.cbs && gl->owner.cbs->render)
-        gl->owner.cbs->render(gl, width, height);
-    vlc_mutex_unlock(&glpriv->lock);
 }
 
 typedef struct vlc_gl_surface

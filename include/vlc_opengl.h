@@ -233,11 +233,7 @@ static inline void vlc_gl_ReleaseCurrent(vlc_gl_t *gl)
     gl->ops->sync_mode.release_current(gl);
 }
 
-static inline void vlc_gl_Resize(vlc_gl_t *gl, unsigned w, unsigned h)
-{
-    if (gl->ops->resize != NULL)
-        gl->ops->resize(gl, w, h);
-}
+VLC_API void vlc_gl_Resize(vlc_gl_t *gl, unsigned w, unsigned h);
 
 VLC_API void vlc_gl_Swap(vlc_gl_t *gl);
 
