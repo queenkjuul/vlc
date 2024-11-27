@@ -231,27 +231,6 @@ static void gl_cb_Swap(vlc_gl_t *vlc_gl)
 }
 
 /**
- * Make the OpenGL context the current one
- * Makes the CGL context the current context, if it is not already the current one,
- * and locks it.
- */
-static int gl_cb_MakeCurrent(vlc_gl_t *vlc_gl)
-{
-    VLCVideoLayerView *view = (__bridge VLCVideoLayerView *)vlc_gl->sys;
-    return [view lockContext];
-}
-
-/**
- * Make the OpenGL context no longer current one.
- * Makes the previous context the current one and unlocks the CGL context.
- */
-static void gl_cb_ReleaseCurrent(vlc_gl_t *vlc_gl)
-{
-    VLCVideoLayerView *view = (__bridge VLCVideoLayerView *)vlc_gl->sys;
-    [view unlockContext];
-}
-
-/**
  * Look up OpenGL symbols by name
  */
 static void *gl_cb_GetProcAddress(vlc_gl_t *vlc_gl, const char *name)
