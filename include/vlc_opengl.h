@@ -91,6 +91,7 @@ typedef int (*vlc_gl_activate)(vlc_gl_t *, unsigned width, unsigned height,
 struct vlc_gl_callbacks {
     int (*init)(struct vlc_gl_t *gl);
     void (*render)(struct vlc_gl_t *gl, unsigned width, unsigned height);
+    void (*destroy)(struct vlc_gl_t *gl);
 };
 
 /**
