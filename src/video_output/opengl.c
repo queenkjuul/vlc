@@ -71,17 +71,32 @@ struct vlc_gl_priv_t
     } sync_mode;
 };
 
-static int vlc_gl_ReportInit(vlc_gl_t *gl)
+static int ReportInit(vlc_gl_t *gl)
 {
     struct vlc_gl_priv_t *glpriv = container_of(gl, struct vlc_gl_priv_t, gl);
+    vlc_mutex_assert(&glpriv->lock);
+
     int ret = VLC_EGENERIC;
     if (gl->owner.cbs != NULL && gl->owner.cbs->init != NULL)
+    {
+        fprintf(stderr, "INITIALIZING\n");
         ret = gl->owner.cbs->init(gl);
+    }
+
     if (ret == VLC_SUCCESS)
     {
-        glpriv->renderer_initialized = true; // TODO: race? only used from internally for now
+        glpriv->renderer_initialized = true;
         vlc_cond_signal(&glpriv->sync_cond);
     }
+    return ret;
+}
+
+int vlc_gl_ReportInit(vlc_gl_t *gl)
+{
+    struct vlc_gl_priv_t *glpriv = container_of(gl, struct vlc_gl_priv_t, gl);
+    vlc_mutex_lock(&glpriv->lock);
+    int ret = ReportInit(gl);
+    vlc_mutex_unlock(&glpriv->lock);
     return ret;
 }
 
@@ -105,6 +120,9 @@ int vlc_gl_RequestInit(vlc_gl_t *gl)
     {
         assert(gl->ops->async_mode.init_renderer != NULL);
         gl->ops->async_mode.init_renderer(gl);
+
+        while (glpriv->renderer_available && !glpriv->renderer_initialized)
+            vlc_cond_wait(&glpriv->sync_cond, &glpriv->lock);
     }
     else
     {
@@ -169,7 +187,7 @@ static void* OpenglThread(void *opaque)
         while (!glpriv->renderer_available && glpriv->sync_mode.running)
             vlc_cond_wait(&glpriv->client_cond, &glpriv->lock);
 
-        if (glpriv->renderer_available && vlc_gl_ReportInit(gl) != VLC_SUCCESS)
+        if (glpriv->renderer_available && ReportInit(gl) != VLC_SUCCESS)
             glpriv->renderer_available = false;
     } while (!glpriv->renderer_initialized && glpriv->sync_mode.running);
 

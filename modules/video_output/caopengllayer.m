@@ -251,8 +251,9 @@ static void gl_cb_RenderNext(vlc_gl_t *vlc_gl)
 static int gl_cb_InitRenderer(vlc_gl_t *gl)
 {
     VLCVideoLayerView *view = (__bridge VLCVideoLayerView *)gl->sys;
-    dispatch_sync(dispatch_get_main_queue(), ^{
+    dispatch_async(dispatch_get_main_queue(), ^{
         [view lockContext];
+        vlc_gl_ReportInit(gl);
         gl->owner.cbs->init(gl);
         [view unlockContext];
     });
