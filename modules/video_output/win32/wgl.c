@@ -149,13 +149,6 @@ static void DestroyGPUAffinityDC(vlc_gl_t *gl) {
     fncDeleteDCNV(sys->affinityHDC);
 }
 
-static void RenderNext(vlc_gl_t *gl)
-{
-    MakeCurrent(gl);
-    vlc_gl_ReportRender(gl);
-    ReleaseCurrent(gl);
-}
-
 static int Open(vlc_gl_t *gl, unsigned width, unsigned height,
                 const struct vlc_gl_cfg *gl_cfg)
 {
@@ -234,10 +227,9 @@ static int Open(vlc_gl_t *gl, unsigned width, unsigned height,
 
     static const struct vlc_gl_operations gl_ops =
     {
-        .make_current = MakeCurrent,
-        .release_current = ReleaseCurrent,
+        .sync_mode.make_current = MakeCurrent,
+        .sync_mode.release_current = ReleaseCurrent,
         .resize = NULL,
-        .render_next = RenderNext,
         .swap = Swap,
         .get_proc_address = OurGetProcAddress,
         .close = Close,
