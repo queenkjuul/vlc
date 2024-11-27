@@ -126,15 +126,6 @@ static void Resize(vlc_gl_t * gl, unsigned w, unsigned h)
     ResizeInternal(gl, w, h);
 }
 
-static void RenderNext(vlc_gl_t *gl)
-{
-    /* Compatibility with previous external providers. */
-    MakeCurrent(gl);
-    vlc_gl_ReportRender(gl, 4, 4); // TODO
-    ReleaseCurrent(gl);
-}
-
-
 static void Close(vlc_gl_t *gl)
 {
     vout_display_sys_t *sys = gl->sys;
@@ -215,7 +206,6 @@ static int Open(vlc_gl_t *gl, unsigned width, unsigned height,
         .sync_mode.make_current = MakeCurrent,
         .sync_mode.release_current = ReleaseCurrent,
         .resize = Resize,
-        //.render_next = RenderNext,
         .swap = VglSwapBuffers,
         .get_proc_address = OurGetProcAddress,
         .close = Close,
