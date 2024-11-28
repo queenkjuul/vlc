@@ -64,6 +64,7 @@ static const struct vlc_window_operations ops = {
 typedef struct emscripten_gl_sys_t
 {
     EMSCRIPTEN_WEBGL_CONTEXT_HANDLE context;
+    vlc_thread_t worker;
 } emscripten_gl_sys_t;
 
 static int OpenWindow(vlc_window_t *wnd)
@@ -121,6 +122,24 @@ static void Swap(vlc_gl_t *gl)
     });
 }
 
+static int InitRenderer(vlc_gl_t *gl)
+{
+    auto sys = static_cast<emscripten_gl_sys_t *>(gl->sys);
+    return VLC_SUCCESS;
+}
+
+static void RenderNext(vlc_gl_t *gl)
+{
+    auto sys = static_cast<emscripten_gl_sys_t *>(gl->sys);
+
+}
+
+static void RequestChange(vlc_gl_t *gl)
+{
+    auto sys = static_cast<emscripten_gl_sys_t *>(gl->sys);
+
+}
+
 static void Resize(vlc_gl_t *gl, unsigned w, unsigned h)
 {
     VLC_UNUSED(gl);
@@ -161,28 +180,31 @@ static void Close (vlc_gl_t *gl)
     delete sys;
 }
 
-static int Open (vlc_gl_t *gl, unsigned width, unsigned height, const struct vlc_gl_cfg *cfg)
+static void RunloopRender(void *opaque)
 {
-    (void)width, (void)height;
-    (void)cfg;
+    auto gl = static_cast<vlc_gl_t*>(opaque);
+    auto sys = static_cast<emscripten_gl_sys_t *>(gl->sys);
+
+    vlc_gl_ReportRender(gl, 800, 600);
+}
+
+struct emscripten_startup {
+    vlc_gl_t *gl;
+    unsigned width;
+    unsigned height;
+    vlc_sem_t wait_sem;
+};
+
+static void OpenglInitialize(vlc_gl_t *gl, unsigned width, unsigned height)
+{
+    auto sys = static_cast<emscripten_gl_sys_t *>(gl->sys);
+    vlc_window_t *wnd = gl->surface;
 
     EmscriptenWebGLContextAttributes attr;
-
     emscripten_webgl_init_context_attributes(&attr);
     attr.majorVersion=2;
     attr.minorVersion=0;
     attr.explicitSwapControl = 1;
-
-    vlc_window_t *wnd = gl->surface;
-
-    if (wnd->type != VLC_WINDOW_TYPE_EMSCRIPTEN_WEBGL)
-        goto error;
-
-    emscripten_gl_sys_t *sys;
-
-    gl->sys = sys = new (std::nothrow)emscripten_gl_sys_t;
-    if (!sys)
-        return VLC_ENOMEM;
 
     MAIN_THREAD_EM_ASM({
         if (Module.canvasCtx === undefined) {
@@ -215,28 +237,82 @@ static int Open (vlc_gl_t *gl, unsigned width, unsigned height, const struct vlc
     sys->context = createGlContext(width, height);
 
     if (!sys->context) {
-        goto error;
+        //goto error;
+        //TODO
     }
     // Check that the WebGL context is valid
     if (emscripten_webgl_make_context_current(sys->context) != EMSCRIPTEN_RESULT_SUCCESS) {
         emscripten_log(EM_LOG_CONSOLE, "failed to make context current");
-        goto error;
+        //goto error;
+        // TODO
     }
 
-    // Release the context
-    emscripten_webgl_make_context_current(0);
+    vlc_gl_ReportInit(gl);
+
+    //// Release the context
+    //emscripten_webgl_make_context_current(0);
     wnd->handle.em_context = sys->context;
+}
+
+static void* OpenglWorkerRunloop(void *opaque)
+{
+    auto startup = static_cast<struct emscripten_startup *>(opaque);
+
+    vlc_gl_t *gl = startup->gl;
+    auto sys = static_cast<emscripten_gl_sys_t *>(gl->sys);
+
+    OpenglInitialize(gl, startup->width, startup->height);
+    return NULL;
+}
+
+static int Open (vlc_gl_t *gl, unsigned width, unsigned height, const struct vlc_gl_cfg *cfg)
+{
+    (void)width, (void)height;
+    (void)cfg;
+
+    vlc_window_t *wnd = gl->surface;
+    if (wnd->type != VLC_WINDOW_TYPE_EMSCRIPTEN_WEBGL)
+        return VLC_ENOTSUP;
+
+    emscripten_gl_sys_t *sys;
+
+    gl->sys = sys = new (std::nothrow)emscripten_gl_sys_t;
+    if (!sys)
+        return VLC_ENOMEM;
+    
+    struct emscripten_startup startup = {
+        .gl = gl,
+        .width = width,
+        .height = height,
+    };
+    vlc_sem_init(&startup.wait_sem, 0);
+
+    if (vlc_clone(&sys->worker, OpenglWorkerRunloop, &startup) != VLC_EGENERIC)
+    {
+        delete sys ;
+        gl->sys = NULL;
+        return VLC_EGENERIC;
+    }
+
+    vlc_sem_wait(&startup.wait_sem);
+    //EM_ASM({
+    //    let w = Module.PThread.pthreads[$0];
+    //}, pthread_self();
 
     // Implement gl routines:
-    static const struct vlc_gl_operations ops =
-    {
-        .make_current = MakeCurrent,
-        .release_current = ReleaseCurrent,
-        .resize = Resize,
-        .swap = Swap,
-        .get_proc_address = GetProcAddress,
-        .close = Close,
-    };
+    static const struct vlc_gl_operations ops = []{
+        struct vlc_gl_operations ops {};
+        ops.async_mode.init_renderer = InitRenderer;
+        ops.async_mode.render_next = RenderNext;
+        ops.async_mode.request_change = RequestChange;
+        //.make_current = MakeCurrent,
+        //.release_current = ReleaseCurrent,
+        ops.resize = Resize;
+        ops.swap = Swap;
+        ops.get_proc_address = GetProcAddress;
+        ops.close = Close;
+        return ops;
+    }();
     gl->ops = &ops;
 
     return VLC_SUCCESS;
