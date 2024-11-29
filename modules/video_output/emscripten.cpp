@@ -57,6 +57,8 @@ typedef struct emscripten_gl_sys_t
     pthread_t worker_id;
     bool initialized;
     bool dirty;
+    unsigned width;
+    unsigned height;
 } emscripten_gl_sys_t;
 
 static void CloseWindow(vlc_window_t *wnd)
@@ -177,9 +179,16 @@ static void RequestChange(vlc_gl_t *gl)
 
 static void Resize(vlc_gl_t *gl, unsigned w, unsigned h)
 {
-    VLC_UNUSED(gl);
-    VLC_UNUSED(w);
-    VLC_UNUSED(h);
+    auto sys = static_cast<emscripten_gl_sys_t *>(gl->sys);
+
+    MAIN_THREAD_EM_ASM({
+        let w = Module.vouts[$0];
+        w.msgPort.postMessage({
+            customCmd: 'resize' ,
+            width: $1,
+            height: $2,
+        })
+    }, sys->worker_id, w, h);
 }
 
 EM_ASYNC_JS(void, getVoutMessagePort, (), {
@@ -257,7 +266,7 @@ static void RunloopRender(void *opaque)
     if (ret != 0)
         return;
 
-    vlc_gl_ReportRender(gl, 800, 600);
+    vlc_gl_ReportRender(gl, sys->width, sys->height);
     SwapForReal(gl);
 }
 
@@ -280,12 +289,23 @@ void EmscriptenRequestChange(vlc_gl_t *gl)
 {
     vlc_gl_ApplyChanges(gl);
 }
+
+EMSCRIPTEN_KEEPALIVE
+void EmscriptenResize(vlc_gl_t *gl, unsigned width, unsigned height)
+{
+    auto sys = static_cast<emscripten_gl_sys_t *>(gl->sys);
+    sys->width = width;
+    sys->height = height;
+}
 }
 
 static void OpenglInitialize(vlc_gl_t *gl, unsigned width, unsigned height)
 {
     auto sys = static_cast<emscripten_gl_sys_t *>(gl->sys);
     vlc_window_t *wnd = gl->surface;
+
+    sys->width = width;
+    sys->height = height;
 
     EmscriptenWebGLContextAttributes attr;
     emscripten_webgl_init_context_attributes(&attr);
@@ -359,6 +379,10 @@ static void OpenglInitialize(vlc_gl_t *gl, unsigned width, unsigned height)
             else if (msg.customCmd == 'requestChange')
             {
                 _EmscriptenRequestChange($0);
+            }
+            else if (msg.customCmd == 'resize')
+            {
+                _EmscriptenResize($0, msg['width'], msg['height']);
             }
             else if (msg.customCmd == 'close')
             {
