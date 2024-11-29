@@ -147,8 +147,6 @@ static int InitRenderer(vlc_gl_t *gl)
     auto sys = static_cast<emscripten_gl_sys_t *>(gl->sys);
     MAIN_THREAD_EM_ASM({
         let w = Module.vouts[$0];
-        console.dir(Module.vouts);
-        console.dir(w);
         w.msgPort.postMessage({
             customCmd: 'initRenderer' 
         })
@@ -159,10 +157,8 @@ static int InitRenderer(vlc_gl_t *gl)
 static void RenderNext(vlc_gl_t *gl)
 {
     auto sys = static_cast<emscripten_gl_sys_t *>(gl->sys);
-    msg_Info(gl, "calling rendernext from vout");
 
     MAIN_THREAD_EM_ASM({
-        console.log('CALLING RENDERNEXT FROM MAIN THREAD');
         let w = Module.vouts[$0];
         w.msgPort.postMessage({
             customCmd: 'renderNext' 
@@ -173,10 +169,8 @@ static void RenderNext(vlc_gl_t *gl)
 static void RequestChange(vlc_gl_t *gl)
 {
     auto sys = static_cast<emscripten_gl_sys_t *>(gl->sys);
-    msg_Info(gl, "calling requestchange from vout");
 
     MAIN_THREAD_EM_ASM({
-        console.log('CALLING REQUESTCHANGE FROM MAIN THREAD');
         let w = Module.vouts[$0];
         w.msgPort.postMessage({
             customCmd: 'requestChange' 
@@ -357,7 +351,6 @@ static void OpenglInitialize(vlc_gl_t *gl, unsigned width, unsigned height)
         Module.vout.dirty = false;
         Module.voutMsgPort.onmessage = function(e){
             let msg = e.data;
-            console.log("Receive msg " + msg['customCmd']);
             if (msg.customCmd == 'initRenderer')
             {
                 _EmscriptenInitRenderer($0);
@@ -366,7 +359,6 @@ static void OpenglInitialize(vlc_gl_t *gl, unsigned width, unsigned height)
             else if (msg.customCmd == 'renderNext')
             {
                 Module.vout.dirty = true;
-                //vlc_gl_ReportRender(gl);
             }
             else if (msg.customCmd == 'requestChange')
             {

@@ -241,8 +241,6 @@ static void PictureRender(vlc_gl_t *gl, unsigned width, unsigned height)
     vout_display_t *vd = gl->owner.sys;
     vout_display_sys_t *sys = vd->sys;
 
-    msg_Info(gl, "In picture callback %s:%s:%d", __FILE__, __func__, __LINE__);
-
     struct vout_display_placement dp = vd->cfg->display;
     dp.width = width;
     dp.height = height;
