@@ -79,8 +79,9 @@ static int ReportInit(vlc_gl_t *gl)
     int ret = VLC_EGENERIC;
     if (gl->owner.cbs != NULL && gl->owner.cbs->init != NULL)
     {
-        fprintf(stderr, "INITIALIZING\n");
+        fprintf(stderr, "INITIALIZING RENDERER %s:%d\n", __func__, __LINE__);
         ret = gl->owner.cbs->init(gl);
+        fprintf(stderr, "INITIALIZING RENDERER %s:%d\n", __func__, __LINE__);
     }
 
     if (ret == VLC_SUCCESS)
@@ -88,6 +89,7 @@ static int ReportInit(vlc_gl_t *gl)
         glpriv->renderer_initialized = true;
         vlc_cond_signal(&glpriv->sync_cond);
     }
+        fprintf(stderr, "INITIALIZING RENDERER %s:%d\n", __func__, __LINE__);
     return ret;
 }
 

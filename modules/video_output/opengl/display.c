@@ -217,16 +217,21 @@ static int RendererInit(vlc_gl_t *gl)
     vout_display_t *vd = gl->owner.sys;
     vout_display_sys_t *sys = vd->sys;
 
+    msg_Info(gl, "In init renderer callback %s:%s:%d", __FILE__, __func__, __LINE__);
+
     sys->vt.Flush = vlc_gl_GetProcAddress(gl, "glFlush");
     if (sys->vt.Flush == NULL)
         return VLC_EGENERIC;
 
+    msg_Info(gl, "In init renderer callback %s:%s:%d", __FILE__, __func__, __LINE__);
     sys->vgl = vout_display_opengl_New (
             sys->cfg.fmt, &sys->cfg.spu_chromas,
             gl, &vd->cfg->viewpoint, sys->cfg.context);
+    msg_Info(gl, "In init renderer callback %s:%s:%d", __FILE__, __func__, __LINE__);
     if (sys->vgl == NULL)
         return VLC_EGENERIC;
 
+    msg_Info(gl, "In init renderer callback %s:%s:%d", __FILE__, __func__, __LINE__);
     return VLC_SUCCESS;
 }
 
@@ -235,6 +240,8 @@ static void PictureRender(vlc_gl_t *gl, unsigned width, unsigned height)
 {
     vout_display_t *vd = gl->owner.sys;
     vout_display_sys_t *sys = vd->sys;
+
+    msg_Info(gl, "In picture callback %s:%s:%d", __FILE__, __func__, __LINE__);
 
     struct vout_display_placement dp = vd->cfg->display;
     dp.width = width;

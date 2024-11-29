@@ -200,14 +200,15 @@ if [ $BUILD_MODE -eq 1 ]; then
     if [ ! -z "${VLC_USE_SANITIZER}" ]; then
         SANITIZER_OPTIONS="--with-sanitizer=${VLC_USE_SANITIZER}"
     fi
+    SOURCEMAPS="-g4 -gsource-map --source-map-base=http://localhost:8080/"
     emconfigure "$VLC_SRCPATH"/configure --host=wasm32-unknown-emscripten --enable-debug \
                         $SHARED_CONFIGURE_FLAGS $EXTRA_CONFIGURE_FLAGS --disable-vlc \
                         --enable-avcodec --enable-avformat --enable-swscale --enable-postproc \
                         --disable-sout --disable-vlm --disable-xcb --disable-lua \
                         --disable-addonmanagermodules --disable-ssp --disable-nls \
-                        --enable-gles2 \
+                        --enable-gles2 --disable-qt \
                         --with-contrib="$VLC_SRCPATH"/contrib/wasm32-unknown-emscripten \
-                        "${SANITIZER_OPTIONS}"
+                        "${SANITIZER_OPTIONS}" "CFLAGS=${SOURCEMAPS}" "CXXFLAGS=${SOURCEMAPS}"
 fi
 
 if [ "$VLC_COMPILE_SHARED" -eq "1" ]; then
