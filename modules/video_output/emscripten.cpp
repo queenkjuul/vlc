@@ -222,6 +222,15 @@ EM_JS(int, createGlContext, (int width, int height), {
 static void Close (vlc_gl_t *gl)
 {
     auto sys = static_cast<emscripten_gl_sys_t*>( gl->sys );
+
+    MAIN_THREAD_EM_ASM({
+        let w = Module.vouts[$0];
+        w.msgPort.postMessage({
+            customCmd: 'close'
+        })
+    }, sys->worker_id);
+    vlc_join(sys->worker, NULL);
+
     delete sys;
 }
 
@@ -251,6 +260,7 @@ static void RunloopRender(void *opaque)
             return -1;
         if (!Module.vout.dirty)
             return -1;
+        Module.vout.dirty = false;
         return 0;
     });
     if (ret != 0)
@@ -358,9 +368,13 @@ static void OpenglInitialize(vlc_gl_t *gl, unsigned width, unsigned height)
                 Module.vout.dirty = true;
                 //vlc_gl_ReportRender(gl);
             }
-            else if (msg.customCmd == 'RequestChange')
+            else if (msg.customCmd == 'requestChange')
             {
                 _EmscriptenRequestChange($0);
+            }
+            else if (msg.customCmd == 'close')
+            {
+                _emscripten_cancel_main_loop();
             }
         };
     }, gl);
@@ -377,14 +391,6 @@ static void OpenglInitialize(vlc_gl_t *gl, unsigned width, unsigned height)
         // TODO
         return;
     }
-
-    EM_ASM({
-        console.dir(Module);
-    });
-
-    //// Release the context
-    //emscripten_webgl_make_context_current(0);
-    wnd->handle.em_context = sys->context;
 }
 
 static void* OpenglWorkerRunloop(void *opaque)
