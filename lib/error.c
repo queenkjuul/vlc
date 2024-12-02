@@ -41,13 +41,13 @@ static char *get_error (void)
 
 static void free_msg (void *msg)
 {
-    if (msg != oom)
-        free (msg);
+    //if (msg != oom)
+    //    free (msg);
 }
 
 static void free_error (void)
 {
-    free_msg (get_error ());
+    //free_msg (get_error ());
 }
 
 static vlc_mutex_t lock = VLC_STATIC_MUTEX;
