@@ -326,6 +326,7 @@ VLC_API vlc_render_subpicture *vlc_render_subpicture_New( void );
  */
 VLC_API void vlc_render_subpicture_Delete(vlc_render_subpicture *);
 
+VLC_API vlc_render_subpicture* vlc_render_subpicture_Copy( const vlc_render_subpicture *from );
 /**@}*/
 
 #endif /* _VLC_SUBPICTURE_H */

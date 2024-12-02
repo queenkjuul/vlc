@@ -81,7 +81,7 @@ typedef struct vout_display_sys_t
 
     struct {
         picture_t *picture;
-        const struct vlc_render_subpicture *subpicture;
+        struct vlc_render_subpicture *subpicture;
     } latch;
 
     struct {
@@ -251,7 +251,7 @@ static void PictureRender(vlc_gl_t *gl, unsigned width, unsigned height)
         return;
 
     picture_t *pic = sys->latch.picture;
-    const vlc_render_subpicture *subpicture = sys->latch.subpicture;
+    vlc_render_subpicture *subpicture = sys->latch.subpicture;
 
     vout_display_opengl_Prepare (sys->vgl, pic, subpicture);
     if (sys->place_changed)
@@ -265,6 +265,7 @@ static void PictureRender(vlc_gl_t *gl, unsigned width, unsigned height)
     vout_display_opengl_Display(sys->vgl);
     sys->vt.Flush();
 
+    vlc_render_subpicture_Delete(subpicture);
     sys->is_dirty = true;
 }
 
@@ -276,7 +277,7 @@ static void PicturePrepare(vout_display_t *vd, picture_t *pic,
     vout_display_sys_t *sys = vd->sys;
 
     sys->latch.picture = pic;
-    sys->latch.subpicture = subpicture;
+    sys->latch.subpicture = vlc_render_subpicture_Copy(subpicture);
 
     vlc_gl_RenderNext(sys->gl);
     sys->is_dirty = true;

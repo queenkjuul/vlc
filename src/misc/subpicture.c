@@ -118,6 +118,26 @@ void vlc_render_subpicture_Delete( vlc_render_subpicture *p_subpic )
     free( p_subpic );
 }
 
+vlc_render_subpicture* vlc_render_subpicture_Copy( const vlc_render_subpicture *from )
+{
+    vlc_render_subpicture* ret = vlc_render_subpicture_New();
+    if (unlikely(ret == NULL))
+        return NULL;
+
+    ret->i_order = from->i_order;
+
+    struct subpicture_region_rendered *p_region;
+    vlc_vector_foreach(p_region, &from->regions)
+    {
+        struct subpicture_region_rendered *region = malloc(sizeof(*region));
+        region->p_picture = picture_Hold(p_region->p_picture);
+        region->place = p_region->place;
+        region->i_alpha = p_region->i_alpha;
+        vlc_vector_push(&ret->regions, region);
+    }
+    return ret;
+}
+
 subpicture_t *subpicture_NewFromPicture( vlc_object_t *p_obj,
                                          picture_t *p_picture, vlc_fourcc_t i_chroma )
 {
