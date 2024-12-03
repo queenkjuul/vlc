@@ -32,41 +32,73 @@
 
 #include <emscripten.h>
 
-typedef struct
-{
+enum state {
+    IDLE,
+    QUERIED,
+    STOP,
+};
+struct worker_data {
+    long id;
     uint64_t offset;
     uint64_t alignas(8) js_file_size;
+
+    vlc_mutex_t lock;
+    vlc_cond_t wait_state;
+    vlc_cond_t wait_buffer;
+    enum state state;
+    void *buffer;
+    size_t size;
+
+    vlc_sem_t rdy;
+};
+
+typedef struct
+{
+    struct worker_data data;
+    vlc_thread_t worker;
 } access_sys_t;
+
 
 static ssize_t Read (stream_t *p_access, void *buffer, size_t size) {
     access_sys_t *p_sys = p_access->p_sys;
 
-    size_t offset = p_sys->offset;
-    size_t js_file_size = p_sys->js_file_size;
+    size_t offset = p_sys->data.offset;
+    size_t js_file_size = p_sys->data.js_file_size;
 
     if (offset >= js_file_size)
         return 0;
     if (size + offset > js_file_size)
         size = js_file_size - offset;
-    EM_ASM({
-        const offset = $0;
-        const buffer = $1;
-        const size = $2;
-        const blob = Module.vlcAccess[$3].worker_js_file.slice(offset, offset + size);
-        HEAPU8.set(new Uint8Array(Module.vlcAccess[$3].reader.readAsArrayBuffer(blob)), buffer);
-    }, offset, buffer, size, p_access);
-    p_sys->offset += size;
+
+    vlc_mutex_lock(&p_sys->data.lock);
+    p_sys->data.size = size;
+    p_sys->data.buffer = buffer;
+    p_sys->data.state = QUERIED;
+    vlc_cond_signal(&p_sys->data.wait_state);
+
+    while (p_sys->data.state == QUERIED)
+        vlc_cond_wait(&p_sys->data.wait_buffer, &p_sys->data.lock);
+
+    const enum state state = p_sys->data.state;
+    vlc_mutex_unlock(&p_sys->data.lock);
+
+    if (state == STOP)
+        return 0;
     return size;
 }
 
 static int Seek (stream_t *p_access, uint64_t offset) {
     access_sys_t *p_sys = p_access->p_sys;
 
-    p_sys->offset = offset;
+    vlc_mutex_lock(&p_sys->data.lock);
+    assert(offset < p_sys->data.js_file_size);
+    printf("Seek %llu\n", offset);
+    p_sys->data.offset = offset;
+    vlc_mutex_unlock(&p_sys->data.lock);
     return VLC_SUCCESS;
 }
 
-static int get_js_file_size(stream_t *p_access, uint64_t *value) {
+static int get_js_file_size(uint64_t *value) {
     /*
       Note :
       to avoid RangeError on BigUint64 view creation,
@@ -76,14 +108,14 @@ static int get_js_file_size(stream_t *p_access, uint64_t *value) {
     return (EM_ASM_INT({
         try {
             var v = new BigUint64Array(wasmMemory.buffer, $0, 1);
-            v[0] = BigInt(Module.vlcAccess[$1].worker_js_file.size);
+            v[0] = BigInt(Module.vlcAccess.worker_js_file.size);
             return 0;
         }
         catch (error) {
             console.error("get_js_file_size error: " + error);
             return 1;
         }
-    }, value, p_access) == 0) ? VLC_SUCCESS: VLC_EGENERIC;
+    }, value) == 0) ? VLC_SUCCESS: VLC_EGENERIC;
 }
 
 static int Control( stream_t *p_access, int i_query, va_list args )
@@ -108,7 +140,7 @@ static int Control( stream_t *p_access, int i_query, va_list args )
 
         case STREAM_GET_SIZE:
         {
-            *va_arg( args, uint64_t * ) = p_sys->js_file_size;
+            *va_arg( args, uint64_t * ) = p_sys->data.js_file_size;
             break;
         }
 
@@ -128,15 +160,16 @@ static int Control( stream_t *p_access, int i_query, va_list args )
     return VLC_SUCCESS;
 }
 
-EM_ASYNC_JS(int, init_js_file, (stream_t *p_access, long id), {
+EM_ASYNC_JS(int, init_js_file, (long id), {
     let p = new Promise((resolve, reject) => {
         function handleFileResult(e) {
             const msg = e['data'];
             if (msg.type === 'FileResult') {
                 self.removeEventListener('message', handleFileResult);
                 if (msg.file !== undefined) {
-                    Module.vlcAccess[p_access].worker_js_file = msg.file;
-                    Module.vlcAccess[p_access].reader = new FileReaderSync();
+                    Module.vlcAccess.worker_js_file = msg.file;
+                    Module.vlcAccess.reader = new FileReaderSync();
+                    console.log("resolved");
                     resolve();
                 }
                 else {
@@ -178,24 +211,12 @@ EM_ASYNC_JS(int, init_js_file, (stream_t *p_access, long id), {
     return return_value;
 });
 
-static void EmFileClose (vlc_object_t * p_this) {
-    stream_t *p_access = (stream_t*)p_this;
-    EM_ASM({
-            Module.vlcAccess[$0].worker_js_file = undefined;
-            Module.vlcAccess[$0].reader = undefined;
-        }, p_access);
-}
+static void *WorkerLoop(void * opaque) {
+    struct worker_data *data = opaque;
 
-static int EmFileOpen( vlc_object_t *p_this ) {
-    stream_t *p_access = (stream_t*)p_this;
-
-    /* init per worker module.vlcAccess object */
     EM_ASM({
-            if (Module.vlcAccess === undefined) {
-                Module.vlcAccess = {};
-            }
-            (Module.vlcAccess[$0] = {worker_js_file: undefined, reader: undefined});
-    }, p_access);
+        (Module.vlcAccess = {worker_js_file: undefined, reader: undefined});
+    });
 
     /*
       This block will run in the main thread, to access the DOM.
@@ -247,6 +268,72 @@ static int EmFileOpen( vlc_object_t *p_this ) {
         w.addEventListener('message', handleFileRequest);
     }, pthread_self());
 
+
+    /*
+      Request the file from the main thread.
+      If it was not selected, it will return an error.
+
+      To open a file, we need to call libvlc_media_new_location with
+      the following uri : emjsfile://<id>
+    */
+    if (init_js_file(data->id)) {
+        return NULL;
+    }
+
+    get_js_file_size(&data->js_file_size);
+
+    vlc_sem_post(&data->rdy);
+
+    vlc_mutex_lock(&data->lock);
+    for(;;) {
+        while (data->state == IDLE)
+            vlc_cond_wait(&data->wait_state, &data->lock);
+
+        if (data->state == STOP)
+            break;
+
+        assert(data->offset < data->js_file_size);
+
+
+        size_t offset = data->offset;
+        void* buffer = data->buffer;
+        size_t size = data->size;
+        EM_ASM({
+            const offset = $0;
+            const buffer = $1;
+            const size = $2;
+            const blob = Module.vlcAccess.worker_js_file.slice(offset, offset + size);
+            HEAPU8.set(new Uint8Array(Module.vlcAccess.reader.readAsArrayBuffer(blob)), buffer);
+        }, offset, buffer, size);
+        data->offset += data->size;
+        data->state = IDLE;
+        vlc_cond_signal(&data->wait_buffer);
+    }
+
+    vlc_mutex_unlock(&data->lock);
+    return NULL;
+}
+
+static void EmFileClose (vlc_object_t * p_this) {
+    stream_t *p_access = (stream_t*)p_this;
+    access_sys_t *sys= p_access->p_sys;
+    printf("closing\n");
+
+    vlc_mutex_lock(&sys->data.lock);
+    sys->data.state = STOP;
+    vlc_cond_signal(&sys->data.wait_state);
+    vlc_cond_signal(&sys->data.wait_buffer);
+    vlc_mutex_unlock(&sys->data.lock);
+
+    vlc_join(sys->worker, NULL);
+}
+
+static int EmFileOpen( vlc_object_t *p_this ) {
+    stream_t *p_access = (stream_t*)p_this;
+
+    printf("Open wtf\n");
+
+
     char *endPtr;
     long id = strtol(p_access->psz_location, &endPtr, 10);
     if ((endPtr == p_access->psz_location) || (*endPtr != '\0')) {
@@ -258,30 +345,26 @@ static int EmFileOpen( vlc_object_t *p_this ) {
     if (unlikely(p_sys == NULL))
         return VLC_ENOMEM;
 
-    /*
-      Request the file from the main thread.
-      If it was not selected, it will return an error.
+    p_sys->data.id = id;
+    p_sys->data.offset = 0;
+    p_sys->data.js_file_size = 0;
+    vlc_mutex_init(&p_sys->data.lock);
+    vlc_cond_init(&p_sys->data.wait_state);
+    vlc_cond_init(&p_sys->data.wait_buffer);
+    p_sys->data.state = IDLE;
+    p_sys->data.buffer = NULL;
+    p_sys->data.size = 0;
+    vlc_sem_init(&p_sys->data.rdy, 0);
 
-      To open a file, we need to call libvlc_media_new_location with
-      the following uri : emjsfile://<id>
-    */
-    if (init_js_file(p_access, id)) {
-        msg_Err(p_access, "EMJsFile error: failed init!");
+    if (vlc_clone(&p_sys->worker, WorkerLoop, &p_sys->data))
         return VLC_EGENERIC;
-    }
+    vlc_sem_wait(&p_sys->data.rdy);
 
     p_access->pf_read = Read;
     p_access->pf_block = NULL;
     p_access->pf_control = Control;
     p_access->pf_seek = Seek;
     p_access->p_sys = p_sys;
-    p_sys->js_file_size = 0;
-    p_sys->offset = 0;
-    if (get_js_file_size(p_access, &p_sys->js_file_size)) {
-        msg_Err(p_access, "EMJsFile error: could not get file size!");
-        EmFileClose(p_this);
-        return VLC_EGENERIC;
-    }
 
     return VLC_SUCCESS;
 }
