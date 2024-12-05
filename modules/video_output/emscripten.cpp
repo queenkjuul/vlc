@@ -331,13 +331,20 @@ static void OpenglInitialize(vlc_gl_t *gl, unsigned width, unsigned height)
                 console.log("MOUSE UP");
                 _mouseup($2);
         });
-        function onVoutMessage(msg) {
-            let data = msg['data'];
-            if (data.customCmd == 'commitFrame') {
-                let bmp = data['bitmap'];
-                let ctx = document.getElementById(UTF8ToString($1)).getContext('bitmaprenderer');
-                ctx.transferFromImageBitmap(bmp, 0, 0);
-           }
+
+        function onVoutMessage(worker_id) {
+            return function(msg) {
+                let data = msg['data'];
+                if (data.customCmd == 'commitFrame') {
+                    let bmp = data['bitmap'];
+                    let ctx = document.getElementById(UTF8ToString($1)).getContext('bitmaprenderer');
+                    ctx.transferFromImageBitmap(bmp, 0, 0);
+                }
+                else if (data.customCmd == 'detach') {
+                    Module.vouts[worker_id].msgPort.close();
+                    del Module.vouts[worker_id];
+                }
+            }
         }
 
         let w = Module.PThread.pthreads[$0];
@@ -348,9 +355,9 @@ static void OpenglInitialize(vlc_gl_t *gl, unsigned width, unsigned height)
             let msg = e['data'];
             if (msg.customCmd == 'getVoutMessagePort') {
                 let msgChannel = new MessageChannel();
-                msgChannel.port1.onmessage = onVoutMessage;
                 Module.vouts[$0] = {};
                 Module.vouts[$0].msgPort = msgChannel.port1;
+                msgChannel.port1.onmessage = onVoutMessage($0);
                 w.postMessage({
                     customCmd: 'getVoutMessagePortResult',
                     msgPort: msgChannel.port2,
