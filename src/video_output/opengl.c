@@ -195,6 +195,7 @@ void vlc_gl_ApplyChanges(vlc_gl_t *gl)
 
     vlc_mutex_lock(&glpriv->lock);
     glpriv->change_request.result = glpriv->change_request.cb(gl, glpriv->change_request.opaque);
+    glpriv->change_request.cb = NULL;
     vlc_cond_signal(&glpriv->sync_cond);
     vlc_mutex_unlock(&glpriv->lock);
 }
