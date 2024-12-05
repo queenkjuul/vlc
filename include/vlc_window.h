@@ -401,7 +401,7 @@ typedef struct vlc_window {
         void     *dcomp_visual;  /**<  Win32 direct composition visual */
         uint32_t crtc;           /**< KMS CRTC identifier */
         int      display_id;     /**< MMAL display ID */
-        char *canvas;
+        const char *canvas;
     } handle;
 
     /** Display server (mandatory)

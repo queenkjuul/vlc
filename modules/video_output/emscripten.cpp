@@ -63,7 +63,7 @@ typedef struct emscripten_gl_sys_t
 
 static void CloseWindow(vlc_window_t *wnd)
 {
-    free(wnd->handle.canvas);
+    free(wnd->sys);
 }
 
 static int WindowEnable(vlc_window_t *wnd, const vlc_window_cfg_t *cfg)
@@ -96,6 +96,7 @@ static int OpenWindow(vlc_window_t *wnd)
 
     wnd->type = VLC_WINDOW_TYPE_EMSCRIPTEN_WEBGL;
     wnd->ops = &ops;
+    wnd->sys = canvas;
     wnd->handle.canvas = canvas;
 
     return VLC_SUCCESS;
