@@ -192,7 +192,7 @@ static void Resize(vlc_gl_t *gl, unsigned w, unsigned h)
     }, sys->worker_id, w, h);
 }
 
-EM_ASYNC_JS(void, getVoutMessagePort, (), {
+EM_ASYNC_JS(void, getVoutMessagePort, (pthread_t worker_id), {
     let p = new Promise((resolve, reject) => {
         let listener = function(e) {
             let msg = e.data;
@@ -205,7 +205,8 @@ EM_ASYNC_JS(void, getVoutMessagePort, (), {
         };
         self.addEventListener('message', listener);
         self.postMessage({
-            customCmd: 'getVoutMessagePort'
+            customCmd: 'getVoutMessagePort',
+            worker_id: worker_id,
         });
     });
     await p;
@@ -348,6 +349,12 @@ static void OpenglInitialize(vlc_gl_t *gl, unsigned width, unsigned height)
         w.addEventListener('message', function (e) {
             let msg = e['data'];
             if (msg.customCmd == 'getVoutMessagePort') {
+                console.log("getVoutMessagePort received for " + msg.worker_id + " from worker " + $0);
+                if (msg.worker_id != $0)
+                {
+                    console.log("unattended getVoutMessagePort received for " + msg.worker_id + " from worker " + $0);
+                    return;
+                }
                 let msgChannel = new MessageChannel();
                 msgChannel.port1.onmessage = onVoutMessage;
                 Module.vouts[$0] = {};
@@ -360,7 +367,7 @@ static void OpenglInitialize(vlc_gl_t *gl, unsigned width, unsigned height)
         });
     }, pthread_self(), wnd->handle.canvas, wnd);
 
-    getVoutMessagePort();
+    getVoutMessagePort(pthread_self());
 
     EM_ASM({
         Module.vout = {};
