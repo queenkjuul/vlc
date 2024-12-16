@@ -62,8 +62,8 @@ typedef struct
 static ssize_t Read (stream_t *p_access, void *buffer, size_t size) {
     access_sys_t *p_sys = p_access->p_sys;
 
-    size_t offset = p_sys->data.offset;
-    size_t js_file_size = p_sys->data.js_file_size;
+    const uint64_t offset = p_sys->data.offset;
+    const uint64_t js_file_size = p_sys->data.js_file_size;
 
     if (offset >= js_file_size)
         return 0;
@@ -295,7 +295,7 @@ static void *WorkerLoop(void * opaque) {
         assert(data->offset < data->js_file_size);
 
 
-        size_t offset = data->offset;
+        uint64_t offset = data->offset;
         void* buffer = data->buffer;
         size_t size = data->size;
         EM_ASM({
