@@ -304,7 +304,7 @@ static void *WorkerLoop(void * opaque) {
             const size = $2;
             const blob = Module.vlcAccess.worker_js_file.slice(offset, offset + size);
             HEAPU8.set(new Uint8Array(Module.vlcAccess.reader.readAsArrayBuffer(blob)), buffer);
-        }, offset, buffer, size);
+        }, (double)offset, buffer, size);
         data->offset += data->size;
         data->state = IDLE;
         vlc_cond_signal(&data->wait_buffer);
