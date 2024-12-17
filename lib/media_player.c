@@ -1787,6 +1787,7 @@ void libvlc_media_player_navigate( libvlc_media_player_t* p_mi,
     {
         VLC_PLAYER_NAV_ACTIVATE, VLC_PLAYER_NAV_UP, VLC_PLAYER_NAV_DOWN,
         VLC_PLAYER_NAV_LEFT, VLC_PLAYER_NAV_RIGHT, VLC_PLAYER_NAV_POPUP,
+        VLC_PLAYER_NAV_MENU
     };
 
     if( navigate >= sizeof(map) / sizeof(map[0]) )
