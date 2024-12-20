@@ -19,6 +19,7 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
  *****************************************************************************/
 
+#include "vlc_block.h"
 #ifdef HAVE_CONFIG_H
 # include "config.h"
 #endif
@@ -46,8 +47,7 @@ struct worker_data {
     vlc_cond_t wait_state;
     vlc_cond_t wait_buffer;
     enum state state;
-    void *buffer;
-    size_t size;
+    block_t *buffer;
 
     vlc_sem_t rdy;
 };
@@ -59,20 +59,21 @@ typedef struct
 } access_sys_t;
 
 
-static ssize_t Read (stream_t *p_access, void *buffer, size_t size) {
+static block_t* Read (stream_t *p_access, bool* eof) {
     access_sys_t *p_sys = p_access->p_sys;
 
     const uint64_t offset = p_sys->data.offset;
     const uint64_t js_file_size = p_sys->data.js_file_size;
 
     if (offset >= js_file_size)
-        return 0;
-    if (size + offset > js_file_size)
-        size = js_file_size - offset;
+    {
+        *eof = true;
+        return NULL;
+    }
+    //if (size + offset > js_file_size)
+    //    size = js_file_size - offset;
 
     vlc_mutex_lock(&p_sys->data.lock);
-    p_sys->data.size = size;
-    p_sys->data.buffer = buffer;
     p_sys->data.state = QUERIED;
     vlc_cond_signal(&p_sys->data.wait_state);
 
@@ -80,11 +81,16 @@ static ssize_t Read (stream_t *p_access, void *buffer, size_t size) {
         vlc_cond_wait(&p_sys->data.wait_buffer, &p_sys->data.lock);
 
     const enum state state = p_sys->data.state;
+    block_t *block = p_sys->data.buffer;
+    p_sys->data.buffer = NULL;
     vlc_mutex_unlock(&p_sys->data.lock);
 
     if (state == STOP)
-        return 0;
-    return size;
+    {
+        *eof = true;
+        return NULL;
+    }
+    return block;
 }
 
 static int Seek (stream_t *p_access, uint64_t offset) {
@@ -295,17 +301,24 @@ static void *WorkerLoop(void * opaque) {
         assert(data->offset < data->js_file_size);
 
 
+#define BLOCK_SIZE (0x1000000u)
         uint64_t offset = data->offset;
-        void* buffer = data->buffer;
-        size_t size = data->size;
+        size_t size = BLOCK_SIZE;
+        if (size + offset > data->js_file_size)
+            size = data->js_file_size - offset;
+        block_t *b = block_Alloc(size);
+
         EM_ASM({
             const offset = $0;
             const buffer = $1;
             const size = $2;
             const blob = Module.vlcAccess.worker_js_file.slice(offset, offset + size);
             HEAPU8.set(new Uint8Array(Module.vlcAccess.reader.readAsArrayBuffer(blob)), buffer);
-        }, (double)offset, buffer, size);
-        data->offset += data->size;
+        }, (double)offset, b->p_buffer, size);
+        data->offset += size;
+        if (data->buffer != NULL)
+            block_Release(data->buffer);
+        data->buffer = b;
         data->state = IDLE;
         vlc_cond_signal(&data->wait_buffer);
     }
@@ -353,15 +366,15 @@ static int EmFileOpen( vlc_object_t *p_this ) {
     vlc_cond_init(&p_sys->data.wait_buffer);
     p_sys->data.state = IDLE;
     p_sys->data.buffer = NULL;
-    p_sys->data.size = 0;
     vlc_sem_init(&p_sys->data.rdy, 0);
 
     if (vlc_clone(&p_sys->worker, WorkerLoop, &p_sys->data))
         return VLC_EGENERIC;
     vlc_sem_wait(&p_sys->data.rdy);
 
-    p_access->pf_read = Read;
-    p_access->pf_block = NULL;
+    //p_access->pf_read = Read;
+    p_access->pf_block = Read;
+    //p_access->pf_block = NULL;
     p_access->pf_control = Control;
     p_access->pf_seek = Seek;
     p_access->p_sys = p_sys;
