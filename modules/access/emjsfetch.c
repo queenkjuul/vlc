@@ -37,8 +37,6 @@ typedef struct
 
 static int Control(stream_t *access, int query, va_list args)
 {
-    // access_sys_t *sys = access->p_sys;
-
     switch (query)
     {
     case STREAM_CAN_SEEK:
@@ -75,21 +73,32 @@ static block_t *Read(stream_t *access, bool *restrict eof)
     attr.attributes =
         EMSCRIPTEN_FETCH_LOAD_TO_MEMORY | EMSCRIPTEN_FETCH_SYNCHRONOUS;
 
-#define BLOCK_SIZE (0x1000000u)
+#define BLOCK_SIZE (2000000u)
     char *range;
-    if (asprintf(&range, "bytes=%zu-%zu", sys->offset, sys->offset + BLOCK_SIZE - 1) ==
-        -1)
+    if (asprintf(&range,
+                 "bytes=%zu-%zu",
+                 sys->offset,
+                 sys->offset + BLOCK_SIZE - 1) == -1)
         return NULL;
 
     const char *headers[] = {"Range", range, NULL};
     attr.requestHeaders = headers;
+    attr.timeoutMSecs = 5;
     emscripten_fetch_t *fetch = emscripten_fetch(&attr, sys->url);
+    if (unlikely(fetch == NULL))
+    {
+        msg_Err(access,
+                "Fetch failed, probably a timeout (%us)",
+                attr.timeoutMSecs);
+        *eof = true;
+        free(range);
+        return NULL;
+    }
 
     block_t *b;
     if (fetch->status == 200 || fetch->status == 206)
     {
         b = block_Alloc(fetch->numBytes);
-        printf("fetched %llu\n", fetch->numBytes);
         if (unlikely(b == NULL))
             goto out;
 
@@ -104,48 +113,10 @@ static block_t *Read(stream_t *access, bool *restrict eof)
 
 out:
 #undef BLOCK_SIZE
-    free(range);
     emscripten_fetch_close(fetch);
+    free(range);
     return b;
 }
-
-//static ssize_t Read(stream_t *access, void* buff, size_t len)
-//{
-//    access_sys_t *sys = access->p_sys;
-//
-//    emscripten_fetch_attr_t attr;
-//    emscripten_fetch_attr_init(&attr);
-//    strcpy(attr.requestMethod, "GET");
-//    attr.attributes =
-//        EMSCRIPTEN_FETCH_LOAD_TO_MEMORY | EMSCRIPTEN_FETCH_SYNCHRONOUS;
-//
-//    char *range;
-//    if (asprintf(&range, "bytes=%zu-%zu", sys->offset, sys->offset + len - 1) ==
-//        -1)
-//        return -1;
-//
-//    const char *headers[] = {"Range", range, NULL};
-//    attr.requestHeaders = headers;
-//    emscripten_fetch_t *fetch = emscripten_fetch(&attr, sys->url);
-//
-//    ssize_t ret;
-//    if (fetch->status == 200 || fetch->status == 206)
-//    {
-//        printf("fetched %llu\n", fetch->numBytes);
-//
-//        memcpy(buff, fetch->data, fetch->numBytes);
-//        sys->offset += fetch->numBytes;
-//        ret = fetch->numBytes;
-//    }
-//    else
-//    {
-//        ret = 0;
-//    }
-//
-//    free(range);
-//    emscripten_fetch_close(fetch);
-//    return ret;
-//}
 
 static int Seek(stream_t *access, uint64_t offset)
 {
@@ -162,7 +133,8 @@ static int Open(vlc_object_t *obj)
     if (unlikely(sys == NULL))
         return -ENOMEM;
 
-    if (asprintf(&sys->url, "http://%s", access->psz_url + strlen("fetch://")) == -1)
+    if (asprintf(
+            &sys->url, "http://%s", access->psz_url + strlen("fetch://")) == -1)
     {
         free(sys);
         return -ENOMEM;
@@ -170,7 +142,6 @@ static int Open(vlc_object_t *obj)
     sys->offset = 0u;
 
     access->pf_block = Read;
-    ////access->pf_read = Read;
     access->pf_seek = Seek;
     access->pf_control = Control;
     access->p_sys = sys;
