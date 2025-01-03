@@ -138,6 +138,42 @@ static void Stop(audio_output_t *aout)
     atomic_store(&sys->sab->is_paused, 1);
 }
 
+/** Fix channel mapping according to Webaudio API constraints.
+ *
+ * https://webaudio.github.io/web-audio-api/#ChannelOrdering
+ */
+static void FixChannelMapping(audio_sample_format_t *restrict fmt)
+{
+    switch (fmt->i_channels)
+    {
+        case 0:
+        case 1:
+            fmt->i_physical_channels = AOUT_CHAN_LEFT;
+            break;
+        case 2:
+            fmt->i_physical_channels = AOUT_CHANS_2_0;
+            break;
+        case 3: 
+            // WebAudio does not support 2.1
+            fmt->i_physical_channels = AOUT_CHANS_2_0;
+            fmt->i_channels = 2;
+            break;
+        case 4:
+            fmt->i_physical_channels = AOUT_CHANS_4_0;
+            break;
+        case 5:
+            // WebAudio does not support 4.1
+            fmt->i_physical_channels = AOUT_CHANS_4_0;
+            fmt->i_channels = 4;
+            break;
+        default:
+            // WebAudio only supports up to 5.1 2F2R.
+            fmt->i_physical_channels = AOUT_CHANS_5_1;
+            fmt->i_channels = 6;
+            break;
+    }
+}
+
 /*
   Init Function will set the AudioContext, and try to get the sample rate and
   number of channels. 
@@ -174,12 +210,13 @@ static void Init(void *userData)
 static int Start(audio_output_t *aout, audio_sample_format_t *restrict fmt)
 {
     aout_sys_t *sys = (aout_sys_t *) aout->sys;
+
+    FixChannelMapping(fmt);
     unsigned nbChannels = aout_FormatNbChannels(fmt);
 
     aout_SoftVolumeStart(aout);
     if (( nbChannels == 0 ) || !AOUT_FMT_LINEAR(fmt))
         return VLC_EGENERIC;
-    fmt->i_format = VLC_CODEC_FL32;
     if (atomic_load(&sys->init) == false) {
         sys->channels = nbChannels;
         sys->sample_rate = fmt->i_rate;
@@ -198,35 +235,14 @@ static int Start(audio_output_t *aout, audio_sample_format_t *restrict fmt)
 
         if ((sys->channels == 0) && (sys->sample_rate == 0))
             return VLC_EGENERIC;
-
-        // XXX: Still needs checks for correctness.
-        // It looks like webaudio channels are treated in logical order.
-        // As of today we didn't find any way to fetch the true channel mapping
-        // of the browser so for now, lets remap naively in case of necessary
-        // downmix.
-        static const unsigned CHANNEL_MAPPING[] = {
-            0,
-            AOUT_CHAN_LEFT,
-            AOUT_CHANS_2_0,
-            AOUT_CHANS_2_1,
-            AOUT_CHANS_4_0,
-            AOUT_CHANS_5_0,
-            AOUT_CHANS_5_1,
-        };
-
-        if (fmt->i_channels > sys->channels)
-        {
-            msg_Info(aout, "Channel remapping necessary: %u -> %u", fmt->i_channels, sys->channels);
-            if (unlikely(sys->channels > ARRAY_SIZE(CHANNEL_MAPPING)))
-            {
-                msg_Err(aout, "Unsupported mapping (channel count: %u)", sys->channels);
-                return VLC_EGENERIC;
-            }
-            fmt->i_physical_channels = CHANNEL_MAPPING[sys->channels];
-        }
-        fmt->i_channels = sys->channels;
-        fmt->i_rate = sys->sample_rate;
     }
+
+    fmt->i_format = VLC_CODEC_FL32;
+    fmt->i_rate = sys->sample_rate;
+    fmt->i_channels = sys->channels;
+    // Ensure that physical channel mapping is correct.
+    FixChannelMapping(fmt);
+
     atomic_store(&sys->sab->is_paused, 0);
 
     return VLC_SUCCESS;
