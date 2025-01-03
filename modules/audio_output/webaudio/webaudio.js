@@ -27,7 +27,7 @@ mergeInto(LibraryManager.library, {
     webaudio_getChannels: function() {
         if (Module.webaudioContext === undefined)
             return 0;
-        return Module.webaudioContext.destination.channelCount;
+        return Module.webaudioChannels;
     },
     webaudio_init__async: true,
     webaudio_init: function (rate, channels, webaudio_buffer, latency) {
@@ -91,6 +91,7 @@ mergeInto(LibraryManager.library, {
                 console.error("Max number of channels of the browser is ", audioCtx.destination.maxChannelCount)
                 channels = audioCtx.destination.maxChannelCount;
             }
+            Module.webaudioChannels = channels;
 
             try {
                 await audioCtx.audioWorklet.addModule('./vlc/modules/audio_output/webaudio/audio-worklet-processor.js');

@@ -121,6 +121,42 @@ static void Stop(audio_output_t *aout)
     atomic_store(&sys->sab->is_paused, 1);
 }
 
+/** Fix channel mapping according to Webaudio API constraints.
+ *
+ * https://webaudio.github.io/web-audio-api/#ChannelOrdering
+ */
+static void FixChannelMapping(audio_sample_format_t *restrict fmt)
+{
+    switch (fmt->i_channels)
+    {
+        case 0:
+        case 1:
+            fmt->i_physical_channels = AOUT_CHAN_LEFT;
+            break;
+        case 2:
+            fmt->i_physical_channels = AOUT_CHANS_2_0;
+            break;
+        case 3:
+            /* WebAudio does not support 2.1 */
+            fmt->i_physical_channels = AOUT_CHANS_2_0;
+            fmt->i_channels = 2;
+            break;
+        case 4:
+            fmt->i_physical_channels = AOUT_CHANS_4_0;
+            break;
+        case 5:
+            /* WebAudio does not support 4.1 */
+            fmt->i_physical_channels = AOUT_CHANS_4_0;
+            fmt->i_channels = 4;
+            break;
+        default:
+            /* WebAudio only supports up to 5.1 3F2R. */
+            fmt->i_physical_channels = AOUT_CHANS_5_1;
+            fmt->i_channels = 6;
+            break;
+    }
+}
+
 /*
   Init Function will set the AudioContext, and try to get the sample rate and
   number of channels. 
@@ -159,12 +195,13 @@ init_done:
 static int Start(audio_output_t *aout, audio_sample_format_t *restrict fmt)
 {
     aout_sys_t *sys = aout->sys;
+
+    FixChannelMapping(fmt);
     const unsigned nbChannels = aout_FormatNbChannels(fmt);
 
     aout_SoftVolumeStart(aout);
     if (( nbChannels == 0 ) || !AOUT_FMT_LINEAR(fmt))
         return VLC_EGENERIC;
-    fmt->i_format = VLC_CODEC_FL32;
     if (atomic_load(&sys->context_ready) == false)
     {
         sys->channel_count = nbChannels;
@@ -185,9 +222,14 @@ static int Start(audio_output_t *aout, audio_sample_format_t *restrict fmt)
 
         if ((sys->channel_count == 0) && (sys->sample_rate == 0))
             return VLC_EGENERIC;
-        fmt->i_channels = sys->channel_count;
-        fmt->i_rate = sys->sample_rate;
     }
+
+    fmt->i_format = VLC_CODEC_FL32;
+    fmt->i_rate = sys->sample_rate;
+    fmt->i_channels = sys->channel_count;
+    // Ensure that physical channel mapping is correct.
+    FixChannelMapping(fmt);
+
     atomic_store(&sys->sab->is_paused, 0);
 
     return VLC_SUCCESS;
