@@ -316,23 +316,6 @@ static void OpenglInitialize(vlc_gl_t *gl, unsigned width, unsigned height)
     attr.explicitSwapControl = 1;
 
     MAIN_THREAD_EM_ASM({
-        //_bindEvents();
-        //console.log(canvas);
-        window.addEventListener("keypress", function(ev) {
-                console.log(ev.code);
-                _printhello($2);
-        });
-        window.addEventListener("mousemove", function(ev) {
-                _mousemove($2, ev.offsetX, ev.offsetY);
-        });
-        window.addEventListener("mousedown", function(ev) {
-                console.log("MOUSE DOWN");
-                _mousedown($2);
-        });
-        window.addEventListener("mouseup", function(ev) {
-                console.log("MOUSE UP");
-                _mouseup($2);
-        });
         function onVoutMessage(msg) {
             let data = msg['data'];
             if (data.customCmd == 'commitFrame') {
@@ -365,7 +348,7 @@ static void OpenglInitialize(vlc_gl_t *gl, unsigned width, unsigned height)
                 }, [msgChannel.port2]);
             }
         });
-    }, pthread_self(), wnd->handle.canvas, wnd);
+    }, pthread_self(), wnd->handle.canvas);
 
     getVoutMessagePort(pthread_self());
 
@@ -396,8 +379,20 @@ static void OpenglInitialize(vlc_gl_t *gl, unsigned width, unsigned height)
             {
                 _emscripten_cancel_main_loop();
             }
+            else if (msg.customCmd == 'mousemove')
+            {
+                _mousemove($1, msg['offsetX'], msg['offsetY']);
+            }
+            else if (msg.customCmd == 'mousedown')
+            {
+                _mousedown($1);
+            }
+            else if (msg.customCmd == 'mouseup')
+            {
+                _mouseup($1);
+            }
         };
-    }, gl);
+    }, gl, wnd);
 
     sys->context = createGlContext(width, height);
 
@@ -422,6 +417,25 @@ static void* OpenglWorkerRunloop(void *opaque)
 
     sys->worker_id = pthread_self();
     OpenglInitialize(gl, startup->width, startup->height);
+
+    MAIN_THREAD_ASYNC_EM_ASM({
+        let w = Module.vouts[$0];
+        window.addEventListener("mousemove", function(ev){
+            w.msgPort.postMessage({
+                customCmd: 'mousemove',
+                offsetX: ev.offsetX,
+                offsetY: ev.offsetY,
+            });
+        });
+
+        window.addEventListener("mousedown", function(ev){
+            w.msgPort.postMessage({ customCmd: 'mousedown' });
+        });
+        window.addEventListener("mouseup", function(ev){
+            w.msgPort.postMessage({ customCmd: 'mouseup' });
+        });
+    }, sys->worker_id);
+
     msg_Dbg(gl, "emscripten initialized");
 
     if (sys->context == NULL)
