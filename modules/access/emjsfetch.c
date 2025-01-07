@@ -32,7 +32,7 @@
 typedef struct
 {
     char *url;
-    size_t offset;
+    uint64_t offset;
 } access_sys_t;
 
 static int Control(stream_t *access, int query, va_list args)
@@ -76,7 +76,7 @@ static block_t *Read(stream_t *access, bool *restrict eof)
 #define BLOCK_SIZE (2000000u)
     char *range;
     if (asprintf(&range,
-                 "bytes=%zu-%zu",
+                 "bytes=%llu-%llu",
                  sys->offset,
                  sys->offset + BLOCK_SIZE - 1) == -1)
         return NULL;
