@@ -236,7 +236,9 @@ static void Close(vlc_gl_t *gl)
             customCmd: 'close'
         });
     }, sys->worker_id);
-    vlc_join(sys->worker, NULL);
+    // TODO: This is just sad. We can't do that for now, see the attached
+    // commit message.
+    //vlc_join(sys->worker, NULL);
 
     delete sys;
 }
@@ -295,6 +297,12 @@ EMSCRIPTEN_KEEPALIVE
 void EmscriptenRequestChange(vlc_gl_t *gl)
 {
     vlc_gl_ApplyChanges(gl);
+}
+
+EMSCRIPTEN_KEEPALIVE
+void EmscriptenKeepalivePop(void)
+{
+    emscripten_runtime_keepalive_pop();
 }
 
 EMSCRIPTEN_KEEPALIVE
@@ -387,7 +395,10 @@ static void OpenglInitialize(vlc_gl_t *gl, unsigned width, unsigned height)
             }
             else if (msg.customCmd == 'close')
             {
+                console.log("Cancelling main loop");
+                _EmscriptenKeepalivePop();
                 _emscripten_cancel_main_loop();
+                console.log("Main loop cancelled");
             }
             else if (msg.customCmd == 'mousemove')
             {
@@ -462,6 +473,7 @@ static void* OpenglWorkerRunloop(void *opaque)
     //msg_Dbg(gl, "bound renderer");
     vlc_sem_post(&startup->wait_sem);
 
+    emscripten_runtime_keepalive_push();
     emscripten_set_main_loop_arg(RunloopRender, gl, -1, false);
 
     return NULL;
