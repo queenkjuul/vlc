@@ -226,10 +226,14 @@ static void Close(vlc_gl_t *gl)
     auto sys = static_cast<emscripten_gl_sys_t*>( gl->sys );
 
     MAIN_THREAD_ASYNC_EM_ASM({
+        window.removeEventListener("mousemove", Module.mouseEventListener);
+        window.removeEventListener("mousedown", Module.mouseEventListener);
+        window.removeEventListener("mouseup", Module.mouseEventListener);
+
         let w = Module.vouts[$0];
         w.msgPort.postMessage({
             customCmd: 'close'
-        })
+        });
     }, sys->worker_id);
     vlc_join(sys->worker, NULL);
 
@@ -419,21 +423,28 @@ static void* OpenglWorkerRunloop(void *opaque)
     OpenglInitialize(gl, startup->width, startup->height);
 
     MAIN_THREAD_ASYNC_EM_ASM({
-        let w = Module.vouts[$0];
-        window.addEventListener("mousemove", function(ev){
-            w.msgPort.postMessage({
-                customCmd: 'mousemove',
-                offsetX: ev.offsetX,
-                offsetY: ev.offsetY,
-            });
-        });
+        Module.mouseEventListener = function(ev) {
+            let w = Module.vouts[$0];
+            switch(ev.type) {
+                case "mousemove":
+                    w.msgPort.postMessage({
+                        customCmd: 'mousemove',
+                        offsetX: ev.offsetX,
+                        offsetY: ev.offsetY,
+                    });
+                    break;
+                case "mousedown":
+                    w.msgPort.postMessage({ customCmd: 'mousedown' });
+                    break;
+                case "mouseup":
+                    w.msgPort.postMessage({ customCmd: 'mouseup' });
+                    break;
+            }
+        };
 
-        window.addEventListener("mousedown", function(ev){
-            w.msgPort.postMessage({ customCmd: 'mousedown' });
-        });
-        window.addEventListener("mouseup", function(ev){
-            w.msgPort.postMessage({ customCmd: 'mouseup' });
-        });
+        window.addEventListener("mousemove", Module.mouseEventListener);
+        window.addEventListener("mousedown", Module.mouseEventListener);
+        window.addEventListener("mouseup", Module.mouseEventListener);
     }, sys->worker_id);
 
     msg_Dbg(gl, "emscripten initialized");
