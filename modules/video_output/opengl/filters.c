@@ -400,12 +400,12 @@ vlc_gl_filters_UpdatePicture(struct vlc_gl_filters *filters,
 
     filters->pic.pts = picture->date;
 
-    struct vlc_ancillary *dovi = picture_GetAncillary(picture, VLC_ANCILLARY_ID_DOVI);
-    filters->pic.has_dovi = !!dovi;
-    if (dovi) {
-        memcpy(&filters->pic.dovi_rpu, vlc_ancillary_GetData(dovi),
-               sizeof(filters->pic.dovi_rpu));
-    }
+    //struct vlc_ancillary *dovi = picture_GetAncillary(picture, VLC_ANCILLARY_ID_DOVI);
+    //filters->pic.has_dovi = !!dovi;
+    //if (dovi) {
+    //    memcpy(&filters->pic.dovi_rpu, vlc_ancillary_GetData(dovi),
+    //           sizeof(filters->pic.dovi_rpu));
+    //}
 
     struct vlc_gl_filter_priv *first_filter =
         vlc_list_first_entry_or_null(&filters->list, struct vlc_gl_filter_priv,
