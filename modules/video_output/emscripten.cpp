@@ -200,6 +200,7 @@ EM_ASYNC_JS(void, getVoutMessagePort, (pthread_t worker_id), {
                 Module.voutMsgPort = msg['msgPort'];
                 console.dir(Module.voutMsgPort);
                 resolve();
+                self.postMessage({ customCmd: 'voutMessagePortUnbind' });
                 self.removeEventListener('message', listener);
             }
         };
@@ -333,7 +334,7 @@ static void OpenglInitialize(vlc_gl_t *gl, unsigned width, unsigned height)
         if (Module.vouts === undefined)
             Module.vouts = {};
 
-        w.addEventListener('message', function (e) {
+        let workerMessageEvent = function(e) {
             let msg = e['data'];
             if (msg.customCmd == 'getVoutMessagePort') {
                 console.log("getVoutMessagePort received for " + msg.worker_id + " from worker " + $0);
@@ -351,7 +352,12 @@ static void OpenglInitialize(vlc_gl_t *gl, unsigned width, unsigned height)
                     msgPort: msgChannel.port2,
                 }, [msgChannel.port2]);
             }
-        });
+            else if (msg.customCmd == 'voutMessagePortUnbind') {
+                w.removeEventListener('message', workerMessageEvent);
+            }
+        };
+
+        w.addEventListener('message', workerMessageEvent);
     }, pthread_self(), wnd->handle.canvas);
 
     getVoutMessagePort(pthread_self());
