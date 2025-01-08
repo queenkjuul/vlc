@@ -58,7 +58,14 @@ mergeInto(LibraryManager.library, {
                 sampleRate: rate
             });
             audioCtx.suspend();
+            if (Module.webaudioContext !== undefined) {
+                Module.webaudioContext.suspend();
+                Module.webaudioNode.disconnect(Module.webaudioContext.destination);
+                Module.webaudioContext.close();
 
+                Module.webaudioNode = undefined;
+                Module.webaudioContext = undefined;
+            }
             Module.webaudioContext = audioCtx;
 
             var msg = {};
@@ -121,6 +128,7 @@ mergeInto(LibraryManager.library, {
             await p;
 
             node.connect(audioCtx.destination);
+            Module.webaudioNode = node;
             audioCtx.resume();
         };
 
