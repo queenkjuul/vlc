@@ -211,31 +211,33 @@ static int Start(audio_output_t *aout, audio_sample_format_t *restrict fmt)
 {
     aout_sys_t *sys = (aout_sys_t *) aout->sys;
 
+    atomic_store(&sys->init, 0);
+
     FixChannelMapping(fmt);
     unsigned nbChannels = aout_FormatNbChannels(fmt);
 
     aout_SoftVolumeStart(aout);
     if (( nbChannels == 0 ) || !AOUT_FMT_LINEAR(fmt))
         return VLC_EGENERIC;
-    if (atomic_load(&sys->init) == false) {
-        sys->channels = nbChannels;
-        sys->sample_rate = fmt->i_rate;
 
-        int ret = emscripten_dispatch_to_thread(
-            emscripten_main_browser_thread_id(),
-            EM_FUNC_SIG_VI,
-            Init, 0, aout );
-        if (ret != 0) {
-            msg_Err(aout, "error: could not dispatch Init to main thread!");
-            return VLC_EGENERIC;
-        }
+    sys->channels = nbChannels;
+    sys->sample_rate = fmt->i_rate;
 
-        // Wait until initialization ended.
-        vlc_atomic_wait(&sys->init, 0);
+    int ret = emscripten_dispatch_to_thread(
+        emscripten_main_browser_thread_id(),
+        EM_FUNC_SIG_VI,
+        Init, 0, aout );
 
-        if ((sys->channels == 0) && (sys->sample_rate == 0))
-            return VLC_EGENERIC;
+    if (ret != 0) {
+        msg_Err(aout, "error: could not dispatch Init to main thread!");
+        return VLC_EGENERIC;
     }
+
+    // Wait until initialization ended.
+    vlc_atomic_wait(&sys->init, 0);
+
+    if ((sys->channels == 0) && (sys->sample_rate == 0))
+        return VLC_EGENERIC;
 
     fmt->i_format = VLC_CODEC_FL32;
     fmt->i_rate = sys->sample_rate;
