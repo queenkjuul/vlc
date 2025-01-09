@@ -36,6 +36,11 @@ endif
 EXTRA_LTLIBRARIES += libgnutls_plugin.la
 misc_LTLIBRARIES += $(LTLIBgnutls)
 
+if HAVE_EMSCRIPTEN
+libemscripten_inhibit_plugin_la_SOURCES = misc/inhibit/emscripten.c
+misc_LTLIBRARIES += libemscripten_inhibit_plugin.la
+endif
+
 if HAVE_DARWIN
 libsecuretransport_plugin_la_SOURCES = misc/securetransport.c
 libsecuretransport_plugin_la_CFLAGS = $(AM_CFLAGS) $(SECURETRANSPORT_CFLAGS)
