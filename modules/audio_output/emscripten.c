@@ -19,53 +19,45 @@
  *****************************************************************************/
 
 #ifdef HAVE_CONFIG_H
-# include "config.h"
+#include "config.h"
 #endif
 
-#include <vlc_common.h>
-#include <vlc_plugin.h>
-#include <vlc_aout.h>
-#include <vlc_atomic.h>
-
 #include <assert.h>
+#include <stdatomic.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdatomic.h>
+
+#include <vlc_common.h>
+
+#include <vlc_aout.h>
+#include <vlc_atomic.h>
+#include <vlc_plugin.h>
 
 #include <emscripten.h>
-#include <emscripten/html5.h>
+#include <emscripten/proxying.h>
 #include <emscripten/threading.h>
 
 #include "webaudio/webaudio.h"
 
 typedef struct aout_sys_t
 {
-    /*
-      Shared structure, that allows the AudioWorkletProcessor (AWP)
-      to interact with vlc's decoder thread.
-
-      is_paused : control the AWP process loop,
-      head : write index in the ring buffer,
-      tail : read index in the ring buffer,
-      can_write : control if you can write to the ring buffer or not,
-      storage[STORAGE_SIZE] : ring buffer,
-    */
+    /* Shared Audio Buffer. */
     webaudio_buffer_t *sab;
-    /*
-      channels, and sample rate are needed here to allow dispatching
-      them in an opaque pointer to the main thread.
-    */
-    unsigned channels;
-    unsigned sample_rate;
-    /*
-      We don't want to create an AudioContext each time we play the media,
-      and we can't init the context in Open() because we don't have
-      access to audio_sample_format_t.
-    */
-    atomic_uint init;
 
-    // required by volume.h
+    /* Audio device information shared with the main runtime. */
+    unsigned channel_count;
+    unsigned sample_rate;
+
+    /* Task queue for the main runtime. */
+    em_proxying_queue *proxying_queue;
+    /* Signal main runtime task failure. */
+    bool error;
+
+    /* Web audio context initialization notifier. */
+    atomic_uint context_ready;
+
+    /* Required by volume.h. */
     bool soft_mute;
     float soft_gain;
 } aout_sys_t;
@@ -77,7 +69,8 @@ typedef struct aout_sys_t
  */
 static void Flush(audio_output_t *aout)
 {
-    aout_sys_t *sys = (aout_sys_t *) aout->sys;
+    aout_sys_t *sys = aout->sys;
+
     emscripten_futex_wait(&sys->sab->can_write, 0, ATOMIC_WAIT_TIMEOUT);
     memset(sys->sab->storage, 0, sizeof(sys->sab->storage));
     atomic_store(&sys->sab->head, 0);
@@ -86,18 +79,20 @@ static void Flush(audio_output_t *aout)
 
 static void Play(audio_output_t *aout, block_t *block, vlc_tick_t date)
 {
-    VLC_UNUSED(date);
-    aout_sys_t *sys = (aout_sys_t *) aout->sys;
-    int8_t *data = (int8_t *) block->p_buffer;
-    size_t data_size = block->i_buffer;
-    uint32_t head = atomic_load(&sys->sab->head);
-    uint32_t tail = atomic_load(&sys->sab->tail);
-    uint32_t new_head = (head + data_size) % STORAGE_SIZE;
+    (void)date;
+    aout_sys_t *sys = aout->sys;
 
-    if (new_head > tail) {
-        /* 
+    int8_t *data = (int8_t *)block->p_buffer;
+    const size_t data_size = block->i_buffer;
+    const uint32_t head = atomic_load(&sys->sab->head);
+    const uint32_t tail = atomic_load(&sys->sab->tail);
+    const uint32_t new_head = (head + data_size) % STORAGE_SIZE;
+
+    if (new_head > tail)
+    {
+        /*
            The worklet processor keeps rendering  until tail matches head
-           it will be notified by an Atomics.notify() from the process() 
+           it will be notified by an Atomics.notify() from the process()
            callback.
         */
         emscripten_futex_wait(&sys->sab->can_write, 0, ATOMIC_WAIT_TIMEOUT);
@@ -108,8 +103,8 @@ static void Play(audio_output_t *aout, block_t *block, vlc_tick_t date)
 
 static void Pause(audio_output_t *aout, bool paused, vlc_tick_t date)
 {
-    VLC_UNUSED(date);
-    aout_sys_t * sys = (aout_sys_t *) aout->sys;
+    (void)date;
+    aout_sys_t *sys = aout->sys;
 
     if (paused == false)
         atomic_store(&sys->sab->is_paused, 0);
@@ -118,13 +113,10 @@ static void Pause(audio_output_t *aout, bool paused, vlc_tick_t date)
     Flush(aout);
 }
 
-static void Close(vlc_object_t *obj)
+static void StopTask(void *opaque)
 {
-    audio_output_t *aout = (audio_output_t *) obj;
-    aout_sys_t *sys = (aout_sys_t *) aout->sys;
-
-    free(sys->sab);
-    free(sys);
+    (void)opaque;
+    webaudio_stop();
 }
 
 /*
@@ -134,8 +126,13 @@ static void Close(vlc_object_t *obj)
 static void Stop(audio_output_t *aout)
 {
     Flush(aout);
-    aout_sys_t * sys = (aout_sys_t *) aout->sys;
+    aout_sys_t *sys = (aout_sys_t *)aout->sys;
     atomic_store(&sys->sab->is_paused, 1);
+
+    emscripten_proxy_sync(sys->proxying_queue,
+                          emscripten_main_runtime_thread_id(),
+                          StopTask,
+                          NULL);
 }
 
 /** Fix channel mapping according to Webaudio API constraints.
@@ -153,8 +150,8 @@ static void FixChannelMapping(audio_sample_format_t *restrict fmt)
         case 2:
             fmt->i_physical_channels = AOUT_CHANS_2_0;
             break;
-        case 3: 
-            // WebAudio does not support 2.1
+        case 3:
+            /* WebAudio does not support 2.1 */
             fmt->i_physical_channels = AOUT_CHANS_2_0;
             fmt->i_channels = 2;
             break;
@@ -162,86 +159,59 @@ static void FixChannelMapping(audio_sample_format_t *restrict fmt)
             fmt->i_physical_channels = AOUT_CHANS_4_0;
             break;
         case 5:
-            // WebAudio does not support 4.1
+            /* WebAudio does not support 4.1 */
             fmt->i_physical_channels = AOUT_CHANS_4_0;
             fmt->i_channels = 4;
             break;
         default:
-            // WebAudio only supports up to 5.1 2F2R.
+            /* WebAudio only supports up to 5.1 3F2R. */
             fmt->i_physical_channels = AOUT_CHANS_5_1;
             fmt->i_channels = 6;
             break;
     }
 }
 
-/*
-  Init Function will set the AudioContext, and try to get the sample rate and
-  number of channels. 
-
-  If they are not supported, we fallback to the supported ones.
-
-  It can only run in the main thread.
-*/
-static void Init(void *userData)
+static void StartTask(void *opaque)
 {
-    audio_output_t *aout = (audio_output_t *) userData;
-    aout_sys_t *sys = (aout_sys_t *) aout->sys;
+    aout_sys_t *sys = opaque;
 
-    webaudio_init(sys->sample_rate, sys->channels, sys->sab, WEBAUDIO_LATENCY_PLAYBACK);
-    unsigned rate = webaudio_getSampleRate();
-    unsigned channels = webaudio_getChannels();
-
-    if ((rate == 0) || (channels == 0)) {
-        sys->sample_rate = 0;
-        sys->channels = 0;
-        msg_Err(aout, "error: broken webaudio device, could not get a valid sample rate or channelNumber");
-        return;
-    }
-
-    if (rate != sys->sample_rate)
-        sys->sample_rate = rate;
-    if (channels != sys->channels)
-        sys->channels = channels;
-
-    atomic_store(&sys->init, 1);
-    vlc_atomic_notify_all(&sys->init);
+    sys->error = webaudio_start(sys->channel_count, sys->sab) == -1;
+    if (!sys->error)
+        sys->channel_count = webaudio_getChannels();
 }
 
 static int Start(audio_output_t *aout, audio_sample_format_t *restrict fmt)
 {
-    aout_sys_t *sys = (aout_sys_t *) aout->sys;
+    aout_sys_t *sys = aout->sys;
 
-    atomic_store(&sys->init, 0);
+    vlc_atomic_wait(&sys->context_ready, 0);
 
     FixChannelMapping(fmt);
-    unsigned nbChannels = aout_FormatNbChannels(fmt);
+    const unsigned nbChannels = aout_FormatNbChannels(fmt);
 
     aout_SoftVolumeStart(aout);
-    if (( nbChannels == 0 ) || !AOUT_FMT_LINEAR(fmt))
-        return VLC_EGENERIC;
+    if (!AOUT_FMT_LINEAR(fmt))
+        return -ENOTSUP;
 
-    sys->channels = nbChannels;
-    sys->sample_rate = fmt->i_rate;
+    sys->channel_count = nbChannels;
 
-    int ret = emscripten_dispatch_to_thread(
-        emscripten_main_browser_thread_id(),
-        EM_FUNC_SIG_VI,
-        Init, 0, aout );
+    const int result =
+        emscripten_proxy_sync(sys->proxying_queue,
+                              emscripten_main_runtime_thread_id(),
+                              StartTask,
+                              sys);
 
-    if (ret != 0) {
-        msg_Err(aout, "error: could not dispatch Init to main thread!");
-        return VLC_EGENERIC;
+    if (!result)
+        return -EIO;
+    if (sys->error)
+    {
+        sys->error = false;
+        return -ENODEV;
     }
-
-    // Wait until initialization ended.
-    vlc_atomic_wait(&sys->init, 0);
-
-    if ((sys->channels == 0) && (sys->sample_rate == 0))
-        return VLC_EGENERIC;
 
     fmt->i_format = VLC_CODEC_FL32;
     fmt->i_rate = sys->sample_rate;
-    fmt->i_channels = sys->channels;
+    fmt->i_channels = sys->channel_count;
     // Ensure that physical channel mapping is correct.
     FixChannelMapping(fmt);
 
@@ -250,46 +220,103 @@ static int Start(audio_output_t *aout, audio_sample_format_t *restrict fmt)
     return VLC_SUCCESS;
 }
 
-/*
-  Allocate the Shared Array Buffer, and init aout_sys_t.
-*/
+static void OpenAsyncTask(void *opaque)
+{
+    aout_sys_t *sys = opaque;
+
+    sys->error = webaudio_init(WEBAUDIO_LATENCY_PLAYBACK) == -1;
+    if (!sys->error)
+        sys->sample_rate = webaudio_getSampleRate();
+
+    atomic_store(&sys->context_ready, 1);
+    vlc_atomic_notify_all(&sys->context_ready);
+}
+
 static int Open(vlc_object_t *obj)
 {
-    audio_output_t * aout = (audio_output_t *) obj;
+    audio_output_t *aout = (audio_output_t *)obj;
 
-    aout_sys_t *sys = (aout_sys_t *) malloc(sizeof(aout_sys_t));
+    aout_sys_t *sys = malloc(sizeof(*sys));
     if (unlikely(sys == NULL))
         return VLC_ENOMEM;
 
-    aout->sys = sys;
+    sys->proxying_queue = em_proxying_queue_create();
+    if (unlikely(sys->proxying_queue == NULL))
+        goto proxy_err;
+
+    sys->sab = malloc(sizeof(*sys->sab));
+    if (unlikely(sys->sab == NULL))
+        goto sab_err;
+
+    atomic_init(&sys->sab->is_paused, 0);
+    atomic_init(&sys->sab->head, 0);
+    atomic_init(&sys->sab->tail, 0);
+    atomic_init(&sys->sab->can_write, 0);
+    memset(sys->sab, 0, sizeof(webaudio_buffer_t));
+
+    sys->channel_count = 0;
+    sys->sample_rate = 0;
+    sys->error = false;
+    atomic_init(&sys->context_ready, 0);
+
     aout->start = Start;
     aout->stop = Stop;
     aout->play = Play;
     aout->pause = Pause;
     aout->flush = Flush;
     aout->time_get = NULL;
-    sys->channels = 0;
-    sys->sample_rate = 0;
-    atomic_init(&sys->init, 0);
-    sys->sab = (webaudio_buffer_t *) malloc(sizeof(webaudio_buffer_t));
-    atomic_init(&sys->sab->is_paused, 0);
-    atomic_init(&sys->sab->head, 0);
-    atomic_init(&sys->sab->tail, 0);
-    atomic_init(&sys->sab->can_write, 0);
-    if (unlikely (!sys->sab))
-        return VLC_ENOMEM;    
 
-    memset(sys->sab, 0, sizeof(webaudio_buffer_t));
-    /*
-      we can't use the volume field in the shared array buffer, because
-      we need to have a lock, and we can't have atomic.wait in the
-      worklet, or atomics.store on a float value.
-    */
+    /* This is async because there is chances that the Open method of the audio
+     * output gets called on the main runtime.
+     * A sync call here is not possible until this constraint is removed.
+     */
+    const int status =
+        emscripten_proxy_async(sys->proxying_queue,
+                               emscripten_main_runtime_thread_id(),
+                               OpenAsyncTask,
+                               sys);
+    if (!status)
+        goto main_thread_err;
+
+    aout->sys = sys;
+
+    /* We can't use the volume field in the shared array buffer, because
+     * we need to have a lock, and we can't have atomic.wait in the
+     * worklet, or atomics.store on a float value.
+     */
     aout_SoftVolumeInit(aout);
 
     return VLC_SUCCESS;
+main_thread_err:
+    free(sys->sab);
+sab_err:
+    em_proxying_queue_destroy(sys->proxying_queue);
+proxy_err:
+    free(sys);
+    return (-ENOMEM);
 }
 
+static void CloseTask(void *opaque)
+{
+    (void)opaque;
+    webaudio_destroy();
+}
+
+static void Close(vlc_object_t *obj)
+{
+    audio_output_t *aout = (audio_output_t *)obj;
+    aout_sys_t *sys = aout->sys;
+
+    emscripten_proxy_sync(sys->proxying_queue,
+                          emscripten_main_runtime_thread_id(),
+                          CloseTask,
+                          NULL);
+    em_proxying_queue_destroy(sys->proxying_queue);
+    free(sys->sab);
+    free(sys);
+}
+
+// clang-format off
 vlc_module_begin ()
     set_description( N_("Emscripten Worklet audio output") )
     set_shortname( "emworklet" )
