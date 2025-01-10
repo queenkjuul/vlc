@@ -27,111 +27,129 @@ mergeInto(LibraryManager.library, {
     webaudio_getChannels: function() {
         if (Module.webaudioContext === undefined)
             return 0;
-        return Module.webaudioContext.destination.channelCount;
+        return Module.webaudioChannels;
     },
+    webaudio_destroy: function() {
+        Module.webaudioContext.close();
+        Module.webaudioContext = undefined;
+    },
+    webaudio_init_async: async function(latency) {
+        switch (latency) {
+            case 0:
+                latency = 'playback';
+                break;
+            case 1:
+                latency = 'interactive';
+                break;
+            case 2: 
+                latency = 'balanced';
+                break;
+            default:
+                console.error(`Invalid latency setting: ${latency}`);
+                return -1;
+        }
+
+        var audioCtx = new AudioContext({
+            latencyHint: latency,
+        });
+
+        audioCtx.suspend();
+
+        try {
+            await audioCtx.audioWorklet.addModule('./vlc/modules/audio_output/webaudio/audio-worklet-processor.js');
+        } catch (error) {
+            console.error(`Couldn't add worklet module: ${error}`);
+	        return -1;
+        }
+        Module.webaudioContext = audioCtx;
+        return 0;
+    },
+    webaudio_init__deps: ['webaudio_init_async'],
     webaudio_init__async: true,
-    webaudio_init: function (rate, channels, webaudio_buffer, latency) {
-        let init = async function() {
-            /*
-              [mainThread]
-              - create the audio context
-              - set rate and channel numbers
-              - setup the AudioWorkletNode and workler
-            */
-            const STORAGE_SIZE = 1024 * 1024;
-            const STRUCT_SIZE = 20;
-            if (latency === 0) {
-                latency = "playback";
-            }
-            else if (latency === 1) {
-                latency = "interactive";
-            }
-            else if (latency === 2) {
-                latency = "balanced";
-            }
-            else {
-                console.error("error: bad latency setting!");
-                return ;
-            }
-            var audioCtx = new AudioContext({
-                latencyHint: latency,
-                sampleRate: rate
-            });
-            audioCtx.suspend();
-            if (Module.webaudioContext !== undefined) {
-                Module.webaudioContext.suspend();
-                Module.webaudioNode.disconnect(Module.webaudioContext.destination);
-                Module.webaudioContext.close();
-
-                Module.webaudioNode = undefined;
-                Module.webaudioContext = undefined;
-            }
-            Module.webaudioContext = audioCtx;
-
-            var msg = {};
-            msg["type"] = "recv-audio-queue";
-
-            msg["is_paused"] = new Int32Array(wasmMemory.buffer, webaudio_buffer, 1);
-            msg["is_paused"][0] = 0;
-            // sizeof(type) * length
-            webaudio_buffer += 4
-
-            msg["head"] = new Int32Array(wasmMemory.buffer, webaudio_buffer, 1);
-            webaudio_buffer += 4
-
-            msg["tail"] = new Int32Array(wasmMemory.buffer, webaudio_buffer, 1);
-            webaudio_buffer += 4
-
-            msg["can_write"] = new Int32Array(wasmMemory.buffer, webaudio_buffer, 1)
-            msg["can_write"][0] = 1;
-            webaudio_buffer += 4
-
-            msg["storage"] = new Float32Array(wasmMemory.buffer, webaudio_buffer, STORAGE_SIZE / 4);
-
-            if (audioCtx.sampleRate != rate) {
-                console.error("desired rate unsupported by the browser, actual sample rate is: " + audioCtx.sampleRate);
-            }
-
-            if (audioCtx.destination.maxChannelCount < channels) {
-                console.error("Max number of channels of the browser is ", audioCtx.destination.maxChannelCount)
-                channels = audioCtx.destination.maxChannelCount;
-            }
-
-            try {
-                await audioCtx.audioWorklet.addModule('./vlc/modules/audio_output/webaudio/audio-worklet-processor.js');
-            } catch (error){
-                console.error('could not add worklet module error: ' + error);
-                return ;
-            }
-
-            console.log("OUTPUT channels " + channels);
-            const node = new AudioWorkletNode(audioCtx, 'worklet-processor', {
-                numberOfInputs: 0,
-                numberOfOutputs: 1,
-                outputChannelCount: [channels]
-            });
-
-            var resolvePromise, rejectPromise;
-            var p = new Promise(function(resolve, reject) {
-                node["port"].onmessage = function(e) {
-                    console.log("successfully constructed AudioWorkletProcessor");
-                    if (e.data === "ready") {
-                        resolve();
-                    }
-                    else if (e.data === "error") {
-                        reject();
-                        return ;
-                    }
-                }
-            });
-            node["port"].postMessage(msg);
-            await p;
-
-            node.connect(audioCtx.destination);
-            Module.webaudioNode = node;
-            audioCtx.resume();
-        };
-
-        return Asyncify.handleAsync(init);
+    webaudio_init: function(latency) {
+        return Asyncify.handleAsync(async () => { return await _webaudio_init_async(latency); });
     },
+
+    webaudio_start_async: async function(channels, webaudio_buffer) {
+        if (Module.webaudioContext === undefined) {
+            console.error("No audio context");
+            return -1;
+        }
+
+        const is_paused = new Int32Array(wasmMemory.buffer, webaudio_buffer, 1);
+        is_paused[0] = 0;
+        webaudio_buffer += 4;
+        const head = new Int32Array(wasmMemory.buffer, webaudio_buffer, 1);
+        webaudio_buffer += 4;
+        const tail = new Int32Array(wasmMemory.buffer, webaudio_buffer, 1);
+        webaudio_buffer += 4;
+        const can_write = new Int32Array(wasmMemory.buffer, webaudio_buffer, 1);
+        can_write[0] = 1;
+        webaudio_buffer += 4;
+        const STORAGE_SIZE = 1024 * 1024;
+        const storage = new Float32Array(wasmMemory.buffer, webaudio_buffer, STORAGE_SIZE / 4);
+
+        const msg = {
+            type: 'recv-audio-queue',
+            is_paused,
+            head,
+            tail,
+            can_write,
+            storage,
+        };
+        
+        let audioCtx = Module.webaudioContext;
+        if (audioCtx.destination.maxChannelCount < channels) {
+            console.warn("Max number of channels of the browser is ", audioCtx.destination.maxChannelCount);
+            channels = audioCtx.destination.maxChannelCount;
+        }
+
+        console.log("OUTPUT channels " + channels);
+        const node = new AudioWorkletNode(audioCtx, 'worklet-processor', {
+            numberOfInputs: 0,
+            numberOfOutputs: 1,
+            outputChannelCount: [channels],
+        });
+
+        const response = new Promise(function(resolve, reject) {
+            node.port.onmessage = function(e) {
+                if (e.data === 'ready') {
+                    console.log('successfully constructed AudioWorkletProcessor');
+                    resolve();
+                }
+                else if (e.data === 'error') {
+                    reject();
+                    return;
+                }
+            }
+        });
+        node.port.postMessage(msg);
+        await response;
+        
+        node.connect(audioCtx.destination);
+        console.log('connected');
+        Module.webaudioNode = node; 
+        Module.webaudioChannels = channels;
+        Module.webaudioContext.resume();
+    },
+    webaudio_start__deps: ['webaudio_start_async'],
+    webaudio_start__async: true,
+    webaudio_start: function(channels, webaudio_buffer) {
+        return Asyncify.handleAsync(async () => { return await _webaudio_start_async(channels, webaudio_buffer); });
+    },
+
+    webaudio_stop: function() {
+        if (Module.webaudioContext === undefined) {
+            console.error("No audio context");
+            return -1;
+        }
+
+        Module.webaudioNode.port.postMessage({
+            type: 'stop',
+        });
+
+        Module.webaudioContext.suspend();
+        Module.webaudioNode.disconnect(Module.webaudioContext.destination);
+        Module.webaudioNode = undefined;
+    }
 })

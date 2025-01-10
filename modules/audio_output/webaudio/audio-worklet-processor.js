@@ -28,7 +28,10 @@ class Processor extends AudioWorkletProcessor {
                 this.tail = e.data.tail;
                 this.can_write = e.data.can_write;
                 this.storage = e.data.storage;
+                this.eof = false;
                 this.port.postMessage( 'ready' );
+            } else if (e.data.type === 'stop') {
+                this.eof = true;
             } else {
                 this.port.postMessage( 'error' );
                 throw new Error('unexpected: wrong init from AudioWorkletNode');
@@ -37,6 +40,11 @@ class Processor extends AudioWorkletProcessor {
     }
     
     process(inputs, outputs, parameters) {
+        if (this.eof === true)
+        {
+            console.log("Reached EOF");
+            return false;
+        }
         const output = outputs[0];
         const nbChannels = output.length;
         const nbSamples = output[0].length;

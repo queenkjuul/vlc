@@ -30,10 +30,15 @@
 #define ATOMIC_WAIT_TIMEOUT 5000
 
 typedef struct sound_buffer_t {
+    // Control the AWP process loop
     _Atomic uint32_t is_paused;
+    // Write index in the ring buffer
     _Atomic uint32_t head;
+    // Read index in the ring buffer
     _Atomic uint32_t tail;
+    // Write permission to the ring buffer
     _Atomic uint32_t can_write;
+    // Ring buffer
     int8_t storage[STORAGE_SIZE];
 } webaudio_buffer_t;
 
@@ -56,7 +61,10 @@ typedef enum latency_hint {
 
 extern int webaudio_getSampleRate(void);
 extern int webaudio_getChannels(void);
-extern void webaudio_init(int rate, int channels, webaudio_buffer_t *buffer, latency_hint latency);
+extern int webaudio_init(latency_hint latency);
+extern int webaudio_start(int channels, webaudio_buffer_t *buffer);
+extern int webaudio_stop(void);
+extern void webaudio_destroy(void);
 int webaudio_worklet_push(void *user_data, int8_t *buffer, size_t data_size);
 
 #endif /*WEBAUDIO_H*/
