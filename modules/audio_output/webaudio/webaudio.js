@@ -133,6 +133,10 @@ mergeInto(LibraryManager.library, {
             return -1;
         }
 
+        Module.webaudioNode.port.postMessage({
+            type: 'stop',
+        });
+
         Module.webaudioContext.suspend();
         Module.webaudioNode.disconnect(Module.webaudioContext.destination);
         Module.webaudioNode = undefined;
