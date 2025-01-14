@@ -338,7 +338,7 @@ static void EmFileClose (vlc_object_t * p_this) {
     vlc_cond_signal(&sys->data.wait_buffer);
     vlc_mutex_unlock(&sys->data.lock);
 
-    vlc_join(sys->worker, NULL);
+    //vlc_join(sys->worker, NULL);
 }
 
 static int EmFileOpen( vlc_object_t *p_this ) {
