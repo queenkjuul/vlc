@@ -134,7 +134,7 @@ static int Open(vlc_object_t *obj)
         return -ENOMEM;
 
     if (asprintf(
-            &sys->url, "http://%s", access->psz_url + strlen("fetch://")) == -1)
+            &sys->url, "https://%s", access->psz_url + strlen("fetch://")) == -1)
     {
         free(sys);
         return -ENOMEM;
