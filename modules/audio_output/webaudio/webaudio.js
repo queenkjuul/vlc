@@ -34,7 +34,7 @@ mergeInto(LibraryManager.library, {
         Module.webaudioContext = undefined;
     },
     webaudio_init__async: 'auto',
-    webaudio_init: async function(rate, latency) {
+    webaudio_init: async function(latency) {
         switch (latency) {
             case 0:
                 latency = 'playback';
@@ -52,7 +52,6 @@ mergeInto(LibraryManager.library, {
 
         var audioCtx = new AudioContext({
             latencyHint: latency,
-            sampleRate: rate,
         });
 
         audioCtx.suspend();

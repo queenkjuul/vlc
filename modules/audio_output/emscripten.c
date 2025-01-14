@@ -175,49 +175,38 @@ static void StartTask(void *opaque)
 {
     aout_sys_t *sys = opaque;
 
-    sys->error = webaudio_init(sys->sample_rate, WEBAUDIO_LATENCY_PLAYBACK) == -1;
-    if (!sys->error)
-    {
-        sys->sample_rate = webaudio_getSampleRate();
-        sys->error = webaudio_start(sys->channel_count, sys->sab) == -1;
-    }
+    sys->error = webaudio_start(sys->channel_count, sys->sab) == -1;
     if (!sys->error)
         sys->channel_count = webaudio_getChannels();
-
-    atomic_store(&sys->context_ready, 1);
-    vlc_atomic_notify_all(&sys->context_ready);
 }
 
 static int Start(audio_output_t *aout, audio_sample_format_t *restrict fmt)
 {
     aout_sys_t *sys = aout->sys;
 
+    vlc_atomic_wait(&sys->context_ready, 0);
+
     FixChannelMapping(fmt);
     const unsigned nbChannels = aout_FormatNbChannels(fmt);
 
     aout_SoftVolumeStart(aout);
-    if (( nbChannels == 0 ) || !AOUT_FMT_LINEAR(fmt))
-        return VLC_EGENERIC;
-    if (atomic_load(&sys->context_ready) == false)
+    if (!AOUT_FMT_LINEAR(fmt))
+        return -ENOTSUP;
+
+    sys->channel_count = nbChannels;
+
+    const int result =
+        emscripten_proxy_sync(sys->proxying_queue,
+                              emscripten_main_runtime_thread_id(),
+                              StartTask,
+                              sys);
+
+    if (!result)
+        return -EIO;
+    if (sys->error)
     {
-        sys->channel_count = nbChannels;
-        sys->sample_rate = fmt->i_rate;
-
-        const int ret = emscripten_proxy_sync(
-            sys->proxying_queue,
-            emscripten_main_runtime_thread_id(),
-            StartTask, sys);
-        if (!ret)
-        {
-            msg_Err(aout, "error: could not proxy Init to main runtime!");
-            return VLC_EGENERIC;
-        }
-
-        // Wait until initialization ended.
-        vlc_atomic_wait(&sys->context_ready, 0);
-
-        if (sys->error || ((sys->channel_count == 0) && (sys->sample_rate == 0)))
-            return VLC_EGENERIC;
+        sys->error = false;
+        return -ENODEV;
     }
 
     fmt->i_format = VLC_CODEC_FL32;
@@ -229,6 +218,18 @@ static int Start(audio_output_t *aout, audio_sample_format_t *restrict fmt)
     atomic_store(&sys->sab->is_paused, 0);
 
     return VLC_SUCCESS;
+}
+
+static void OpenAsyncTask(void *opaque)
+{
+    aout_sys_t *sys = opaque;
+
+    sys->error = webaudio_init(WEBAUDIO_LATENCY_PLAYBACK) == -1;
+    if (!sys->error)
+        sys->sample_rate = webaudio_getSampleRate();
+
+    atomic_store(&sys->context_ready, 1);
+    vlc_atomic_notify_all(&sys->context_ready);
 }
 
 static int Open(vlc_object_t *obj)
@@ -264,6 +265,18 @@ static int Open(vlc_object_t *obj)
     aout->pause = Pause;
     aout->flush = Flush;
 
+    /* This is async because there is chances that the Open method of the audio
+     * output gets called on the main runtime.
+     * A sync call here is not possible until this constraint is removed.
+     */
+    const int status =
+        emscripten_proxy_async(sys->proxying_queue,
+                               emscripten_main_runtime_thread_id(),
+                               OpenAsyncTask,
+                               sys);
+    if (!status)
+        goto main_thread_err;
+
     aout->sys = sys;
 
     /* We can't use the volume field in the shared array buffer, because
@@ -273,6 +286,8 @@ static int Open(vlc_object_t *obj)
     aout_SoftVolumeInit(aout);
 
     return VLC_SUCCESS;
+main_thread_err:
+    free(sys->sab);
 sab_err:
     em_proxying_queue_destroy(sys->proxying_queue);
 proxy_err:
