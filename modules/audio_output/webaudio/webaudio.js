@@ -29,102 +29,108 @@ mergeInto(LibraryManager.library, {
             return 0;
         return Module.webaudioChannels;
     },
-    webaudio_init__async: true,
-    webaudio_init: function (rate, channels, webaudio_buffer, latency) {
-        let init = async function() {
-            /*
-              [mainThread]
-              - create the audio context
-              - set rate and channel numbers
-              - setup the AudioWorkletNode and workler
-            */
-            switch (latency) {
-                case 0:
-                    latency = 'playback';
-                    break;
-                case 1:
-                    latency = 'interactive';
-                    break;
-                case 2: 
-                    latency = 'balanced';
-                    break;
-                default:
-                    console.error("error: bad latency setting!");
-                    return;
-            }
-
-            var audioCtx = new AudioContext({
-                latencyHint: latency,
-                sampleRate: rate
-            });
-            audioCtx.suspend();
-
-            Module.webaudioContext = audioCtx;
-
-            const is_paused = new Int32Array(wasmMemory.buffer, webaudio_buffer, 1);
-            is_paused[0] = 0;
-            webaudio_buffer += 4;
-            const head = new Int32Array(wasmMemory.buffer, webaudio_buffer, 1);
-            webaudio_buffer += 4;
-            const tail = new Int32Array(wasmMemory.buffer, webaudio_buffer, 1);
-            webaudio_buffer += 4;
-            const can_write = new Int32Array(wasmMemory.buffer, webaudio_buffer, 1);
-            can_write[0] = 1;
-            webaudio_buffer += 4;
-            const STORAGE_SIZE = 1024 * 1024;
-            const storage = new Float32Array(wasmMemory.buffer, webaudio_buffer, STORAGE_SIZE / 4);
-
-            const msg = {
-                type: 'recv-audio-queue',
-                is_paused,
-                head,
-                tail,
-                can_write,
-                storage,
-            };
-
-            if (audioCtx.sampleRate != rate) {
-                console.error("desired rate unsupported by the browser, actual sample rate is: " + audioCtx.sampleRate);
-            }
-
-            if (audioCtx.destination.maxChannelCount < channels) {
-                console.error("Max number of channels of the browser is ", audioCtx.destination.maxChannelCount)
-                channels = audioCtx.destination.maxChannelCount;
-            }
-            Module.webaudioChannels = channels;
-
-            try {
-                await audioCtx.audioWorklet.addModule('./vlc/modules/audio_output/webaudio/audio-worklet-processor.js');
-            } catch (error){
-                console.error('could not add worklet module error: ' + error);
+    webaudio_init__async: 'auto',
+    webaudio_init: async function(rate, latency) {
+        switch (latency) {
+            case 0:
+                latency = 'playback';
+                break;
+            case 1:
+                latency = 'interactive';
+                break;
+            case 2: 
+                latency = 'balanced';
+                break;
+            default:
+                console.error("error: bad latency setting!");
                 return;
-            }
+        }
 
-            const node = new AudioWorkletNode(audioCtx, 'worklet-processor', {
-                numberOfInputs: 0,
-                numberOfOutputs: 1,
-                outputChannelCount: [channels],
-            });
+        var audioCtx = new AudioContext({
+            latencyHint: latency,
+            sampleRate: rate,
+        });
 
-            const response = new Promise(function(resolve, reject) {
-                node.port.onmessage = function(e) {
-                    console.log("successfully constructed AudioWorkletProcessor");
-                    if (e.data === "ready") {
-                        resolve();
-                    }
-                    else if (e.data === "error") {
-                        reject();
-                        return;
-                    }
-                }
-            });
-            node.port.postMessage(msg);
-            await response;
+        audioCtx.suspend();
 
-            node.connect(audioCtx.destination);
-            audioCtx.resume();
-        };
-
-        return Asyncify.handleAsync(init);
+        try {
+            await audioCtx.audioWorklet.addModule('./vlc/modules/audio_output/webaudio/audio-worklet-processor.js');
+        } catch (error) {
+            console.error('could not add worklet module error: ' + error);
+            return;
+        }
+        Module.webaudioContext = audioCtx;
     },
+    webaudio_start__async: 'auto',
+    webaudio_start: async function(channels, webaudio_buffer) {
+        if (Module.webaudioContext === undefined) {
+            console.error("No audio context");
+            return;
+        }
+
+        const is_paused = new Int32Array(wasmMemory.buffer, webaudio_buffer, 1);
+        is_paused[0] = 0;
+        webaudio_buffer += 4;
+        const head = new Int32Array(wasmMemory.buffer, webaudio_buffer, 1);
+        webaudio_buffer += 4;
+        const tail = new Int32Array(wasmMemory.buffer, webaudio_buffer, 1);
+        webaudio_buffer += 4;
+        const can_write = new Int32Array(wasmMemory.buffer, webaudio_buffer, 1);
+        can_write[0] = 1;
+        webaudio_buffer += 4;
+        const STORAGE_SIZE = 1024 * 1024;
+        const storage = new Float32Array(wasmMemory.buffer, webaudio_buffer, STORAGE_SIZE / 4);
+
+        const msg = {
+            type: 'recv-audio-queue',
+            is_paused,
+            head,
+            tail,
+            can_write,
+            storage,
+        };
+        
+        let audioCtx = Module.webaudioContext;
+        if (audioCtx.destination.maxChannelCount < channels) {
+            console.warn("Max number of channels of the browser is ", audioCtx.destination.maxChannelCount);
+            channels = audioCtx.destination.maxChannelCount;
+        }
+
+        const node = new AudioWorkletNode(audioCtx, 'worklet-processor', {
+            numberOfInputs: 0,
+            numberOfOutputs: 1,
+            outputChannelCount: [channels],
+        });
+
+        const response = new Promise(function(resolve, reject) {
+            node.port.onmessage = function(e) {
+                if (e.data === 'ready') {
+                    console.log('successfully constructed AudioWorkletProcessor');
+                    resolve();
+                }
+                else if (e.data === 'error') {
+                    reject();
+                    return;
+                }
+            }
+        });
+        node.port.postMessage(msg);
+        await response;
+        
+        node.connect(audioCtx.destination);
+        console.log('connected');
+        Module.webaudioNode = node; 
+        Module.webaudioChannels = channels;
+        Module.webaudioContext.resume();
+    },
+    webaudio_stop: function() {
+        if (Module.webaudioContext === undefined) {
+            console.error("No audio context");
+            return -1;
+        }
+
+        Module.webaudioContext.suspend();
+        Module.webaudioNode.disconnect(Module.webaudioContext.destination);
+        Module.webaudioNode = undefined;
+    }
 })

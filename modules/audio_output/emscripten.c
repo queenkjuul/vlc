@@ -157,20 +157,13 @@ static void FixChannelMapping(audio_sample_format_t *restrict fmt)
     }
 }
 
-/*
-  Init Function will set the AudioContext, and try to get the sample rate and
-  number of channels. 
-
-  If they are not supported, we fallback to the supported ones.
-
-  It can only run in the main thread.
-*/
-static void Init(void *userData)
+static void StartTask(void *userData)
 {
     audio_output_t *aout = (audio_output_t *) userData;
     aout_sys_t *sys = aout->sys;
 
-    webaudio_init(sys->sample_rate, sys->channel_count, sys->sab, WEBAUDIO_LATENCY_PLAYBACK);
+    webaudio_init(sys->sample_rate, WEBAUDIO_LATENCY_PLAYBACK);
+    webaudio_start(sys->channel_count, sys->sab);
     unsigned rate = webaudio_getSampleRate();
     unsigned channels = webaudio_getChannels();
 
@@ -210,7 +203,7 @@ static int Start(audio_output_t *aout, audio_sample_format_t *restrict fmt)
         const int ret = emscripten_proxy_sync(
             sys->proxying_queue,
             emscripten_main_runtime_thread_id(),
-            Init, aout);
+            StartTask, aout);
         if (!ret)
         {
             msg_Err(aout, "error: could not proxy Init to main runtime!");
