@@ -307,10 +307,15 @@ static void Close(vlc_object_t *obj)
     audio_output_t *aout = (audio_output_t *)obj;
     aout_sys_t *sys = aout->sys;
 
-    emscripten_proxy_sync(sys->proxying_queue,
-                          emscripten_main_runtime_thread_id(),
-                          CloseTask,
-                          NULL);
+    if (emscripten_is_main_runtime_thread())
+        CloseTask(NULL);
+    else
+    {
+        emscripten_proxy_sync(sys->proxying_queue,
+                              emscripten_main_runtime_thread_id(),
+                              CloseTask,
+                              NULL);
+    }
     em_proxying_queue_destroy(sys->proxying_queue);
     free(sys->sab);
     free(sys);
