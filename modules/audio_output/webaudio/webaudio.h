@@ -64,6 +64,7 @@ extern int webaudio_getChannels(void);
 extern int webaudio_init(int rate, latency_hint latency);
 extern int webaudio_start(int channels, webaudio_buffer_t *buffer);
 extern int webaudio_stop(void);
+extern void webaudio_destroy(void);
 int webaudio_worklet_push(void *user_data, int8_t *buffer, size_t data_size);
 
 #endif /*WEBAUDIO_H*/

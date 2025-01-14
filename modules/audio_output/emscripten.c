@@ -113,6 +113,12 @@ static void Pause(audio_output_t *aout, bool paused, vlc_tick_t date)
     Flush(aout);
 }
 
+static void StopTask(void *opaque)
+{
+    (void)opaque;
+    webaudio_stop();
+}
+
 /*
   To allow reusing the AudioWorklet, we stop the process() callback,
   from running by setting is_paused to 1.
@@ -122,6 +128,11 @@ static void Stop(audio_output_t *aout)
     Flush(aout);
     aout_sys_t *sys = (aout_sys_t *)aout->sys;
     atomic_store(&sys->sab->is_paused, 1);
+
+    emscripten_proxy_sync(sys->proxying_queue,
+                          emscripten_main_runtime_thread_id(),
+                          StopTask,
+                          NULL);
 }
 
 /** Fix channel mapping according to Webaudio API constraints.
@@ -269,11 +280,26 @@ proxy_err:
     return (-ENOMEM);
 }
 
+static void CloseTask(void *opaque)
+{
+    (void)opaque;
+    webaudio_destroy();
+}
+
 static void Close(vlc_object_t *obj)
 {
     audio_output_t *aout = (audio_output_t *)obj;
     aout_sys_t *sys = aout->sys;
 
+    if (emscripten_is_main_runtime_thread())
+        CloseTask(NULL);
+    else
+    {
+        emscripten_proxy_sync(sys->proxying_queue,
+                              emscripten_main_runtime_thread_id(),
+                              CloseTask,
+                              NULL);
+    }
     em_proxying_queue_destroy(sys->proxying_queue);
     free(sys->sab);
     free(sys);

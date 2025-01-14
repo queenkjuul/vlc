@@ -29,6 +29,10 @@ mergeInto(LibraryManager.library, {
             return 0;
         return Module.webaudioChannels;
     },
+    webaudio_destroy: function() {
+        Module.webaudioContext.close();
+        Module.webaudioContext = undefined;
+    },
     webaudio_init__async: 'auto',
     webaudio_init: async function(rate, latency) {
         switch (latency) {
