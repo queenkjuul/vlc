@@ -32,6 +32,8 @@
 #include <vlc_vout_display.h>
 #include <vlc_opengl.h>
 #include "vout_helper.h"
+#include <sanitizer/lsan_interface.h>
+
 
 #include "renderer.h"
 
@@ -210,6 +212,7 @@ static void Close(vout_display_t *vd)
 
     vlc_gl_Delete(gl);
     free (sys);
+    __lsan_do_leak_check();
 }
 
 static int RendererInit(vlc_gl_t *gl)
@@ -265,7 +268,10 @@ static void PictureRender(vlc_gl_t *gl, unsigned width, unsigned height)
     vout_display_opengl_Display(sys->vgl);
     sys->vt.Flush();
 
-    vlc_render_subpicture_Delete(subpicture);
+    if (subpicture)
+        vlc_render_subpicture_Delete(subpicture);
+    sys->latch.subpicture = NULL;
+    sys->latch.picture = NULL;
     sys->is_dirty = true;
 }
 
@@ -277,7 +283,9 @@ static void PicturePrepare(vout_display_t *vd, picture_t *pic,
     vout_display_sys_t *sys = vd->sys;
 
     sys->latch.picture = pic;
-    sys->latch.subpicture = vlc_render_subpicture_Copy(subpicture);
+    if (sys->latch.subpicture)
+        vlc_render_subpicture_Delete(sys->latch.subpicture);
+    sys->latch.subpicture = (subpicture) ? vlc_render_subpicture_Copy(subpicture): NULL;
 
     vlc_gl_RenderNext(sys->gl);
     sys->is_dirty = true;

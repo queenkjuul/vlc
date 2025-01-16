@@ -365,11 +365,11 @@ HOSTVARS_CMAKE := \
 # and cause the check if symbols have underscore prefix to
 # incorrectly report they have not, even if they have.
 ifndef WITH_OPTIMIZATION
-CFLAGS := $(CFLAGS) -g -O0
-CXXFLAGS := $(CXXFLAGS) -g -O0
+CFLAGS := $(CFLAGS) -g -O0 -fsanitize=address -g -O0
+CXXFLAGS := $(CXXFLAGS) -g -O0 -fsanitize=address -g -O0
 else
-CFLAGS := $(CFLAGS) -g -O2
-CXXFLAGS := $(CXXFLAGS) -g -O2
+CFLAGS := $(CFLAGS) -g -O2 -fsanitize=address -g -O0
+CXXFLAGS := $(CXXFLAGS) -g -O2 -fsanitize=address -g -O0
 endif
 
 HOSTVARS := $(HOSTTOOLS) \
