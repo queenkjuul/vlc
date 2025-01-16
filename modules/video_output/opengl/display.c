@@ -267,6 +267,8 @@ static void PictureRender(vlc_gl_t *gl, unsigned width, unsigned height)
 
     if (subpicture != NULL)
         vlc_render_subpicture_Delete(subpicture);
+    sys->latch.subpicture = NULL;
+    sys->latch.picture = NULL;
     sys->is_dirty = true;
 }
 
@@ -278,10 +280,16 @@ static void PicturePrepare(vout_display_t *vd, picture_t *pic,
     vout_display_sys_t *sys = vd->sys;
 
     sys->latch.picture = pic;
+    if (sys->latch.subpicture != NULL)
+        vlc_render_subpicture_Delete(sys->latch.subpicture);
     if (subpicture != NULL)
+    {
         sys->latch.subpicture = vlc_render_subpicture_Copy(subpicture);
+    }
     else
+    {
         sys->latch.subpicture = NULL;
+    }
 
     vlc_gl_RenderNext(sys->gl);
     sys->is_dirty = true;
