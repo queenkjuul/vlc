@@ -115,8 +115,6 @@ struct vlc_clock_t
     struct vlc_list node;
 
     struct vlc_clock_context *context;
-
-    vlc_tick_t last_conversion;
 };
 
 vlc_clock_listener_id *
@@ -913,9 +911,7 @@ vlc_tick_t vlc_clock_ConvertToSystem(vlc_clock_t *clock,
     if (clock_id != NULL)
         *clock_id = ctx->clock_id;
 
-    clock->last_conversion =
-        clock->ops->to_system(clock, ctx, system_now, ts, rate);
-    return clock->last_conversion;
+    return clock->ops->to_system(clock, ctx, system_now, ts, rate);
 }
 
 static const struct vlc_clock_ops master_ops = {
@@ -949,7 +945,6 @@ static vlc_clock_t *vlc_clock_main_Create(vlc_clock_main_t *main_clock,
     clock->cbs_data = cbs_data;
     clock->priority = priority;
     assert(!cbs || cbs->on_update);
-    clock->last_conversion = 0;
 
     if (input)
         clock->context = NULL; /* Always use the main one */
