@@ -750,6 +750,7 @@ vlc_gl_RenderNext
 vlc_gl_RequestChange
 vlc_gl_RequestInit
 vlc_gl_ReportInit
+vlc_gl_ReportDestroy
 vlc_gl_ReportRender
 vlc_gl_Swap
 vlc_gl_ApplyChanges

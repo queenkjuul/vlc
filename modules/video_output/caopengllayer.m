@@ -416,6 +416,13 @@ static int OpenOpenGL(vlc_gl_t *gl, unsigned width, unsigned height,
 - (void)vlcClose
 {
     VLCCAOpenGLLayer *layer = (VLCCAOpenGLLayer *)[self layer];
+
+    @synchronized(layer)
+    {
+        [self lockContext];
+        vlc_gl_ReportDestroy(_gl);
+        [self unlockContext];
+    }
     [layer vlcClose];
 
     @synchronized (layer) {

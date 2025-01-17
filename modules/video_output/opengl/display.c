@@ -235,6 +235,13 @@ static int RendererInit(vlc_gl_t *gl)
     return VLC_SUCCESS;
 }
 
+static void RendererDestroy(vlc_gl_t *gl)
+{
+    vout_display_t *vd = gl->owner.sys;
+    vout_display_sys_t *sys = vd->sys;
+
+    vout_display_opengl_Delete(sys->vgl);
+}
 
 static void PictureRender(vlc_gl_t *gl, unsigned width, unsigned height)
 {
@@ -387,7 +394,8 @@ static int Open(vout_display_t *vd,
 
     static const struct vlc_gl_callbacks gl_cbs = {
         .init = RendererInit,
-        .render = PictureRender
+        .render = PictureRender,
+        .destroy = RendererDestroy,
     };
 
     vd->sys = sys;
