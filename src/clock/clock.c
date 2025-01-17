@@ -297,8 +297,7 @@ context_get_next_it(vlc_clock_main_t *main_clock,
 }
 
 static struct vlc_clock_context *
-vlc_clock_get_context(vlc_clock_t *clock, vlc_tick_t system_now, vlc_tick_t ts,
-                      bool update)
+vlc_clock_get_context(vlc_clock_t *clock, vlc_tick_t ts, bool update)
 {
     vlc_clock_main_t *main_clock = clock->owner;
 
@@ -877,8 +876,7 @@ vlc_tick_t vlc_clock_Update(vlc_clock_t *clock, vlc_tick_t system_now,
                             vlc_tick_t ts, double rate)
 {
     AssertLocked(clock);
-    struct vlc_clock_context *ctx =
-        vlc_clock_get_context(clock, system_now, ts, true);
+    struct vlc_clock_context *ctx = vlc_clock_get_context(clock, ts, true);
 
     return clock->ops->update(clock, ctx, system_now, ts, rate, 0, 0);
 }
@@ -888,8 +886,7 @@ vlc_tick_t vlc_clock_UpdateVideo(vlc_clock_t *clock, vlc_tick_t system_now,
                                  unsigned frame_rate, unsigned frame_rate_base)
 {
     AssertLocked(clock);
-    struct vlc_clock_context *ctx =
-        vlc_clock_get_context(clock, system_now, ts, true);
+    struct vlc_clock_context *ctx = vlc_clock_get_context(clock, ts, true);
 
     return clock->ops->update(clock, ctx, system_now, ts, rate,
                               frame_rate, frame_rate_base);
@@ -912,8 +909,7 @@ vlc_tick_t vlc_clock_ConvertToSystem(vlc_clock_t *clock,
                                      double rate, uint32_t *clock_id)
 {
     AssertLocked(clock);
-    struct vlc_clock_context *ctx =
-        vlc_clock_get_context(clock, system_now, ts, false);
+    struct vlc_clock_context *ctx = vlc_clock_get_context(clock, ts, false);
     if (clock_id != NULL)
         *clock_id = ctx->clock_id;
 
