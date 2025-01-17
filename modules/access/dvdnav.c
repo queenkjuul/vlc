@@ -880,6 +880,7 @@ static int Demux( demux_t *p_demux )
     int32_t i_len;
     dvdnav_status_t status;
 
+    vlc_mutex_lock( &p_sys->event_lock );
     if( p_sys->b_readahead )
         status = dvdnav_get_next_cache_block( p_sys->dvdnav, &packet, &i_event,
                                               &i_len );
@@ -893,13 +894,14 @@ static int Demux( demux_t *p_demux )
         if( p_sys->cur_title == 0 )
         {
             msg_Dbg( p_demux, "jumping to first title" );
+            vlc_mutex_unlock( &p_sys->event_lock );
             return ControlInternal( p_demux, DEMUX_SET_TITLE, 1 ) == VLC_SUCCESS ?
                         VLC_DEMUXER_SUCCESS : VLC_DEMUXER_EGENERIC;
         }
+            vlc_mutex_unlock( &p_sys->event_lock );
         return VLC_DEMUXER_EGENERIC;
     }
 
-    vlc_mutex_lock( &p_sys->event_lock );
     if(p_sys->highlight.b_pending)
         ButtonUpdate(p_demux, p_sys->highlight.b_from_user);
     vlc_mutex_unlock( &p_sys->event_lock );
@@ -1707,17 +1709,17 @@ static void EventMouse( const vlc_mouse_t *newmouse, void *p_data )
     }
 
     /* FIXME? PCI usage thread safe? */
+    vlc_mutex_lock( &p_sys->event_lock );
     pci_t *pci = dvdnav_get_current_nav_pci( p_sys->dvdnav );
 
     if( vlc_mouse_HasMoved( &p_sys->oldmouse, newmouse ) )
         dvdnav_mouse_select( p_sys->dvdnav, pci, newmouse->i_x, newmouse->i_y );
     if( vlc_mouse_HasPressed( &p_sys->oldmouse, newmouse, MOUSE_BUTTON_LEFT ) )
     {
-        vlc_mutex_lock( &p_sys->event_lock );
         ButtonUpdate( p_demux, true );
-        vlc_mutex_unlock( &p_sys->event_lock );
         dvdnav_mouse_activate( p_sys->dvdnav, pci, newmouse->i_x, newmouse->i_y );
     }
+    vlc_mutex_unlock( &p_sys->event_lock );
     p_sys->oldmouse = *newmouse;
 }
 
