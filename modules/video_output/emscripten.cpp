@@ -59,6 +59,8 @@ typedef struct emscripten_gl_sys_t
     bool dirty;
     unsigned width;
     unsigned height;
+
+    vlc_sem_t sem_destroy;
 } emscripten_gl_sys_t;
 
 static void CloseWindow(vlc_window_t *wnd)
@@ -239,6 +241,7 @@ static void Close(vlc_gl_t *gl)
     // TODO: This is just sad. We can't do that for now, see the attached
     // commit message.
     //vlc_join(sys->worker, NULL);
+    vlc_sem_wait(&sys->sem_destroy);
 
     delete sys;
 }
@@ -318,6 +321,7 @@ void EmscriptenReportDestroy(vlc_gl_t *gl)
 {
     auto sys = static_cast<emscripten_gl_sys_t *>(gl->sys);
     vlc_gl_ReportDestroy(gl);
+    vlc_sem_post(&sys->sem_destroy);
 }
 }
 
@@ -403,6 +407,7 @@ static void OpenglInitialize(vlc_gl_t *gl, unsigned width, unsigned height)
             else if (msg.customCmd == 'close')
             {
                 console.log("Cancelling main loop");
+                Module.vout.dirty = false;
                 _EmscriptenReportDestroy($0);
                 _EmscriptenKeepalivePop();
                 _emscripten_cancel_main_loop();
@@ -502,6 +507,7 @@ static int Open (vlc_gl_t *gl, unsigned width, unsigned height, const struct vlc
     gl->sys = sys = new (std::nothrow)emscripten_gl_sys_t {};
     if (!sys)
         return VLC_ENOMEM;
+    vlc_sem_init(&sys->sem_destroy, 0);
     
     struct emscripten_startup startup = {
         .gl = gl,
