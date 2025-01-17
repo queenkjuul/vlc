@@ -312,6 +312,13 @@ void EmscriptenResize(vlc_gl_t *gl, unsigned width, unsigned height)
     sys->width = width;
     sys->height = height;
 }
+
+EMSCRIPTEN_KEEPALIVE
+void EmscriptenReportDestroy(vlc_gl_t *gl)
+{
+    auto sys = static_cast<emscripten_gl_sys_t *>(gl->sys);
+    vlc_gl_ReportDestroy(gl);
+}
 }
 
 static void OpenglInitialize(vlc_gl_t *gl, unsigned width, unsigned height)
@@ -396,6 +403,7 @@ static void OpenglInitialize(vlc_gl_t *gl, unsigned width, unsigned height)
             else if (msg.customCmd == 'close')
             {
                 console.log("Cancelling main loop");
+                _EmscriptenReportDestroy($0);
                 _EmscriptenKeepalivePop();
                 _emscripten_cancel_main_loop();
                 console.log("Main loop cancelled");
