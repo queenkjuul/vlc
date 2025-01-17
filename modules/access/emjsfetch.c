@@ -31,7 +31,6 @@
 
 typedef struct
 {
-    char *url;
     uint64_t offset;
 } access_sys_t;
 
@@ -84,7 +83,7 @@ static block_t *Read(stream_t *access, bool *restrict eof)
     const char *headers[] = {"Range", range, NULL};
     attr.requestHeaders = headers;
     attr.timeoutMSecs = 5;
-    emscripten_fetch_t *fetch = emscripten_fetch(&attr, sys->url);
+    emscripten_fetch_t *fetch = emscripten_fetch(&attr, access->psz_url);
     if (unlikely(fetch == NULL))
     {
         msg_Err(access,
@@ -133,12 +132,6 @@ static int Open(vlc_object_t *obj)
     if (unlikely(sys == NULL))
         return -ENOMEM;
 
-    if (asprintf(
-            &sys->url, "https://%s", access->psz_url + strlen("fetch://")) == -1)
-    {
-        free(sys);
-        return -ENOMEM;
-    }
     sys->offset = 0u;
 
     access->pf_block = Read;
@@ -153,7 +146,6 @@ static void Close(vlc_object_t *obj)
 {
     stream_t *access = (stream_t *)obj;
     access_sys_t *sys = access->p_sys;
-    free(sys->url);
     free(sys);
 }
 
@@ -162,7 +154,7 @@ vlc_module_begin()
     set_description(N_("todo"))
     set_shortname(N_("fetch"))
     set_subcategory(SUBCAT_INPUT_ACCESS)
-    set_capability("access", 0)
-    add_shortcut("fetch")
+    set_capability("access", 42)
+    add_shortcut("https", "http")
     set_callbacks(Open, Close)
 vlc_module_end()
