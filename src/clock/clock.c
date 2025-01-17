@@ -317,13 +317,12 @@ vlc_clock_get_context(vlc_clock_t *clock, vlc_tick_t system_now, vlc_tick_t ts,
     for (struct vlc_clock_context *ctx_it = clock->context; ctx_it != NULL;
          ctx_it = context_get_next_it(main_clock, ctx_it))
     {
-        vlc_tick_t converted =
-            clock->ops->to_system(clock, ctx_it, system_now, ts, 1.0);
+        assert(ctx_it->first_pcr.stream != VLC_TICK_INVALID);
+        if (ts < ctx_it->first_pcr.stream)
+            continue;
 
-        vlc_tick_t diff = converted - clock->last_conversion;
-
-        if (diff < 0)
-            diff = -diff;
+        vlc_tick_t diff = ts - ctx_it->first_pcr.stream;
+        assert(diff >= 0);
 
         if (diff < closest_diff)
         {
@@ -331,6 +330,9 @@ vlc_clock_get_context(vlc_clock_t *clock, vlc_tick_t system_now, vlc_tick_t ts,
             closest_ctx = ctx_it;
         }
     }
+
+    if (closest_ctx == NULL)
+        closest_ctx = main_clock->context;
 
     if (clock->context != closest_ctx && update)
     {

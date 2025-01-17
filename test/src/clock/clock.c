@@ -786,6 +786,18 @@ static void contexts_run(const struct clock_ctx *ctx)
     system += VLC_TICK_FROM_MS(100);
     vlc_clock_main_SetFirstPcr(ctx->mainclk, system, stream_context1);
 
+    /* Check that it is possible to convert ts using the old context before
+     * using the new one */
+    for (size_t i = 0; i < 10; ++i)
+    {
+        vlc_tick_t system0 = system_context0 + i * VLC_TICK_FROM_MS(20);
+        vlc_tick_t stream0 = stream_context0 + i * VLC_TICK_FROM_MS(20);
+        converted = vlc_clock_ConvertToSystem(ctx->slave, system0, stream0,
+                                              1.0f, &clock_id);
+        assert(clock_id == 0);
+        assert(converted == system0);
+    }
+
     /* Check that we can use the new context (or new origin) */
     converted = vlc_clock_ConvertToSystem(ctx->slave, system, stream_context1,
                                           1.0f, &clock_id);
