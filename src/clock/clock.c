@@ -304,6 +304,20 @@ context_get_closest(vlc_clock_t *clock, struct vlc_clock_context *ctx,
     }
 }
 
+static inline struct vlc_clock_context *
+context_get_next_it(vlc_clock_main_t *main_clock,
+                    struct vlc_clock_context *ctx_it)
+{
+    /* Iterate through the whole prev_contexts list and the main_context */
+    if (ctx_it == main_clock->context)
+        return NULL;
+    ctx_it = vlc_list_next_entry_or_null(&main_clock->prev_contexts, ctx_it,
+                                         struct vlc_clock_context, node);
+    if (ctx_it != NULL)
+        return ctx_it;
+    return main_clock->context;
+}
+
 static struct vlc_clock_context *
 vlc_clock_get_context(vlc_clock_t *clock, vlc_tick_t system_now, vlc_tick_t ts,
                       bool update)
@@ -323,12 +337,8 @@ vlc_clock_get_context(vlc_clock_t *clock, vlc_tick_t system_now, vlc_tick_t ts,
 
     /* Iterate through newer contexts, and not past ones */
     for (struct vlc_clock_context *ctx_it = clock->context; ctx_it != NULL;
-         ctx_it = vlc_list_next_entry_or_null(&main_clock->prev_contexts, ctx_it,
-                                              struct vlc_clock_context, node))
+         ctx_it = context_get_next_it(main_clock, ctx_it))
         context_get_closest(clock, ctx_it, system_now, ts, &ctx, &closest_diff);
-
-    context_get_closest(clock, main_clock->context, system_now, ts, &ctx,
-                        &closest_diff);
 
     if (clock->context != ctx && update)
     {
