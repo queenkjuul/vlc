@@ -311,7 +311,7 @@ vlc_clock_get_context(vlc_clock_t *clock, vlc_tick_t system_now, vlc_tick_t ts,
         return main_clock->context;
 
     vlc_tick_t closest_diff = VLC_TICK_MAX;
-    struct vlc_clock_context *ctx = NULL;
+    struct vlc_clock_context *closest_ctx = NULL;
 
     /* Iterate through newer contexts, and not past ones */
     for (struct vlc_clock_context *ctx_it = clock->context; ctx_it != NULL;
@@ -328,20 +328,20 @@ vlc_clock_get_context(vlc_clock_t *clock, vlc_tick_t system_now, vlc_tick_t ts,
         if (diff < closest_diff)
         {
             closest_diff = diff;
-            ctx = ctx_it;
+            closest_ctx = ctx_it;
         }
     }
 
-    if (clock->context != ctx && update)
+    if (clock->context != closest_ctx && update)
     {
         /* Switch the clock context to the newer one. This means that contexts
          * past the new one will never be selected again by this current clock.
          * Switch context only when updating, since outputs will hold frames
          * until there are displayed. */
-        vlc_clock_switch_context(clock, ctx);
+        vlc_clock_switch_context(clock, closest_ctx);
     }
 
-    return ctx;
+    return closest_ctx;
 }
 
 static void vlc_clock_main_reset(vlc_clock_main_t *main_clock)
