@@ -116,10 +116,19 @@ void vlc_gl_ReportRender(vlc_gl_t *gl, unsigned width, unsigned height)
     vlc_mutex_unlock(&glpriv->lock);
 }
 
-static void vlc_gl_ReportDestroy(vlc_gl_t *gl)
+static void ReportDestroy(vlc_gl_t *gl)
 {
     if (gl->owner.cbs != NULL && gl->owner.cbs->destroy != NULL)
         gl->owner.cbs->destroy(gl);
+}
+
+
+void vlc_gl_ReportDestroy(vlc_gl_t *gl)
+{
+    struct vlc_gl_priv_t *glpriv = (struct vlc_gl_priv_t *)gl;
+    vlc_mutex_lock(&glpriv->lock);
+    ReportDestroy(gl);
+    vlc_mutex_unlock(&glpriv->lock);
 }
 
 int vlc_gl_RequestInit(vlc_gl_t *gl)
@@ -247,7 +256,7 @@ static void* OpenglThread(void *opaque)
             vlc_cond_signal(&glpriv->sync_cond);
         }
     }
-    vlc_gl_ReportDestroy(gl);
+    ReportDestroy(gl);
     vlc_mutex_unlock(&glpriv->lock);
     vlc_gl_ReleaseCurrent(gl);
     return NULL;

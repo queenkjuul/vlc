@@ -307,6 +307,7 @@ static inline bool vlc_gl_StrHasToken(const char *apis, const char *api)
 VLC_API void vlc_gl_RenderNext(vlc_gl_t *gl);
 VLC_API void vlc_gl_ReportRender(vlc_gl_t *gl, unsigned width, unsigned height);
 VLC_API int vlc_gl_ReportInit(vlc_gl_t *gl);
+VLC_API void vlc_gl_ReportDestroy(vlc_gl_t *gl);
 
 #ifdef __cplusplus
 }
