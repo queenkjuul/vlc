@@ -82,6 +82,7 @@ typedef struct vout_display_sys_t
     struct {
         picture_t *picture;
         struct vlc_render_subpicture *subpicture;
+        vlc_mutex_t lock;
     } latch;
 
     struct {
@@ -248,6 +249,7 @@ static void PictureRender(vlc_gl_t *gl, unsigned width, unsigned height)
     vout_display_t *vd = gl->owner.sys;
     vout_display_sys_t *sys = vd->sys;
 
+    vlc_mutex_lock(&sys->latch.lock);
     struct vout_display_placement dp = vd->cfg->display;
     dp.width = width;
     dp.height = height;
@@ -255,7 +257,10 @@ static void PictureRender(vlc_gl_t *gl, unsigned width, unsigned height)
     sys->place_changed = true;
 
     if (sys->latch.picture == NULL)
+    {
+        vlc_mutex_unlock(&sys->latch.lock);
         return;
+    }
 
     picture_t *pic = sys->latch.picture;
     vlc_render_subpicture *subpicture = sys->latch.subpicture;
@@ -277,6 +282,7 @@ static void PictureRender(vlc_gl_t *gl, unsigned width, unsigned height)
     sys->latch.subpicture = NULL;
     sys->latch.picture = NULL;
     sys->is_dirty = true;
+    vlc_mutex_unlock(&sys->latch.lock);
 }
 
 static void PicturePrepare(vout_display_t *vd, picture_t *pic,
@@ -286,6 +292,7 @@ static void PicturePrepare(vout_display_t *vd, picture_t *pic,
     VLC_UNUSED(date);
     vout_display_sys_t *sys = vd->sys;
 
+    vlc_mutex_lock(&sys->latch.lock);
     sys->latch.picture = pic;
     if (sys->latch.subpicture != NULL)
         vlc_render_subpicture_Delete(sys->latch.subpicture);
@@ -297,6 +304,7 @@ static void PicturePrepare(vout_display_t *vd, picture_t *pic,
     {
         sys->latch.subpicture = NULL;
     }
+    vlc_mutex_unlock(&sys->latch.lock);
 
     vlc_gl_RenderNext(sys->gl);
     sys->is_dirty = true;
@@ -355,6 +363,7 @@ static int Open(vout_display_t *vd,
     if (unlikely(sys == NULL))
         return VLC_ENOMEM;
 
+    vlc_mutex_init(&sys->latch.lock);
     vd->sys = sys;
     sys->vgl = NULL;
     sys->gl = NULL;
