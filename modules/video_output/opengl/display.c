@@ -210,6 +210,9 @@ static void Close(vout_display_t *vd)
     //vlc_gl_ReleaseCurrent (gl);
 
     vlc_gl_Delete(gl);
+
+    if (sys->latch.picture)
+        picture_Release(sys->latch.picture);
     free (sys);
 }
 
@@ -280,6 +283,8 @@ static void PictureRender(vlc_gl_t *gl, unsigned width, unsigned height)
     if (subpicture != NULL)
         vlc_render_subpicture_Delete(subpicture);
     sys->latch.subpicture = NULL;
+
+    picture_Release(sys->latch.picture);
     sys->latch.picture = NULL;
     sys->is_dirty = true;
     vlc_mutex_unlock(&sys->latch.lock);
@@ -293,7 +298,7 @@ static void PicturePrepare(vout_display_t *vd, picture_t *pic,
     vout_display_sys_t *sys = vd->sys;
 
     vlc_mutex_lock(&sys->latch.lock);
-    sys->latch.picture = pic;
+    sys->latch.picture = picture_Hold(pic);
     if (sys->latch.subpicture != NULL)
         vlc_render_subpicture_Delete(sys->latch.subpicture);
     if (subpicture != NULL)
