@@ -145,7 +145,7 @@ EM_ASYNC_JS(void, SwapForReal, (vlc_gl_t *gl), {
 static int InitRenderer(vlc_gl_t *gl)
 {
     auto sys = static_cast<emscripten_gl_sys_t *>(gl->sys);
-    MAIN_THREAD_ASYNC_EM_ASM({
+    MAIN_THREAD_EM_ASM({
         let w = Module.vouts[$0];
         w.msgPort.postMessage({
             customCmd: 'initRenderer' 
@@ -158,7 +158,7 @@ static void RenderNext(vlc_gl_t *gl)
 {
     auto sys = static_cast<emscripten_gl_sys_t *>(gl->sys);
 
-    MAIN_THREAD_ASYNC_EM_ASM({
+    MAIN_THREAD_EM_ASM({
         let w = Module.vouts[$0];
         w.msgPort.postMessage({
             customCmd: 'renderNext' 
@@ -170,7 +170,7 @@ static void RequestChange(vlc_gl_t *gl)
 {
     auto sys = static_cast<emscripten_gl_sys_t *>(gl->sys);
 
-    MAIN_THREAD_ASYNC_EM_ASM({
+    MAIN_THREAD_EM_ASM({
         let w = Module.vouts[$0];
         w.msgPort.postMessage({
             customCmd: 'requestChange' 
@@ -182,7 +182,7 @@ static void Resize(vlc_gl_t *gl, unsigned w, unsigned h)
 {
     auto sys = static_cast<emscripten_gl_sys_t *>(gl->sys);
 
-    MAIN_THREAD_ASYNC_EM_ASM({
+    MAIN_THREAD_EM_ASM({
         let w = Module.vouts[$0];
         w.msgPort.postMessage({
             customCmd: 'resize' ,
@@ -226,7 +226,7 @@ static void Close(vlc_gl_t *gl)
 {
     auto sys = static_cast<emscripten_gl_sys_t*>( gl->sys );
 
-    MAIN_THREAD_ASYNC_EM_ASM({
+    MAIN_THREAD_EM_ASM({
         window.removeEventListener("mousemove", Module.mouseEventListener);
         window.removeEventListener("mousedown", Module.mouseEventListener);
         window.removeEventListener("mouseup", Module.mouseEventListener);
@@ -439,7 +439,7 @@ static void* OpenglWorkerRunloop(void *opaque)
     sys->worker_id = pthread_self();
     OpenglInitialize(gl, startup->width, startup->height);
 
-    MAIN_THREAD_ASYNC_EM_ASM({
+    MAIN_THREAD_EM_ASM({
         Module.mouseEventListener = function(ev) {
             let w = Module.vouts[$0];
             switch(ev.type) {
