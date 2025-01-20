@@ -1041,7 +1041,9 @@ static struct subpicture_region_rendered *SpuRenderRegion(spu_t *spu,
     if (subpic->b_subtitle)
         restrained.y -= y_margin;
 
-    SpuAreaFitInside(&restrained, output_width, output_height);
+    SpuAreaFitInside(&restrained,
+                     apply_scale ? spu_invscale_w(output_width, scale_size) : output_width,
+                     apply_scale ? spu_invscale_h(output_height, scale_size): output_height);
 
     /* Fix the position for the current scale_size */
     x_offset = spu_scale_w(restrained.x, restrained.scale);
