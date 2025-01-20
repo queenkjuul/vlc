@@ -146,6 +146,7 @@ diagnostic "vlc contribs: bootstrap"
             --disable-speexdsp --disable-taglib --disable-zvbi \
             --disable-rnnoise --disable-libaribcaption \
             --disable-ogg --disable-vorbis --disable-kate --disable-flac \
+            --disable-ass --disable-harfbuzz \
             --enable-dvdread --enable-dvdnav \
             --host=wasm32-unknown-emscripten
 
@@ -207,7 +208,7 @@ if [ $BUILD_MODE -eq 1 ]; then
                         --enable-avcodec --enable-avformat --enable-swscale --enable-postproc \
                         --disable-sout --disable-vlm --disable-xcb --disable-lua \
                         --disable-addonmanagermodules --disable-ssp --disable-nls \
-                        --enable-gles2 --disable-qt \
+                        --disable-libass --enable-gles2 --disable-qt \
                         --with-contrib="$VLC_SRCPATH"/contrib/wasm32-unknown-emscripten \
                         "${SANITIZER_OPTIONS}" "CFLAGS=${SOURCEMAPS}" "CXXFLAGS=${SOURCEMAPS}"
 fi
