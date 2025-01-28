@@ -480,8 +480,9 @@ static int Open( vlc_object_t* obj )
     return VLCDEC_SUCCESS;
 }
 
-static void Close( decoder_t* dec )
+static void Close( vlc_object_t* obj )
 {
+    auto *dec = reinterpret_cast<decoder_t*>(obj);
     auto sys = static_cast<decoder_sys_t*>( dec->p_sys );
     auto vctx = static_cast<webcodec_context*>(
                 vlc_video_context_GetPrivate(sys->vctx, VLC_VIDEO_CONTEXT_WEBCODEC ) );
