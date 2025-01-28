@@ -22,12 +22,12 @@
 #include "config.h"
 #endif
 
-#include <emscripten/fetch.h>
-
 #include <vlc_common.h>
 
 #include <vlc_access.h>
 #include <vlc_plugin.h>
+
+#include <emscripten/fetch.h>
 
 typedef struct
 {
@@ -38,26 +38,26 @@ static int Control(stream_t *access, int query, va_list args)
 {
     switch (query)
     {
-    case STREAM_CAN_SEEK:
-        *va_arg(args, bool *) = true;
-        break;
+        case STREAM_CAN_SEEK:
+            *va_arg(args, bool *) = true;
+            break;
 
-    case STREAM_CAN_FASTSEEK:
-        *va_arg(args, bool *) = false;
-        break;
+        case STREAM_CAN_FASTSEEK:
+            *va_arg(args, bool *) = false;
+            break;
 
-    case STREAM_CAN_PAUSE:
-    case STREAM_CAN_CONTROL_PACE:
-        *va_arg(args, bool *) = true;
-        break;
+        case STREAM_CAN_PAUSE:
+        case STREAM_CAN_CONTROL_PACE:
+            *va_arg(args, bool *) = true;
+            break;
 
-    case STREAM_GET_PTS_DELAY:
-        *va_arg(args, vlc_tick_t *) =
-            VLC_TICK_FROM_MS(var_InheritInteger(access, "network-caching"));
-        break;
+        case STREAM_GET_PTS_DELAY:
+            *va_arg(args, vlc_tick_t *) =
+                VLC_TICK_FROM_MS(var_InheritInteger(access, "network-caching"));
+            break;
 
-    default:
-        return -ENOTSUP;
+        default:
+            return -ENOTSUP;
     }
     return VLC_SUCCESS;
 }
