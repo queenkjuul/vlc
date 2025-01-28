@@ -80,8 +80,30 @@ static block_t *Read(stream_t *access, bool *restrict eof)
                  sys->offset + BLOCK_SIZE - 1) == -1)
         return NULL;
 
-    const char *headers[] = {"Range", range, NULL};
-    attr.requestHeaders = headers;
+    char *creds_header = var_InheritString(access, "fetch-creds-header");
+    char *creds_token = var_InheritString(access, "fetch-creds-token");
+    if (creds_token != NULL)
+    {
+        const char *headers[] = {
+            "Range",
+            range,
+            creds_header,
+            creds_token,
+            NULL,
+        };
+        attr.requestHeaders = headers;
+    }
+    else
+    {
+        printf("No token :(\n");
+        const char *headers[] = {
+            "Range",
+            range,
+            NULL,
+        };
+        attr.requestHeaders = headers;
+    }
+
     attr.timeoutMSecs = 5;
     emscripten_fetch_t *fetch = emscripten_fetch(&attr, access->psz_url);
     if (unlikely(fetch == NULL))
@@ -114,6 +136,8 @@ out:
 #undef BLOCK_SIZE
     emscripten_fetch_close(fetch);
     free(range);
+    free(creds_header);
+    free(creds_token);
     return b;
 }
 
@@ -149,6 +173,11 @@ static void Close(vlc_object_t *obj)
     free(sys);
 }
 
+#define CREDS_HEADER_TEXT N_("Credential header name")
+#define CREDS_HEADER_LONGTEXT N_("Header name used to pass credentials")
+
+#define CREDS_TOKEN_TEXT N_("Credential token")
+
 // clang-format off
 vlc_module_begin()
     set_description(N_("todo"))
@@ -156,5 +185,9 @@ vlc_module_begin()
     set_subcategory(SUBCAT_INPUT_ACCESS)
     set_capability("access", 42)
     add_shortcut("https", "http")
+
+    add_string("fetch-creds-header", "X-VLC-UserData", CREDS_HEADER_TEXT, CREDS_HEADER_LONGTEXT)
+    add_string("fetch-creds-token", CREDS_TOKEN_TEXT, CREDS_TOKEN_TEXT, NULL)
+
     set_callbacks(Open, Close)
 vlc_module_end()
