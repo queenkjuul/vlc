@@ -1264,7 +1264,13 @@ bool MediaServer::fetchContents()
         psz_TotalMatches = xml_getChildElementValue( (IXML_Element*)p_response, "TotalMatches" );
         psz_NumberReturned = xml_getChildElementValue( (IXML_Element*)p_response, "NumberReturned" );
 
-        StartingIndex = std::to_string(  std::stol(psz_NumberReturned) + std::stol(StartingIndex) );
+
+        const auto numberReturned = std::stol(psz_NumberReturned);
+        // Server did not return any items
+        if (numberReturned <= 0)
+            return false;
+
+        StartingIndex = std::to_string(  numberReturned + std::stol(StartingIndex) );
         l_reqCount = std::stol(psz_TotalMatches) - std::stol(StartingIndex) ;
         RequestedCount = std::to_string(l_reqCount);
 
