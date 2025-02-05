@@ -59,13 +59,31 @@ typedef struct emscripten_gl_sys_t
     bool dirty;
     unsigned width;
     unsigned height;
+    bool resize;
 
     vlc_sem_t sem_destroy;
 } emscripten_gl_sys_t;
 
+struct emscripten_wnd_sys {
+    char *canvas;
+    bool resize;
+};
+
 static void CloseWindow(vlc_window_t *wnd)
 {
-    free(wnd->sys);
+    auto *sys = static_cast<emscripten_wnd_sys*>(wnd->sys);
+    free(sys->canvas);
+    free(sys);
+}
+
+extern "C" 
+{
+EMSCRIPTEN_KEEPALIVE void requestResize(vlc_window_t *window, unsigned w, unsigned h) {
+    auto *sys = static_cast<emscripten_wnd_sys*>(window->sys);
+    printf("tweaking value %d %d\n", w, h);
+    //sys->resize = true;
+    vlc_window_ReportSize(window, w, h);
+}
 }
 
 static int WindowEnable(vlc_window_t *wnd, const vlc_window_cfg_t *cfg)
@@ -76,6 +94,18 @@ static int WindowEnable(vlc_window_t *wnd, const vlc_window_cfg_t *cfg)
     const unsigned h = MAIN_THREAD_EM_ASM_INT({
         return document.getElementById(UTF8ToString($0)).height;
     }, wnd->handle.canvas);
+
+    MAIN_THREAD_ASYNC_EM_ASM({
+        const canvas = document.getElementById(UTF8ToString($0));
+        const resizeObserver = new ResizeObserver((entries) => {
+            console.log(`Size changed `);
+            const w = entries[0].target.clientWidth;
+            const h = entries[0].target.clientHeight;
+            _requestResize($1, w, h);
+        });
+        resizeObserver.observe(canvas);
+        
+    }, wnd->handle.canvas, wnd);
 
     printf("window size %d %d\n", w, h);
     vlc_window_ReportSize(wnd, w, h);
@@ -96,9 +126,15 @@ static int OpenWindow(vlc_window_t *wnd)
     if (canvas == nullptr)
         return VLC_EINVAL;
 
+    auto *sys =
+        static_cast<emscripten_wnd_sys *>(malloc(sizeof(emscripten_wnd_sys)));
+
+    sys->canvas = canvas;
+    sys->resize = false;
+
     wnd->type = VLC_WINDOW_TYPE_EMSCRIPTEN_WEBGL;
     wnd->ops = &ops;
-    wnd->sys = canvas;
+    wnd->sys = sys;
     wnd->handle.canvas = canvas;
 
     return VLC_SUCCESS;
@@ -159,6 +195,22 @@ static int InitRenderer(vlc_gl_t *gl)
 static void RenderNext(vlc_gl_t *gl)
 {
     auto sys = static_cast<emscripten_gl_sys_t *>(gl->sys);
+
+    //vlc_window_t *wnd = gl->surface;
+    //auto *wnd_sys = static_cast<emscripten_wnd_sys*>(wnd->sys);
+    //if (wnd_sys->resize)
+    //{
+    //    const unsigned w = MAIN_THREAD_EM_ASM_INT({
+    //        return document.getElementById(UTF8ToString($0)).width;
+    //    }, wnd->handle.canvas);
+    //    const unsigned h = MAIN_THREAD_EM_ASM_INT({
+    //        return document.getElementById(UTF8ToString($0)).height;
+    //    }, wnd->handle.canvas);
+
+    //    printf("Report size %d %d\n", w, h);
+    //    vlc_window_ReportSize(wnd, w, h);
+    //    wnd_sys->resize = false;
+    //}
 
     MAIN_THREAD_EM_ASM({
         let w = Module.vouts[$0];
@@ -332,6 +384,7 @@ static void OpenglInitialize(vlc_gl_t *gl, unsigned width, unsigned height)
 
     sys->width = width;
     sys->height = height;
+    sys->resize = false;
 
     EmscriptenWebGLContextAttributes attr;
     emscripten_webgl_init_context_attributes(&attr);
