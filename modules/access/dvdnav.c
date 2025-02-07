@@ -170,6 +170,9 @@ typedef struct
     int         i_vobu_index;
     int         i_vobu_flush;
 
+    vlc_tick_t last_pcr;
+    vlc_tick_t scr_shift;
+
     vlc_mouse_t oldmouse;
 } demux_sys_t;
 
@@ -1108,6 +1111,8 @@ static int Demux( demux_t *p_demux )
         p_sys->i_pgc_length = FROM_SCALE_NZ(event->pgc_length);
         p_sys->i_vobu_index = 0;
         p_sys->i_vobu_flush = 0;
+        p_sys->last_pcr = VLC_TICK_INVALID;
+        p_sys->scr_shift = 0;
 
         for( int i=0; i<PS_TK_COUNT; i++ )
             p_sys->tk[i].i_next_block_flags |= BLOCK_FLAG_CELL_DISCONTINUITY;
@@ -1508,7 +1513,18 @@ static int DemuxBlock( demux_t *p_demux, const uint8_t *p, int32_t len )
             if( !ps_pkt_parse_pack( p_pkt->p_buffer, p_pkt->i_buffer,
                                     &i_scr, &i_mux_rate ) )
             {
-                es_out_SetPCR( p_sys->p_tf_out, i_scr );
+                /* Force DVD's output PCR as the DVD current playtime to ensure
+                 * PCR continuity. */
+                const vlc_tick_t dvd_time =
+                    FROM_SCALE_NZ( dvdnav_get_current_time(p_sys->dvdnav) );
+                if( dvd_time > 0 && (p_sys->last_pcr == VLC_TICK_INVALID ||
+                                     dvd_time > p_sys->last_pcr) )
+                {
+                    es_out_SetPCR( p_sys->p_tf_out, dvd_time );
+                    p_sys->last_pcr = dvd_time;
+                    p_sys->scr_shift = dvd_time - i_scr;
+                }
+
                 if( i_mux_rate > 0 ) p_sys->i_mux_rate = i_mux_rate;
             }
             block_Release( p_pkt );
@@ -1538,6 +1554,13 @@ static int DemuxBlock( demux_t *p_demux, const uint8_t *p, int32_t len )
                         else tk->i_next_block_flags = BLOCK_FLAG_CELL_DISCONTINUITY;
                     }
                     p_pkt->i_flags |= i_next_block_flags;
+
+                    /* Shift native timestamp in respect of the DVD current time. */
+                    if( p_pkt->i_dts != VLC_TICK_INVALID )
+                    {
+                        p_pkt->i_dts += p_sys->scr_shift;
+                        p_pkt->i_pts += p_sys->scr_shift;
+                    }
                     es_out_Send( p_sys->p_tf_out, tk->es, p_pkt );
                 }
                 else
