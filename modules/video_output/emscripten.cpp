@@ -456,6 +456,8 @@ static void OpenglInitialize(vlc_gl_t *gl, unsigned width, unsigned height)
             else if (msg.customCmd == 'resize')
             {
                 _EmscriptenResize($0, msg['width'], msg['height']);
+                Module.offscreenCanvas.width = msg['width'];
+                Module.offscreenCanvas.height = msg['height'];
             }
             else if (msg.customCmd == 'close')
             {
