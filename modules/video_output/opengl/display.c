@@ -83,6 +83,7 @@ typedef struct vout_display_sys_t
         picture_t *picture;
         struct vlc_render_subpicture *subpicture;
         vlc_mutex_t lock;
+        unsigned width, height;
     } latch;
 
     struct {
@@ -271,8 +272,8 @@ static void PictureRender(vlc_gl_t *gl, unsigned width, unsigned height)
     vout_display_opengl_Prepare (sys->vgl, pic, subpicture);
     if (sys->place_changed)
     {
-        vout_display_opengl_SetOutputSize(sys->vgl, sys->place.width,
-                sys->place.height);
+        vout_display_opengl_SetOutputSize(sys->vgl, sys->latch.width,
+                sys->latch.height);
         vout_display_opengl_Viewport(sys->vgl, sys->place.x, sys->place.y,
                 sys->place.width, sys->place.height);
         sys->place_changed = false;
@@ -336,7 +337,11 @@ static int Control (vout_display_t *vd, int query)
     {
 
       case VOUT_DISPLAY_CHANGE_DISPLAY_SIZE:
+        vlc_mutex_lock(&sys->latch.lock);
         vlc_gl_Resize (sys->gl, vd->cfg->display.width, vd->cfg->display.height);
+        sys->latch.width = vd->cfg->display.width;
+        sys->latch.height = vd->cfg->display.height;
+        vlc_mutex_unlock(&sys->latch.lock);
         // fallthrough
       case VOUT_DISPLAY_CHANGE_SOURCE_ASPECT:
       case VOUT_DISPLAY_CHANGE_SOURCE_CROP:
@@ -375,6 +380,8 @@ static int Open(vout_display_t *vd,
     sys->is_dirty = false;
     sys->latch.picture = NULL;
     sys->latch.subpicture = NULL;
+    sys->latch.width = vd->cfg->display.width;
+    sys->latch.height = vd->cfg->display.height;
 
     sys->cfg.fmt = fmt;
     sys->cfg.context = context;
