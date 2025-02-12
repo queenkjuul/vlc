@@ -535,7 +535,10 @@ static void* OpenglWorkerRunloop(void *opaque)
     msg_Dbg(gl, "emscripten initialized");
 
     if (sys->context == NULL)
+    {
+        vlc_sem_post(&startup->wait_sem);
         return NULL;
+    }
 
     //bindRendererInit(gl);
     //msg_Dbg(gl, "bound renderer");
