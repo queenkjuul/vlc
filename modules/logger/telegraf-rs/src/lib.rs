@@ -15,30 +15,13 @@
 // along with this program; if not, write to the Free Software Foundation,
 // Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
 
-use std::{cell::UnsafeCell, ffi::CStr, sync::Mutex};
-use telegraf::{Client, IntoFieldData, Point};
-use vlcrs_core::tracer::{sys::vlc_tracer_value_type, TracerCapability, TracerModuleLoader};
+use std::{cell::UnsafeCell, sync::Mutex};
+use telegraf::{
+    protocol::{Field, Tag},
+    Client, FieldData, Point,
+};
+use vlcrs_core::tracer::{TraceIterator, TraceValue, TracerCapability, TracerModuleLoader};
 use vlcrs_macros::module;
-
-struct TraceField(vlcrs_core::tracer::TraceField);
-
-impl IntoFieldData for TraceField {
-    fn field_data(&self) -> telegraf::FieldData {
-        match self.0.kind() {
-            vlc_tracer_value_type::String => unsafe {
-                let value = CStr::from_ptr(self.0.value().string);
-                telegraf::FieldData::Str(value.to_str().unwrap().to_string())
-            },
-            vlc_tracer_value_type::Integer => unsafe {
-                telegraf::FieldData::Number(self.0.value().integer)
-            },
-            vlc_tracer_value_type::Double => unsafe {
-                telegraf::FieldData::Float(self.0.value().double)
-            },
-            _ => unreachable!(),
-        }
-    }
-}
 
 struct TelegrafTracer {
     endpoint: Mutex<UnsafeCell<telegraf::Client>>,
@@ -58,43 +41,38 @@ impl TracerCapability for TelegrafTracer {
         Some(Self { endpoint })
     }
 
-    fn trace(&self, _tick: vlcrs_core::tracer::Tick, entries: &'_ vlcrs_core::tracer::Trace) {
-        if !entries
-            .into_iter()
-            .any(|e| e.kind() != vlcrs_core::tracer::sys::vlc_tracer_value_type::String)
-        {
+    fn trace(&self, _tick: vlcrs_core::tracer::Tick, entries: TraceIterator<'_>) {
+
+        let (tags, fields) = entries.fold((Vec::new(), Vec::new()), |(mut tags, mut fields), e| {
+            let key = e.key.into_owned();
+            match e.value {
+                TraceValue::String(val) => tags.push(Tag {
+                    name: key,
+                    value: val.into_owned(),
+                }),
+                TraceValue::Integer(val) => fields.push(Field {
+                    name: key,
+                    value: FieldData::Number(val),
+                }),
+                TraceValue::Double(val) => fields.push(Field {
+                    name: key,
+                    value: FieldData::Float(val),
+                }),
+            }
+            (tags, fields)
+        });
+
+        if tags.is_empty() {
             /* We cannot support events for now. */
             return;
         }
-        let tags: Vec<(String, String)> = entries
-            .into_iter()
-            .filter(|e| e.kind() == vlcrs_core::tracer::sys::vlc_tracer_value_type::String)
-            .map(|entry| unsafe {
-                let value = CStr::from_ptr(entry.value().string);
-                (
-                    String::from(entry.key()),
-                    String::from(value.to_str().unwrap()),
-                )
-            })
-            .collect();
 
-        let record: Vec<(String, Box<dyn IntoFieldData + 'static>)> = entries
-            .into_iter()
-            .filter(|e| e.kind() != vlcrs_core::tracer::sys::vlc_tracer_value_type::String)
-            .map(|entry| {
-                (
-                    String::from(entry.key()),
-                    Box::new(TraceField(entry)) as Box<dyn IntoFieldData>,
-                )
-            })
-            .collect();
-
-        let p = Point::new(
-            String::from("measurement"),
+        let p = Point {
+            measurement: String::from("measurement"),
             tags,
-            record,
-            None, //Some(tick.0 as u64),
-        );
+            fields,
+            timestamp: None, //Some(tick.0 as u64),
+        };
 
         let mut endpoint = self.endpoint.lock().unwrap();
         if let Err(err) = endpoint.get_mut().write_point(&p) {

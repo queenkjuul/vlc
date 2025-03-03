@@ -21,7 +21,9 @@
 /// along with this program; if not, write to the Free Software Foundation,
 /// Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
 use std::{
+    borrow::Cow,
     ffi::{c_char, c_double, c_void, CStr},
+    marker::PhantomData,
     ptr::NonNull,
 };
 
@@ -95,31 +97,50 @@ impl TraceField {
     }
 }
 
-pub struct TraceIterator {
-    current_field: NonNull<vlc_tracer_entry>,
+pub enum TraceValue<'a> {
+    Integer(i64),
+    Double(f64),
+    String(Cow<'a, str>),
 }
 
-impl IntoIterator for Trace {
-    type Item = TraceField;
-    type IntoIter = TraceIterator;
-    fn into_iter(self) -> Self::IntoIter {
-        TraceIterator {
-            current_field: unsafe { self.entries.read().entries },
-        }
+pub struct TraceEntry<'a> {
+    pub key: Cow<'a, str>,
+    pub value: TraceValue<'a>,
+}
+
+impl<'a> From<vlc_tracer_entry> for TraceEntry<'a> {
+    fn from(entry: vlc_tracer_entry) -> Self {
+        // SAFETY: Key is guaranteed to be non-null by the iterator.
+        let key = unsafe { CStr::from_ptr(entry.key) }.to_string_lossy();
+
+        let value = unsafe {
+            match entry.kind {
+                vlc_tracer_value_type::Integer => TraceValue::Integer(entry.value.integer),
+                vlc_tracer_value_type::Double => TraceValue::Double(entry.value.double),
+                vlc_tracer_value_type::String => {
+                    TraceValue::String(CStr::from_ptr(entry.value.string).to_string_lossy())
+                }
+            }
+        };
+
+        Self { key, value }
     }
 }
 
-impl Iterator for TraceIterator {
-    type Item = TraceField;
+pub struct TraceIterator<'a> {
+    pub(crate) current_field: NonNull<vlc_tracer_entry>,
+    pub(crate) _plt: PhantomData<&'a vlc_tracer_entry>,
+}
+
+impl<'a> Iterator for TraceIterator<'a> {
+    type Item = TraceEntry<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
         unsafe {
             if self.current_field.read().key.is_null() {
                 return None;
             }
-            let output = Some(TraceField {
-                entry: self.current_field,
-            });
+            let output = Some(TraceEntry::from(self.current_field.read()));
             self.current_field = self.current_field.add(1);
             output
         }
@@ -129,7 +150,8 @@ impl Iterator for TraceIterator {
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct vlc_tracer_operations {
-    pub trace: extern "C" fn(opaque: *const c_void, ts: vlc_tick, entries: Trace),
+    pub trace:
+        extern "C" fn(opaque: *const c_void, ts: vlc_tick, entries: NonNull<vlc_tracer_trace>),
     pub destroy: extern "C" fn(*mut c_void),
 }
 
