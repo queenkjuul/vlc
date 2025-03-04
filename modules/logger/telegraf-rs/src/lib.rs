@@ -20,7 +20,7 @@ use telegraf::{
     protocol::{Field, Tag},
     Client, FieldData, Point,
 };
-use vlcrs_core::tracer::{TraceIterator, TraceValue, TracerCapability, TracerModuleLoader};
+use vlcrs_core::tracer::{Trace, TraceIterator, TraceValue, TracerCapability, TracerModuleLoader};
 use vlcrs_macros::module;
 
 struct TelegrafTracer {
@@ -41,8 +41,9 @@ impl TracerCapability for TelegrafTracer {
         Some(Self { endpoint })
     }
 
-    fn trace(&self, _tick: vlcrs_core::tracer::Tick, entries: TraceIterator<'_>) {
+    fn trace(&self, _tick: vlcrs_core::tracer::Tick, trace: &Trace) {
 
+        let entries = trace.iter();
         let (tags, fields) = entries.fold((Vec::new(), Vec::new()), |(mut tags, mut fields), e| {
             let key = e.key.into_owned();
             match e.value {

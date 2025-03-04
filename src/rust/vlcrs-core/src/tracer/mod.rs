@@ -15,13 +15,16 @@
 /// along with this program; if not, write to the Free Software Foundation,
 /// Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
 use std::{
-    cell::UnsafeCell, ffi::{c_char, c_void, CStr}, marker::PhantomData, mem::MaybeUninit, ptr::NonNull
+    cell::UnsafeCell,
+    ffi::{c_char, c_void, CStr},
+    mem::MaybeUninit,
+    ptr::NonNull,
 };
 
 use crate::{object::Object, plugin::ModuleProtocol};
 
 pub mod sys;
-pub use sys::{Trace, TraceField, TraceIterator, TraceEntry, TraceValue};
+pub use sys::{Trace, TraceEntry, TraceIterator, TraceValue};
 
 pub struct Tick(pub i64);
 
@@ -80,7 +83,7 @@ pub trait TracerCapability: Sync {
     where
         Self: Sized;
 
-    fn trace(&self, tick: Tick, entries: TraceIterator);
+    fn trace(&self, tick: Tick, entries: &Trace);
 }
 
 #[allow(non_camel_case_types)]
@@ -90,17 +93,11 @@ pub type TracerCapabilityActivate =
         opaque: &mut MaybeUninit<*mut c_void>,
     ) -> Option<&'static sys::vlc_tracer_operations>;
 
-extern "C" fn tracer_trace(
-    opaque: *const c_void,
-    tick: sys::vlc_tick,
-    trace: NonNull<sys::vlc_tracer_trace>,
-) {
+extern "C" fn tracer_trace(opaque: *const c_void, tick: sys::vlc_tick, trace: Trace) {
     {
         let tracer: &dyn TracerCapability =
             unsafe { &**(opaque as *const Box<dyn TracerCapability>) };
-        let entries = unsafe { trace.read() }.entries;
-        let it = TraceIterator { current_field: entries, _plt: PhantomData };
-        tracer.trace(Tick(tick), it);
+        tracer.trace(Tick(tick), &trace);
     }
 }
 
