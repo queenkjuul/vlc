@@ -98,7 +98,6 @@ static int Seek (stream_t *p_access, uint64_t offset) {
 
     vlc_mutex_lock(&p_sys->data.lock);
     assert(offset < p_sys->data.js_file_size);
-    printf("Seek %llu\n", offset);
     p_sys->data.offset = offset;
     vlc_mutex_unlock(&p_sys->data.lock);
     return VLC_SUCCESS;
