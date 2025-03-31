@@ -299,6 +299,8 @@ static void PicturePrepare(vout_display_t *vd, picture_t *pic,
     vout_display_sys_t *sys = vd->sys;
 
     vlc_mutex_lock(&sys->latch.lock);
+    if (sys->latch.picture != NULL)
+        picture_Release(sys->latch.picture);
     sys->latch.picture = picture_Hold(pic);
     if (sys->latch.subpicture != NULL)
         vlc_render_subpicture_Delete(sys->latch.subpicture);
