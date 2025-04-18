@@ -55,8 +55,9 @@ mergeInto(LibraryManager.library, {
 
         audioCtx.suspend();
 
+        const path = Module.locateFile("audio-worklet-processor.js");
         try {
-            await audioCtx.audioWorklet.addModule('./vlc/modules/audio_output/webaudio/audio-worklet-processor.js');
+            await audioCtx.audioWorklet.addModule(path);
         } catch (error) {
             console.error(`Couldn't add worklet module: ${error}`);
 	        return -1;
