@@ -32,10 +32,13 @@
 typedef struct
 {
     uint64_t offset;
+    uint64_t size;
 } access_sys_t;
 
 static int Control(stream_t *access, int query, va_list args)
 {
+    access_sys_t *sys = access->p_sys;
+
     switch (query)
     {
         case STREAM_CAN_SEEK:
@@ -45,6 +48,15 @@ static int Control(stream_t *access, int query, va_list args)
         case STREAM_CAN_FASTSEEK:
             *va_arg(args, bool *) = false;
             break;
+        case STREAM_GET_SIZE:
+        {
+            printf("GET SIZE %lld\n", sys->size);
+            if (sys->size == 0)
+                return -ENOENT;
+
+            *va_arg(args, uint64_t *) = sys->size;
+            break;
+        }
 
         case STREAM_CAN_PAUSE:
         case STREAM_CAN_CONTROL_PACE:
@@ -148,6 +160,62 @@ static int Seek(stream_t *access, uint64_t offset)
     return VLC_SUCCESS;
 }
 
+static void HeadRequest(stream_t *access)
+{
+    emscripten_fetch_attr_t attr;
+    emscripten_fetch_attr_init(&attr);
+    strcpy(attr.requestMethod, "HEAD");
+    attr.attributes =
+        EMSCRIPTEN_FETCH_LOAD_TO_MEMORY | EMSCRIPTEN_FETCH_SYNCHRONOUS;
+    char *creds_header = var_InheritString(access, "fetch-creds-header");
+    char *creds_token = var_InheritString(access, "fetch-creds-token");
+    if (creds_token != NULL)
+    {
+        const char *headers[] = {
+            creds_header,
+            creds_token,
+            NULL,
+        };
+        attr.requestHeaders = headers;
+    }
+    attr.timeoutMSecs = 5;
+    emscripten_fetch_t *fetch = emscripten_fetch(&attr, access->psz_url);
+
+    free(creds_header);
+    free(creds_token);
+
+    if (unlikely(fetch == NULL))
+    {
+        msg_Err(access, "HEAD fetch failed");
+        return;
+    }
+
+    if (fetch->status != 200)
+    {
+        msg_Err(access, "HEAD fetch failed (%d)", fetch->status);
+        return;
+    }
+
+    const size_t size = emscripten_fetch_get_response_headers_length(fetch);
+    char *headers = malloc(size + 1);
+    emscripten_fetch_get_response_headers(fetch, headers, size + 1);
+    char **unpacked = emscripten_fetch_unpack_response_headers(headers);
+
+    access_sys_t *sys = access->p_sys;
+    for (; *unpacked != NULL; ++unpacked)
+    {
+        if (!strcmp(*unpacked, "content-length"))
+        {
+            const char *length = *(unpacked + 1);
+            if (length != NULL)
+                sys->size = strtoull(length, NULL, 10);
+            break;
+        }
+    }
+    emscripten_fetch_free_unpacked_response_headers(unpacked);
+    free(headers);
+}
+
 static int Open(vlc_object_t *obj)
 {
     stream_t *access = (stream_t *)obj;
@@ -162,6 +230,8 @@ static int Open(vlc_object_t *obj)
     access->pf_seek = Seek;
     access->pf_control = Control;
     access->p_sys = sys;
+
+    HeadRequest(access);
 
     return VLC_SUCCESS;
 }
