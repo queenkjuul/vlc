@@ -107,7 +107,6 @@ static block_t *Read(stream_t *access, bool *restrict eof)
     }
     else
     {
-        printf("No token :(\n");
         const char *headers[] = {
             "Range",
             range,

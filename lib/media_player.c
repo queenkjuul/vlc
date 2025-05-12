@@ -683,6 +683,10 @@ libvlc_media_player_new( libvlc_instance_t *instance )
 #endif
 #if defined(__EMSCRIPTEN__)
     var_Create (mp, "drawable-canvas", VLC_VAR_STRING);
+    var_Create (mp, "fetch-creds-header", VLC_VAR_STRING);
+    var_SetString(mp, "fetch-creds-header", "X-VLC-UserData");
+    var_Create (mp, "fetch-creds-token", VLC_VAR_STRING);
+    var_SetString(mp, "fetch-creds-token", "Credential token");
 #endif
 
     var_Create (mp, "keyboard-events", VLC_VAR_BOOL);
@@ -1281,6 +1285,18 @@ void libvlc_media_player_set_canvas_id( libvlc_media_player_t *p_mi,
 #else
     libvlc_printerr ("can't set canvas ID: EMSCRIPTEN build required");
     assert(false);
+#endif
+}
+
+void libvlc_media_player_set_credentials( libvlc_media_player_t *p_mi,
+                                          const char *header,
+                                          const char *token )
+{
+    assert (p_mi != NULL);
+#if defined(__EMSCRIPTEN__)
+    if (header != NULL)
+        var_SetString (p_mi, "fetch-creds-header", header);
+    var_SetString (p_mi, "fetch-creds-token", token);
 #endif
 }
 
