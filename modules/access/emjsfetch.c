@@ -85,11 +85,18 @@ static block_t *Read(stream_t *access, bool *restrict eof)
         EMSCRIPTEN_FETCH_LOAD_TO_MEMORY | EMSCRIPTEN_FETCH_SYNCHRONOUS;
 
 #define BLOCK_SIZE (2000000u)
+    const uint64_t from = sys->offset;
+    uint64_t to = sys->offset + BLOCK_SIZE;
+    if (to > sys->size)
+    {
+        *eof = true;
+        to = sys->size;
+        if (from == to)
+            return NULL;
+    }
+
     char *range;
-    if (asprintf(&range,
-                 "bytes=%llu-%llu",
-                 sys->offset,
-                 sys->offset + BLOCK_SIZE - 1) == -1)
+    if (asprintf(&range, "bytes=%" PRIu64 "-%" PRIu64, from, to - 1u) == -1)
         return NULL;
 
     char *creds_header = var_InheritString(access, "fetch-creds-header");
