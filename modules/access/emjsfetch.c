@@ -224,6 +224,7 @@ static int Open(vlc_object_t *obj)
         return -ENOMEM;
 
     sys->offset = 0u;
+    sys->size = 0u;
 
     access->pf_block = Read;
     access->pf_seek = Seek;
@@ -231,6 +232,10 @@ static int Open(vlc_object_t *obj)
     access->p_sys = sys;
 
     HeadRequest(access);
+    if (sys->size == 0)
+        msg_Warn(access,
+                 "Could not access the resource length: header "
+                 "'Content-Length' not valid/accessible");
 
     return VLC_SUCCESS;
 }
