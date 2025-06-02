@@ -87,7 +87,7 @@ static block_t *Read(stream_t *access, bool *restrict eof)
 #define BLOCK_SIZE (2000000u)
     const uint64_t from = sys->offset;
     uint64_t to = sys->offset + BLOCK_SIZE;
-    if (to > sys->size)
+    if (sys->size != 0 && to > sys->size)
     {
         *eof = true;
         to = sys->size;
