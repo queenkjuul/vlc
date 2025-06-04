@@ -340,9 +340,15 @@ static int Control (vout_display_t *vd, int query)
 
       case VOUT_DISPLAY_CHANGE_DISPLAY_SIZE:
         vlc_mutex_lock(&sys->latch.lock);
-        vlc_gl_Resize (sys->gl, vd->cfg->display.width, vd->cfg->display.height);
-        sys->latch.width = vd->cfg->display.width;
-        sys->latch.height = vd->cfg->display.height;
+        const unsigned w = vd->cfg->display.width;
+        const unsigned h = vd->cfg->display.height;
+        vlc_mutex_unlock(&sys->latch.lock);
+
+        vlc_gl_Resize (sys->gl, w, h);
+
+        vlc_mutex_lock(&sys->latch.lock);
+        sys->latch.width = w;
+        sys->latch.height = h;
         vlc_mutex_unlock(&sys->latch.lock);
         // fallthrough
       case VOUT_DISPLAY_CHANGE_SOURCE_ASPECT:
