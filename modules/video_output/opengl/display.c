@@ -248,7 +248,7 @@ static void RendererDestroy(vlc_gl_t *gl)
     vout_display_opengl_Delete(sys->vgl);
 }
 
-static void PictureRender(vlc_gl_t *gl, unsigned width, unsigned height)
+static bool PictureRender(vlc_gl_t *gl, unsigned width, unsigned height)
 {
     vout_display_t *vd = gl->owner.sys;
     vout_display_sys_t *sys = vd->sys;
@@ -263,7 +263,7 @@ static void PictureRender(vlc_gl_t *gl, unsigned width, unsigned height)
     if (sys->latch.picture == NULL)
     {
         vlc_mutex_unlock(&sys->latch.lock);
-        return;
+        return false;
     }
 
     picture_t *pic = sys->latch.picture;
@@ -289,6 +289,7 @@ static void PictureRender(vlc_gl_t *gl, unsigned width, unsigned height)
     sys->latch.picture = NULL;
     sys->is_dirty = true;
     vlc_mutex_unlock(&sys->latch.lock);
+    return true;
 }
 
 static void PicturePrepare(vout_display_t *vd, picture_t *pic,

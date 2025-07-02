@@ -102,18 +102,20 @@ int vlc_gl_ReportInit(vlc_gl_t *gl)
     return ret;
 }
 
-static void ReportRender(vlc_gl_t *gl, unsigned width, unsigned height)
+static bool ReportRender(vlc_gl_t *gl, unsigned width, unsigned height)
 {
     if (gl->owner.cbs && gl->owner.cbs->render)
-        gl->owner.cbs->render(gl, width, height);
+        return gl->owner.cbs->render(gl, width, height);
+    return false;
 }
 
-void vlc_gl_ReportRender(vlc_gl_t *gl, unsigned width, unsigned height)
+bool vlc_gl_ReportRender(vlc_gl_t *gl, unsigned width, unsigned height)
 {
     struct vlc_gl_priv_t *glpriv = (struct vlc_gl_priv_t *)gl;
     vlc_mutex_lock(&glpriv->lock);
-    ReportRender(gl, width, height);
+    const bool ret = ReportRender(gl, width, height);
     vlc_mutex_unlock(&glpriv->lock);
+    return ret;
 }
 
 static void ReportDestroy(vlc_gl_t *gl)

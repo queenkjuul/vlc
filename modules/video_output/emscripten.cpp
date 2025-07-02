@@ -330,8 +330,8 @@ static void RunloopRender(void *opaque)
     if (ret != 0)
         return;
 
-    vlc_gl_ReportRender(gl, sys->width, sys->height);
-    SwapForReal(gl);
+    if (vlc_gl_ReportRender(gl, sys->width, sys->height))
+        SwapForReal(gl);
 }
 
 struct emscripten_startup {
