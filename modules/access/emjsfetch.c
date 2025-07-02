@@ -66,6 +66,10 @@ static int Control(stream_t *access, int query, va_list args)
                 VLC_TICK_FROM_MS(var_InheritInteger(access, "network-caching"));
             break;
 
+        case STREAM_SET_PAUSE_STATE:
+            /* Nothing to do */
+            break;
+
         default:
             return -ENOTSUP;
     }
