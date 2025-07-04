@@ -42,10 +42,12 @@ static int Control(stream_t *access, int query, va_list args)
     switch (query)
     {
         case STREAM_CAN_SEEK:
-        case STREAM_CAN_FASTSEEK:
             *va_arg(args, bool *) = true;
             break;
 
+        case STREAM_CAN_FASTSEEK:
+            *va_arg(args, bool *) = false;
+            break;
         case STREAM_GET_SIZE:
         {
             printf("GET SIZE %lld\n", sys->size);
