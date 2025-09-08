@@ -28,7 +28,6 @@
 
 #include "../../video_output/emscripten/common.h"
 
-#undef typeof
 #include <emscripten/emscripten.h>
 #include <emscripten/em_js.h>
 #undef typeof // FIXME Remove once val::typeof is finally removed

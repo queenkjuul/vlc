@@ -34,20 +34,9 @@ static picture_context_t* PictureContextCopy(picture_context_t* picCtx)
     return picCtx;
 }
 
-static void PictureContextDestroy( picture_context_t* picCtx )
+static void PictureContextDestroy( picture_context_t* )
 {
-    auto ctx = static_cast<webcodec_context*>(
-        vlc_video_context_GetPrivate( picCtx->vctx, VLC_VIDEO_CONTEXT_WEBCODEC ) );
-    MAIN_THREAD_EM_ASM({
-        const WEBCODEC_MAX_PICTURES = 32;
-        const picIndex = $0;
-        const poolIndex = $1;
-        const frame = Module.framePools[poolIndex][picIndex];
-        console.assert(picIndex >= 0 && picIndex < WEBCODEC_MAX_PICTURES);
-        if (frame !== undefined)
-            frame.close();
-        Module.framePools[poolIndex][picIndex] = undefined;
-    },  PictureContextPrivate(picCtx)->pictureIdx, ctx->decoder_worker );
+    /* Context is already released by picture_Release() */
 }
 
 static picture_context_t* webcodec_CreatePictureContext( vlc_video_context* vctx, uint32_t picIdx )
