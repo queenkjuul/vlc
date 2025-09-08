@@ -54,6 +54,7 @@ struct decoder_sys_t
     vlc::threads::mutex mutex;
 
     vlc_video_context* vctx;
+    bool first_frame = true;
 };
 
 extern "C"
@@ -103,7 +104,7 @@ EMSCRIPTEN_KEEPALIVE bool updateVideoOutput(decoder_t* dec)
     return true;
 }
 
-EMSCRIPTEN_KEEPALIVE void queuePicture(void* ctx, picture_t* pic, int64_t timestamp)
+EMSCRIPTEN_KEEPALIVE void queuePicture(void* ctx, picture_t* pic, int32_t timestamp)
 {
     auto dec = static_cast<decoder_t*>(ctx);
     pic->date = VLC_TICK_FROM_US(timestamp);
@@ -217,9 +218,9 @@ static emval getDecoderConfig( decoder_t* dec, bool includeExtraData )
     }
     auto a = decoderConfig["codec"].as<std::string>();
 
-    printf("mdr %s %dx%d %dx%d\n", a.c_str(), dec->fmt_in->video.i_width,
+    printf("mdr %s %dx%d %dx%d fps: %d\n", a.c_str(), dec->fmt_in->video.i_width,
            dec->fmt_in->video.i_height, dec->fmt_in->video.i_visible_width,
-           dec->fmt_in->video.i_visible_height);
+           dec->fmt_in->video.i_visible_height, dec->fmt_in->video.i_frame_rate / dec->fmt_in->video.i_frame_rate_base);
     if (dec->fmt_in->video.i_width)
         decoderConfig.set( "codedWidth", dec->fmt_in->video.i_width );
     if (dec->fmt_in->video.i_height)
@@ -228,6 +229,8 @@ static emval getDecoderConfig( decoder_t* dec, bool includeExtraData )
         decoderConfig.set( "displayAspectWidth", dec->fmt_in->video.i_visible_width );
     if (dec->fmt_in->video.i_visible_height)
         decoderConfig.set( "displayAspectHeight", dec->fmt_in->video.i_visible_height );
+    if (dec->fmt_in->video.i_visible_height)
+        decoderConfig.set( "framerate", dec->fmt_in->video.i_frame_rate / dec->fmt_in->video.i_frame_rate_base);
     //decoderConfig.set( "codedWidth", 1920 );
     //decoderConfig.set( "codedHeight", 1080 );
     //decoderConfig.set( "displayAspectWidth", 1920 );
@@ -443,6 +446,11 @@ EM_ASYNC_JS(void, initDecoderWorkerMessagePort, (decoder_t* dec), {
 static int Decode( decoder_t* dec, block_t* block )
 {
     if ( !block ) return VLCDEC_SUCCESS;
+
+    auto sys = static_cast<decoder_sys_t*>( dec->p_sys );
+    if (sys->first_frame && !(block->i_flags & VLC_FRAME_FLAG_TYPE_I) )
+        return VLCDEC_SUCCESS;
+    sys->first_frame = true;
     initDecoderWorkerMessagePort(dec);
     EM_ASM({
         Module.decoderWorkerPort.postMessage({
@@ -494,7 +502,11 @@ static int Open( vlc_object_t* obj )
 
     auto decoderConfig = getDecoderConfig( dec, false );
     if ( decoderConfig.isUndefined() )
+    {
+        msg_Err(obj,"Codec config not supported");
         return VLC_EGENERIC;
+    }
+    msg_Info(obj,"Codec config supported!");
     auto isSupported = probeConfig(decoderConfig.as_handle());
 
     if ( isSupported == false )
