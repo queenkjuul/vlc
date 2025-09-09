@@ -2227,7 +2227,7 @@ int vout_ChangeSource( vout_thread_t *vout, const video_format_t *original,
     return 0;
 }
 
-static int EnableWindowLocked(vout_thread_sys_t *vout, const video_format_t *original)
+static int EnableWindowLocked(vout_thread_sys_t *vout, const video_format_t *original, const char *str_id)
 {
     assert(vout != NULL);
     vout_thread_sys_t *sys = vout;
@@ -2238,6 +2238,7 @@ static int EnableWindowLocked(vout_thread_sys_t *vout, const video_format_t *ori
     vout_UpdateWindowSizeLocked(vout);
 
     if (!sys->window_enabled) {
+        vlc_window_SetStrID(sys->display_cfg.window, str_id);
         if (vlc_window_Enable(sys->display_cfg.window)) {
             msg_Err(&vout->obj, "failed to enable window");
             return -1;
@@ -2307,7 +2308,7 @@ int vout_Request(const vout_configuration_t *cfg, vlc_video_context *vctx, input
     sys->original = original;
     vout_InitSource(vout);
 
-    if (EnableWindowLocked(vout, &original) != 0)
+    if (EnableWindowLocked(vout, &original, cfg->str_id) != 0)
     {
         /* the window was not enabled, nor the display started */
         msg_Err(cfg->vout, "failed to enable window");

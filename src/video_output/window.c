@@ -119,6 +119,11 @@ vlc_window_t *vlc_window_New(vlc_object_t *obj, const char *module,
     return window;
 }
 
+void vlc_window_SetStrID(vlc_window_t *window, const char *str_id) {
+    window_t *w = container_of(window, window_t, wnd);
+    w->cfg.str_id = str_id;
+}
+
 int vlc_window_Enable(vlc_window_t *window)
 {
     window_t *w = container_of(window, window_t, wnd);

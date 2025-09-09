@@ -88,6 +88,10 @@ EMSCRIPTEN_KEEPALIVE void requestResize(vlc_window_t *window, unsigned w, unsign
 
 static int WindowEnable(vlc_window_t *wnd, const vlc_window_cfg_t *cfg)
 {
+    if (!strcmp(cfg->str_id, "video/1"))
+        wnd->handle.canvas = strdup("canvas-0");
+    else
+        wnd->handle.canvas = strdup("canvas-1");
     const unsigned w = MAIN_THREAD_EM_ASM_INT({
         return document.getElementById(UTF8ToString($0)).width;
     }, wnd->handle.canvas);
@@ -121,21 +125,21 @@ static const struct vlc_window_operations ops = [] {
 
 static int OpenWindow(vlc_window_t *wnd)
 {
-    char *canvas = var_InheritString(wnd, "drawable-canvas");
-    assert(canvas);
-    if (canvas == nullptr)
-        return VLC_EINVAL;
+    //char *canvas = var_InheritString(wnd, "drawable-canvas");
+    //assert(canvas);
+    //if (canvas == nullptr)
+    //    return VLC_EINVAL;
 
     auto *sys =
         static_cast<emscripten_wnd_sys *>(malloc(sizeof(emscripten_wnd_sys)));
 
-    sys->canvas = canvas;
+    //sys->canvas = canvas;
     sys->resize = false;
 
     wnd->type = VLC_WINDOW_TYPE_EMSCRIPTEN_WEBGL;
     wnd->ops = &ops;
     wnd->sys = sys;
-    wnd->handle.canvas = canvas;
+    wnd->handle.canvas = NULL;
 
     return VLC_SUCCESS;
 }

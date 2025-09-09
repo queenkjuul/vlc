@@ -175,6 +175,8 @@ typedef struct vlc_window_cfg {
      */
     unsigned height;
 
+    const char *str_id;
+
 } vlc_window_cfg_t;
 
 /**
@@ -551,6 +553,9 @@ static inline void vlc_window_SetTitle(vlc_window_t *window, const char *title)
  */
 VLC_API
 int vlc_window_Enable(vlc_window_t *window);
+
+VLC_API
+void vlc_window_SetStrID(vlc_window_t *window, const char *str_id);
 
 /**
  * Disables a window.
