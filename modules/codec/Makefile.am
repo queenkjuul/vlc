@@ -682,6 +682,7 @@ EXTRA_LTLIBRARIES += libvlc_vtutils.la
 
 libwebcodec_plugin_la_SOURCES = codec/webcodec.cpp video_output/emscripten/common.cpp
 libwebcodec_plugin_la_LDFLAGS = $(AM_LDFLAGS)
+libwebcodec_plugin_la_LIBADD = libvlc_hxxxhelper.la
 if HAVE_EMSCRIPTEN
 codec_LTLIBRARIES += libwebcodec_plugin.la
 endif
