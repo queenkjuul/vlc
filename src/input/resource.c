@@ -537,6 +537,24 @@ vout_thread_t *input_resource_HoldVout( input_resource_t *p_resource )
     return p_vout;
 }
 
+vout_thread_t *input_resource_HoldSecondVout( input_resource_t *p_resource ) {
+    vlc_mutex_lock( &p_resource->lock_hold );
+
+    struct vout_resource *vout_rsc;
+
+    int i = 0;
+    vlc_list_foreach(vout_rsc, &p_resource->vout_rscs, node)
+        if (i++ == 1) break;
+    vout_thread_t *p_vout = vout_rsc != NULL ? vout_rsc->vout : NULL;
+    if( p_vout )
+        vout_Hold(p_vout);
+
+    vlc_mutex_unlock( &p_resource->lock_hold );
+
+    return p_vout;
+
+}
+
 vout_thread_t *input_resource_HoldDummyVout( input_resource_t *p_resource )
 {
     return vout_Hold(p_resource->p_vout_dummy);

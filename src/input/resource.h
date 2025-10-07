@@ -75,6 +75,7 @@ void input_resource_PutVout(input_resource_t *, vout_thread_t *,
  */
 vout_thread_t *input_resource_HoldVout( input_resource_t * );
 
+vout_thread_t *input_resource_HoldSecondVout( input_resource_t *p_resource );
 /**
  * This function returns the dummy vout. It will be the parent of the future
  * main vout and can be used to pre-configure it. */

@@ -857,7 +857,7 @@ static subpicture_t *ModuleThread_NewSpuBuffer( decoder_t *p_dec,
         if( p_owner->error )
             break;
 
-        p_vout = input_resource_HoldVout( p_owner->p_resource );
+        p_vout = input_resource_HoldSecondVout( p_owner->p_resource );
         if( p_vout )
             break;
 
