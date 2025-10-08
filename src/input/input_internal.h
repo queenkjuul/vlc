@@ -446,6 +446,10 @@ typedef union
         bool enabled;
         char *dir_path;
     } record_state;
+    struct {
+        vlc_es_id_t *spu_id;
+        vlc_es_id_t *video_id;
+    } spu_vout;
 } input_control_param_t;
 
 typedef struct
@@ -588,6 +592,9 @@ enum input_control_e
 
     INPUT_CONTROL_SET_VBI_PAGE,
     INPUT_CONTROL_SET_VBI_TRANSPARENCY,
+
+    INPUT_CONTROL_SET_SPU_VOUT,
+    INPUT_CONTROL_UNSET_SPU_VOUT,
 };
 
 /* Internal helpers */
@@ -614,7 +621,7 @@ static inline int input_ControlPushEsHelper( input_thread_t *p_input, int i_type
                                              vlc_es_id_t *id )
 {
     assert( i_type == INPUT_CONTROL_SET_ES || i_type == INPUT_CONTROL_UNSET_ES ||
-            i_type == INPUT_CONTROL_RESTART_ES );
+            i_type == INPUT_CONTROL_RESTART_ES || i_type == INPUT_CONTROL_UNSET_SPU_VOUT );
     return input_ControlPush( p_input, i_type, &(input_control_param_t) {
         .id = vlc_es_id_Hold( id ),
     } );

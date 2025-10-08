@@ -2050,6 +2050,44 @@ libvlc_media_player_select_tracks_by_ids( libvlc_media_player_t *p_mi,
 
     vlc_player_Unlock(player);
 }
+void
+libvlc_media_player_MapSPUToVideo( libvlc_media_player_t *p_mi,
+                                   const libvlc_media_track_t *spu_track,
+                                   const libvlc_media_track_t *on_video )
+{
+    vlc_player_t *player = p_mi->player;
+
+    vlc_player_Lock(player);
+
+    const libvlc_media_trackpriv_t *spupriv =
+        libvlc_media_track_to_priv(spu_track);
+    assert(spupriv->es_id);
+
+    const libvlc_media_trackpriv_t *videopriv =
+        libvlc_media_track_to_priv(on_video);
+    assert(videopriv->es_id);
+
+    vlc_player_MapSPUToVideo(player, spupriv->es_id, videopriv->es_id);
+
+    vlc_player_Unlock(player);
+}
+
+void
+libvlc_media_player_UnmapSPUToVideo( libvlc_media_player_t *p_mi,
+                                     const libvlc_media_track_t *spu_track )
+{
+    vlc_player_t *player = p_mi->player;
+
+    vlc_player_Lock(player);
+
+    const libvlc_media_trackpriv_t *spupriv =
+        libvlc_media_track_to_priv(spu_track);
+    assert(spupriv->es_id);
+
+    vlc_player_UnmapSPUToVideo(player, spupriv->es_id);
+
+    vlc_player_Unlock(player);
+}
 
 int libvlc_media_player_add_slave( libvlc_media_player_t *p_mi,
                                    libvlc_media_slave_type_t i_type,

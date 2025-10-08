@@ -166,4 +166,6 @@ void vlc_input_decoder_SetVoutMouseEvent( vlc_input_decoder_t *, vlc_mouse_event
 int  vlc_input_decoder_AddVoutOverlay( vlc_input_decoder_t *, subpicture_t *, size_t * );
 int  vlc_input_decoder_DelVoutOverlay( vlc_input_decoder_t *, size_t );
 
+int vlc_input_decoder_MapSPUToVout( vlc_input_decoder_t *, const char *spu_id );
+
 #endif

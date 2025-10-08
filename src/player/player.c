@@ -719,6 +719,29 @@ vlc_player_SelectCategoryLanguage(vlc_player_t *player,
     }
 }
 
+void vlc_player_MapSPUToVideo(vlc_player_t *player,
+                              vlc_es_id_t *spu_es,
+                              vlc_es_id_t *video_es) {
+    struct vlc_player_input *input = vlc_player_get_input_locked(player);
+    if (!input)
+        return;
+
+    const input_control_param_t param = {.spu_vout = {
+                                             .spu_id = spu_es,
+                                             .video_id = video_es,
+                                         }};
+    input_ControlPush(input->thread, INPUT_CONTROL_SET_SPU_VOUT, &param);
+}
+
+void vlc_player_UnmapSPUToVideo(vlc_player_t *player,
+                                vlc_es_id_t *spu_es) {
+    struct vlc_player_input *input = vlc_player_get_input_locked(player);
+    if (!input)
+        return;
+
+    input_ControlPushEsHelper(input->thread, INPUT_CONTROL_UNSET_SPU_VOUT, spu_es);
+}
+
 char *
 vlc_player_GetCategoryLanguage(vlc_player_t *player,
                                enum es_format_category_e cat)

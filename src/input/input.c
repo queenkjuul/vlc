@@ -2395,6 +2395,14 @@ static bool Control( input_thread_t *p_input,
                                        param.vbi_transparency.id,
                                        param.vbi_transparency.enabled );
             break;
+        case INPUT_CONTROL_SET_SPU_VOUT:
+            es_out_SetSPUVout( priv->p_es_out_display,
+                               param.spu_vout.spu_id,
+                               param.spu_vout.video_id );
+            break;
+        case INPUT_CONTROL_UNSET_SPU_VOUT:
+            es_out_UnsetSPUVout( priv->p_es_out_display, param.id );
+            break;
 
         case INPUT_CONTROL_NAV_ACTIVATE:
         case INPUT_CONTROL_NAV_UP:

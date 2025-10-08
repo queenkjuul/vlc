@@ -857,7 +857,12 @@ static subpicture_t *ModuleThread_NewSpuBuffer( decoder_t *p_dec,
         if( p_owner->error )
             break;
 
-        p_vout = input_resource_HoldSecondVout( p_owner->p_resource );
+        p_vout = input_resource_HoldVoutMappedToSPU( p_owner->p_resource, p_owner->psz_id );
+
+        /* Fallback on the first available vout. */
+        if ( p_vout == NULL )
+            p_vout = input_resource_HoldVout( p_owner->p_resource );
+
         if( p_vout )
             break;
 
@@ -2132,6 +2137,8 @@ static void DeleteDecoder( vlc_input_decoder_t *p_owner, enum es_format_category
         }
         case SPU_ES:
         {
+            input_resource_RemoveSPUToVoutMapping(p_owner->p_resource, p_owner->psz_id);
+
             if( p_owner->p_vout )
             {
                 assert( p_owner->i_spu_channel != VOUT_SPU_CHANNEL_INVALID );
@@ -2807,6 +2814,17 @@ int vlc_input_decoder_DelVoutOverlay( vlc_input_decoder_t *owner, size_t channel
     vlc_fifo_Unlock(owner->p_fifo);
     return VLC_SUCCESS;
 }
+
+int vlc_input_decoder_MapSPUToVout( vlc_input_decoder_t *p_owner,
+                                    const char *spu_id )
+{
+    if( p_owner->p_vout == NULL )
+        return -ENOENT;
+    return input_resource_MapSPUToVout( p_owner->p_resource,
+                                        spu_id,
+                                        p_owner->p_vout );
+}
+
 
 int vlc_input_decoder_SetSpuHighlight( vlc_input_decoder_t *p_owner,
                                        const vlc_spu_highlight_t *spu_hl )

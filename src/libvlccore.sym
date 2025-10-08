@@ -895,6 +895,7 @@ vlc_player_IsTeletextEnabled
 vlc_player_IsTeletextTransparent
 vlc_player_IsTrackCategoryEnabled
 vlc_player_Lock
+vlc_player_MapSPUToVideo
 vlc_player_Navigate
 vlc_player_New
 vlc_player_NextVideoFrame
@@ -955,6 +956,7 @@ vlc_player_track_Delete
 vlc_player_track_Dup
 vlc_player_Unlock
 vlc_player_UnselectEsId
+vlc_player_UnmapSPUToVideo
 vlc_player_UpdateViewpoint
 vlc_player_vout_AddListener
 vlc_player_vout_Hold

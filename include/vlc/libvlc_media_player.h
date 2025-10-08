@@ -1749,6 +1749,15 @@ libvlc_media_player_select_tracks_by_ids( libvlc_media_player_t *p_mi,
                                           libvlc_track_type_t type,
                                           const char *psz_ids );
 
+LIBVLC_API void
+libvlc_media_player_MapSPUToVideo( libvlc_media_player_t *p_mi,
+                                   const libvlc_media_track_t *spu_track,
+                                   const libvlc_media_track_t *on_video );
+
+LIBVLC_API void
+libvlc_media_player_UnmapSPUToVideo( libvlc_media_player_t *p_mi,
+                                     const libvlc_media_track_t *spu_track );
+
 /**
  * Add a slave to the current media player.
  *

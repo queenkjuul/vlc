@@ -4044,6 +4044,29 @@ static int EsOutVaPrivControlLocked(es_out_sys_t *p_sys, input_source_t *source,
         }
         return ret;
     }
+    case ES_OUT_PRIV_SET_SPU_VOUT:
+    {
+        es_out_id_t *spu_es = vlc_es_id_get_out( va_arg(args, vlc_es_id_t *) );
+        es_out_id_t *video_es = vlc_es_id_get_out( va_arg(args, vlc_es_id_t *) );
+        if (spu_es == NULL || video_es == NULL)
+            return -ENOENT;
+
+        if (video_es->p_dec == NULL)
+            return -ENOENT;
+
+        return vlc_input_decoder_MapSPUToVout(video_es->p_dec, spu_es->id.str_id);
+    }
+    case ES_OUT_PRIV_UNSET_SPU_VOUT:
+    {
+        es_out_id_t *spu_es = vlc_es_id_get_out( va_arg(args, vlc_es_id_t *) );
+        if (spu_es == NULL)
+            return -ENOENT;
+
+        input_resource_t *resource = input_priv(p_sys->p_input)->p_resource;
+        input_resource_RemoveSPUToVoutMapping(resource, spu_es->id.str_id);
+
+        return VLC_SUCCESS;
+    }
     default: vlc_assert_unreachable();
     }
 

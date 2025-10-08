@@ -101,7 +101,10 @@ enum es_out_query_private_e
     ES_OUT_PRIV_SET_VBI_PAGE,                       /* arg1=unsigned res=can fail */
 
     /* Set VBI/Teletext menu transparent */
-    ES_OUT_PRIV_SET_VBI_TRANSPARENCY                /* arg1=bool res=can fail */
+    ES_OUT_PRIV_SET_VBI_TRANSPARENCY,                /* arg1=bool res=can fail */
+
+    ES_OUT_PRIV_SET_SPU_VOUT,
+    ES_OUT_PRIV_UNSET_SPU_VOUT,
 };
 
 struct vlc_input_es_out;
@@ -317,6 +320,19 @@ es_out_SetVbiTransparency(struct vlc_input_es_out *out, vlc_es_id_t *id,
 {
     return es_out_PrivControl(out, ES_OUT_PRIV_SET_VBI_TRANSPARENCY, id,
                               enabled);
+}
+
+static inline int
+es_out_SetSPUVout(struct vlc_input_es_out *out, vlc_es_id_t *spu_id,
+                  vlc_es_id_t *video_id)
+{
+    return es_out_PrivControl(out, ES_OUT_PRIV_SET_SPU_VOUT, spu_id, video_id);
+}
+
+static inline int
+es_out_UnsetSPUVout(struct vlc_input_es_out *out, vlc_es_id_t *spu_id)
+{
+    return es_out_PrivControl(out, ES_OUT_PRIV_UNSET_SPU_VOUT, spu_id);
 }
 
 struct vlc_input_es_out *

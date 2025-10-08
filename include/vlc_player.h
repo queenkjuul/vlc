@@ -1769,6 +1769,14 @@ vlc_player_SelectCategoryLanguage(vlc_player_t *player,
                                   enum es_format_category_e cat,
                                   const char *lang);
 
+VLC_API void
+vlc_player_MapSPUToVideo(vlc_player_t *player,
+                         vlc_es_id_t *spu_es,
+                         vlc_es_id_t *video_es);
+
+VLC_API void
+vlc_player_UnmapSPUToVideo(vlc_player_t *player, vlc_es_id_t *spu_es);
+
 /**
  * Get the language of an ES category
  *

@@ -54,6 +54,13 @@ struct vout_resource
     struct vlc_list node;
 };
 
+struct spu_mapping {
+    const char *str_id;
+    const struct vout_resource *vout_weak;
+
+    struct vlc_list node;
+};
+
 struct input_resource_t
 {
     vlc_atomic_rc_t rc;
@@ -81,6 +88,8 @@ struct input_resource_t
     /* You need lock+lock_hold to write to the following variables and
      * only lock or lock_hold to read them */
     struct vlc_list vout_rscs;
+
+    struct vlc_list spu_mappings;
 
     bool            b_aout_busy;
     audio_output_t *p_aout;
@@ -120,9 +129,27 @@ vout_resource_Add(struct vout_resource *vout_rsc, input_resource_t *resource)
     vlc_list_append(&vout_rsc->node, &resource->vout_rscs);
 }
 
-static inline vout_thread_t *
-vout_resource_Remove(struct vout_resource *vout_rsc)
+static struct spu_mapping *
+input_resource_GetVoutFromSPUMapping( input_resource_t *resource, struct vout_resource *vout_rsc )
 {
+    struct spu_mapping *spu_mapping;
+
+    vlc_list_foreach( spu_mapping, &resource->spu_mappings, node )
+        if (spu_mapping->vout_weak == vout_rsc)
+            return spu_mapping;
+    return NULL;
+}
+
+static inline vout_thread_t *
+vout_resource_Remove(input_resource_t *resource, struct vout_resource *vout_rsc)
+{
+    struct spu_mapping *mapping = input_resource_GetVoutFromSPUMapping(resource, vout_rsc);
+    if (mapping != NULL)
+    {
+        vlc_list_remove(&mapping->node);
+        free(mapping);
+    }
+
     vlc_list_remove(&vout_rsc->node);
     vout_thread_t *vout = vout_rsc->vout;
     free(vout_rsc->psz_prev_title);
@@ -153,7 +180,7 @@ static void DestroyVout( input_resource_t *p_resource )
     if( p_resource->vout_rsc_free )
     {
         vlc_mutex_lock(&p_resource->lock_hold);
-        vout_thread_t *vout = vout_resource_Remove( p_resource->vout_rsc_free );
+        vout_thread_t *vout = vout_resource_Remove( p_resource, p_resource->vout_rsc_free );
         vlc_mutex_unlock(&p_resource->lock_hold);
 
         vout_Close( vout );
@@ -317,6 +344,7 @@ input_resource_t *input_resource_New( vlc_object_t *p_parent )
     }
 
     vlc_list_init( &p_resource->vout_rscs );
+    vlc_list_init( &p_resource->spu_mappings );
 
     vlc_atomic_rc_init( &p_resource->rc );
     p_resource->p_parent = p_parent;
@@ -389,7 +417,7 @@ static void input_resource_PutVoutLocked(input_resource_t *p_resource,
         msg_Dbg(p_resource->p_parent, "destroying vout (already one saved or active)");
 
         vlc_mutex_lock(&p_resource->lock_hold);
-        vout_resource_Remove(vout_rsc);
+        vout_resource_Remove(p_resource, vout_rsc);
         vlc_mutex_unlock(&p_resource->lock_hold);
 
         vout_Stop(vout);
@@ -537,23 +565,6 @@ vout_thread_t *input_resource_HoldVout( input_resource_t *p_resource )
     return p_vout;
 }
 
-vout_thread_t *input_resource_HoldSecondVout( input_resource_t *p_resource ) {
-    vlc_mutex_lock( &p_resource->lock_hold );
-
-    struct vout_resource *vout_rsc;
-
-    int i = 0;
-    vlc_list_foreach(vout_rsc, &p_resource->vout_rscs, node)
-        if (i++ == 1) break;
-    vout_thread_t *p_vout = vout_rsc != NULL ? vout_rsc->vout : NULL;
-    if( p_vout )
-        vout_Hold(p_vout);
-
-    vlc_mutex_unlock( &p_resource->lock_hold );
-
-    return p_vout;
-
-}
 
 vout_thread_t *input_resource_HoldDummyVout( input_resource_t *p_resource )
 {
@@ -662,4 +673,70 @@ void input_resource_TerminateSout( input_resource_t *p_resource )
     vlc_mutex_lock( &p_resource->lock );
     DestroySout(p_resource);
     vlc_mutex_unlock( &p_resource->lock );
+}
+
+static struct spu_mapping *
+input_resource_GetSPUMapping( input_resource_t *resource, const char *spu_id )
+{
+    struct spu_mapping *spu_mapping;
+
+    vlc_list_foreach( spu_mapping, &resource->spu_mappings, node )
+        if (!strcmp( spu_mapping->str_id,  spu_id ))
+            return spu_mapping;
+    return NULL;
+}
+
+int input_resource_MapSPUToVout(input_resource_t *resource, const char *spu_id, vout_thread_t *vout) {
+    int status = VLC_SUCCESS;
+    vlc_mutex_lock(&resource->lock_hold);
+
+    const struct vout_resource *vout_rsc = resource_GetVoutRsc(resource, vout);
+    assert(vout_rsc != NULL);
+
+    struct spu_mapping *existing_mapping = input_resource_GetSPUMapping(resource, spu_id);
+    if (existing_mapping != NULL)
+    {
+        existing_mapping->vout_weak = vout_rsc;
+        goto done;
+    }
+
+    struct spu_mapping * mapping = malloc(sizeof(*mapping));
+    if (unlikely(mapping == NULL))
+    {
+        status = -ENOMEM;
+        goto done;
+    }
+
+    mapping->str_id = spu_id;
+    mapping->vout_weak = vout_rsc;
+    vlc_list_append(&mapping->node, &resource->spu_mappings);
+
+done: 
+    vlc_mutex_unlock(&resource->lock_hold);
+    return status;
+}
+
+void input_resource_RemoveSPUToVoutMapping(input_resource_t *resource, const char *spu_id) {
+    vlc_mutex_lock( &resource->lock_hold );
+
+    struct spu_mapping *existing_mapping = input_resource_GetSPUMapping(resource, spu_id);
+    if (existing_mapping != NULL) {
+        vlc_list_remove(&existing_mapping->node);
+        free(existing_mapping);
+    }
+
+    vlc_mutex_unlock( &resource->lock_hold );
+}
+
+vout_thread_t *input_resource_HoldVoutMappedToSPU(input_resource_t *resource, const char *spu_id) {
+    vlc_mutex_lock( &resource->lock_hold );
+
+    struct spu_mapping *mapping = input_resource_GetSPUMapping(resource, spu_id);
+    vout_thread_t *vout = mapping != NULL ? mapping->vout_weak->vout : NULL;
+    if (vout != NULL)
+        vout_Hold(vout);
+
+    vlc_mutex_unlock( &resource->lock_hold );
+
+    return vout;
 }
