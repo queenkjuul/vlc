@@ -36,3 +36,29 @@ pub mod object;
 pub mod tracer;
 
 pub(crate) mod convert;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Error(i32);
+
+impl Error {
+    pub const OUT_OF_MEMORY: Self = Self(-1);
+    pub const GENERIC: Self = Self(i32::MIN);
+
+    pub fn from_code(code: i32) -> Self {
+        Self(code)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::Error;
+
+    #[test]
+    fn test_error() {
+        let e = Error::OUT_OF_MEMORY;
+        match e {
+            Error::OUT_OF_MEMORY => (),
+            Error(code) => (),
+        }
+    }
+}

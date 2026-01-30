@@ -64,9 +64,11 @@ pub struct vlc_tracer_trace {
 }
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug)]
 pub struct vlc_tracer {
-    _unused: [u8; 0],
+    _data: (),
+    _marker:
+        core::marker::PhantomData<(*mut u8, core::marker::PhantomPinned)>,
 }
 
 #[repr(C)]
