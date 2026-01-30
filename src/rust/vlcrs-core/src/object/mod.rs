@@ -1,12 +1,16 @@
 mod sys;
+pub mod variables;
 
 use sys::ObjectInternalData;
 use vlcrs_messages::Logger;
 
 use std::{
+    ffi::{CStr, CString},
     ops::{Deref, DerefMut},
     ptr::NonNull,
 };
+
+use crate::convert::AssumeValid;
 
 #[repr(C)]
 pub struct Object<'a> {
@@ -24,6 +28,23 @@ impl Object<'_> {
     pub fn logger(&self) -> Option<&Logger> {
         self.logger.as_ref()
     }
+
+    pub fn destroy_variable(&self, name: &CStr) {
+        unsafe {
+            sys::var_Destroy(self, name.as_ptr() as _);
+        }
+    }
+
+    //pub fn inherit(&self, name: &CStr) -> Option<String> {
+    //    let mut value: sys::vlc_value_t = unsafe { std::mem::zeroed() };
+    //    let ret = unsafe { sys::var_Inherit(self, name.as_ptr() as _, 0x0040, &mut value) };
+    //    if ret != 0 {
+    //        return None;
+    //    }
+
+    //    let ret = unsafe { CStr::from_ptr(value.psz_string).assume_valid() };
+    //    Some(ret.to_owned())
+    //}
 }
 
 impl ObjectHandle<'_> {

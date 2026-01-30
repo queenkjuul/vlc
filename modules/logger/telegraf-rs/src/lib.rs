@@ -17,7 +17,7 @@
 
 use std::{cell::UnsafeCell, sync::Mutex};
 use telegraf::{Client, IntoFieldData};
-use vlcrs_core::tracer::{TraceValue, TracerCapability, TracerModuleLoader};
+use vlcrs_core::{object::variables::Variable, tracer::{TraceValue, TracerCapability, TracerModuleLoader}};
 use vlcrs_macros::module;
 
 struct TraceValueWrapper<'a>(TraceValue<'a>);
@@ -38,12 +38,14 @@ struct TelegrafTracer {
 }
 
 impl TracerCapability for TelegrafTracer {
-    fn open(_obj: &mut vlcrs_core::object::Object) -> Option<impl TracerCapability>
+    fn open(obj: &mut vlcrs_core::object::Object) -> Option<impl TracerCapability>
     where
         Self: Sized,
     {
         let endpoint_address =
             std::env::var("VLC_TELEGRAF_ENDPOINT").unwrap_or(String::from("tcp://localhost:8094"));
+        //let youpi: i32 = obj.inherit(c"telegraf-endpoint").unwrap();
+        //println!("endpoint: {youpi}");
         let endpoint = Client::new(&endpoint_address)
             .map(UnsafeCell::new)
             .map(Mutex::new)
@@ -100,4 +102,12 @@ module! {
     description: "Tracer module forwarding the traces to a Telegraf endpoint",
     shortname: "Telegraf tracer",
     shortcuts: ["telegraf"],
+    #[prefix = "telegraf"]
+    params: {
+        endpoint: str {
+            default: "tcp://localhost:8094",
+            text: "",
+            long_text: "",
+        },
+    }
 }
