@@ -64,8 +64,10 @@ static int vlc_tracer_load(void *func, bool forced, va_list ap)
     struct vlc_tracer_module *module = va_arg(ap, struct vlc_tracer_module *);
 
     (void) forced;
-    module->tracer.ops = activate(VLC_OBJECT(module), &module->opaque);
-    return (module->tracer.ops != NULL) ? VLC_SUCCESS : VLC_EGENERIC;
+    const int ret = activate(VLC_OBJECT(module), &module->opaque, &module->tracer.ops);
+
+    printf("TRACER ACTIVATE: %d\n", ret);
+    return ret;
 }
 
 struct vlc_tracer *vlc_tracer_Create(vlc_object_t *parent, const char *module_name)

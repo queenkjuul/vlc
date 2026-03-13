@@ -119,8 +119,9 @@ struct vlc_tracer_operations
  * \param[out] sysp to module specific data
  * \return the operations implemented by the module or NULL in case of error
  * */
-typedef struct vlc_tracer_operations *(*vlc_tracer_open_cb)(vlc_object_t *obj,
-                                                            void **restrict sysp);
+typedef int (*vlc_tracer_open_cb)(vlc_object_t *obj,
+                                  void **restrict sysp,
+                                  const struct vlc_tracer_operations **restrict ops);
 
 /**
  * @}

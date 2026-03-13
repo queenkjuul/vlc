@@ -15,9 +15,12 @@
 // along with this program; if not, write to the Free Software Foundation,
 // Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
 
-use std::{cell::UnsafeCell, sync::Mutex};
-use telegraf::{Client, IntoFieldData};
-use vlcrs_core::tracer::{TraceValue, TracerCapability, TracerModuleLoader};
+use std::{cell::UnsafeCell, io::ErrorKind, sync::Mutex};
+use telegraf::{Client, IntoFieldData, TelegrafError};
+use vlcrs_core::{
+    tracer::{TraceValue, TracerCapability, TracerModuleLoader},
+    Error,
+};
 use vlcrs_macros::module;
 
 struct TraceValueWrapper<'a>(TraceValue<'a>);
@@ -37,18 +40,31 @@ struct TelegrafTracer {
     endpoint: Mutex<UnsafeCell<telegraf::Client>>,
 }
 
+fn cvt(err: TelegrafError) -> Error {
+    println!("TELEGRAPH: {err:?}");
+    let e = match err {
+        TelegrafError::IoError(error) => error.into(),
+        TelegrafError::ConnectionError(_) => Error::from_kind(ErrorKind::InvalidInput),
+        TelegrafError::BadProtocol(_) => Error::from_kind(ErrorKind::HostUnreachable),
+    };
+    match e.kind() {
+        ErrorKind::Other if e.as_raw() == Error::EGENERIC => todo!(),
+        _ => (),
+    }
+    println!("TELEGRAPH: {e:?}");
+    e
+}
+
 impl TracerCapability for TelegrafTracer {
-    fn open(_obj: &mut vlcrs_core::object::Object) -> Option<impl TracerCapability>
+    fn open(_obj: &mut vlcrs_core::object::Object) -> Result<impl TracerCapability, Error>
     where
         Self: Sized,
     {
         let endpoint_address =
             std::env::var("VLC_TELEGRAF_ENDPOINT").unwrap_or(String::from("tcp://localhost:8094"));
-        let endpoint = Client::new(&endpoint_address)
-            .map(UnsafeCell::new)
-            .map(Mutex::new)
-            .unwrap();
-        Some(Self { endpoint })
+        let client = Client::new(&endpoint_address).map_err(cvt)?;
+        let endpoint = Mutex::new(UnsafeCell::new(client));
+        Ok(Self { endpoint })
     }
 
     fn trace(&self, _tick: vlcrs_core::tracer::Tick, trace: &vlcrs_core::tracer::Trace) {

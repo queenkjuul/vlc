@@ -228,12 +228,13 @@ static const struct vlc_tracer_operations json_ops =
     Close
 };
 
-static const struct vlc_tracer_operations *Open(vlc_object_t *obj,
-                                               void **restrict sysp)
+static int Open(vlc_object_t *obj,
+                void **restrict sysp,
+                const struct vlc_tracer_operations **restrict ops)
 {
     vlc_tracer_sys_t *sys = malloc(sizeof (*sys));
     if (unlikely(sys == NULL))
-        return NULL;
+        return -ENOMEM;
 
     const char *filename = JSON_FILENAME;
 
@@ -258,18 +259,20 @@ static const struct vlc_tracer_operations *Open(vlc_object_t *obj,
     sys->stream = vlc_fopen(filename, "at");
     if (sys->stream == NULL)
     {
+        const int err = errno;
         msg_Err(obj, "error opening log file `%s': %s", filename,
-            vlc_strerror_c(errno) );
+            vlc_strerror_c(err) );
         free(path);
         free(sys);
-        return NULL;
+        return -err;
     }
     free(path);
 
     setvbuf(sys->stream, NULL, _IOLBF, 0);
 
     *sysp = sys;
-    return &json_ops;
+    *ops = &json_ops;
+    return 0;
 }
 
 #define LOGFILE_NAME_TEXT N_("Log filename")

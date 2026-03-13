@@ -79,7 +79,7 @@ pub struct Tick(pub i64);
 /// object so that it becomes Sync and can be used in the multiples threads.
 ///
 pub trait TracerCapability: Sync {
-    fn open(obj: &mut Object) -> Option<impl TracerCapability>
+    fn open(obj: &mut Object) -> Result<impl TracerCapability, crate::Error>
     where
         Self: Sized;
 
@@ -87,11 +87,11 @@ pub trait TracerCapability: Sync {
 }
 
 #[allow(non_camel_case_types)]
-pub type TracerCapabilityActivate =
-    unsafe extern "C" fn(
-        obj: &mut Object,
-        opaque: &mut MaybeUninit<*mut c_void>,
-    ) -> Option<&'static sys::vlc_tracer_operations>;
+pub type TracerCapabilityActivate = unsafe extern "C" fn(
+    obj: &mut Object,
+    opaque: &mut MaybeUninit<*mut c_void>,
+    ops: &mut MaybeUninit<*const sys::vlc_tracer_operations>,
+) -> libc::c_int;
 
 extern "C" fn tracer_trace(
     opaque: *const c_void,
@@ -119,14 +119,26 @@ const TRACER_OPERATIONS: sys::vlc_tracer_operations = sys::vlc_tracer_operations
 extern "C" fn activate_tracer<T: TracerCapability>(
     obj: &mut Object,
     opaque: &mut MaybeUninit<*mut c_void>,
-) -> Option<&'static sys::vlc_tracer_operations> {
-    if let Some(instance) = T::open(obj) {
-        let wrapper: Box<dyn TracerCapability> = Box::try_new(instance).ok()?;
-        let sys = Box::into_raw(Box::try_new(wrapper).ok()?);
-        opaque.write(sys as *mut _);
-        return Some(&TRACER_OPERATIONS);
+    ops: &mut MaybeUninit<*const sys::vlc_tracer_operations>,
+) -> libc::c_int {
+    match T::open(obj) {
+        Ok(instance) => {
+            println!("RUST: Ok");
+            let Ok(wrapper) = Box::try_new(instance) else {
+                return -libc::ENOMEM;
+            };
+            let Ok(sys) = Box::try_new(wrapper) else {
+                return -libc::ENOMEM;
+            };
+            opaque.write(Box::into_raw(sys) as *mut _);
+            ops.write(&TRACER_OPERATIONS as *const _);
+            0
+        }
+        Err(e) => {
+            println!("RUST: {e:?}");
+            e.as_raw()
+        },
     }
-    None
 }
 
 ///

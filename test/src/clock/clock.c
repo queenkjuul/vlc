@@ -291,17 +291,18 @@ static void TracerTrace(void *opaque, vlc_tick_t ts,
 }
 
 /* Used to check for some trace value and hack the ts to the user tracer */
-static const struct vlc_tracer_operations *
-OpenTracer(vlc_object_t *obj, void **restrict sysp)
+static int OpenTracer(vlc_object_t *obj,
+                      void **restrict sysp,
+                      const struct vlc_tracer_operations **restrict ops)
 {
-    static const struct vlc_tracer_operations ops =
+    static const struct vlc_tracer_operations test_ops =
     {
         .trace = TracerTrace,
     };
 
     *sysp = vlc_object_get_tracer(obj);
-
-    return &ops;
+    *ops = &test_ops;
+    return 0;
 }
 
 vlc_module_begin()
