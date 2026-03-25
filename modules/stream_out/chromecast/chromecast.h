@@ -133,8 +133,10 @@ public:
                                  float volume, bool mute);
     ssize_t receive( uint8_t *p_data, size_t i_size, int i_timeout, bool *pb_timeout );
 
-    std::string getServerBaseURL() const;
-
+    const std::string getServerIp()
+    {
+        return m_serverIp;
+    }
 private:
     int sendMessage(const castchannel::CastMessage &msg);
 
