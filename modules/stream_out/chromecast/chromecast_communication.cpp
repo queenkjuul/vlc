@@ -283,6 +283,22 @@ static std::string meta_get_escaped(const vlc_meta_t *p_meta, vlc_meta_type_t ty
     return escape_json(std::string(psz));
 }
 
+std::string ChromecastCommunication::getServerBaseURL() const
+{
+    std::stringstream builder;
+    
+    builder << "http://";
+    
+    const bool ipv6 = m_serverIp.find(":") != std::string::npos;
+    if (ipv6)
+        builder << "[" << m_serverIp << "]";
+    else
+        builder << m_serverIp;
+    
+    builder << ":" << m_serverPort;
+    return builder.str();
+}
+
 std::string ChromecastCommunication::GetMedia( const std::string& mime,
                                                const vlc_meta_t *p_meta )
 {
@@ -344,12 +360,11 @@ std::string ChromecastCommunication::GetMedia( const std::string& mime,
         }
     }
 
-    std::stringstream chromecast_url;
-    chromecast_url << "http://" << m_serverIp << ":" << m_serverPort << m_serverPath;
+    const std::string chromecast_url = getServerBaseURL() + m_serverPath;
 
-    msg_Dbg( m_module, "s_chromecast_url: %s", chromecast_url.str().c_str());
+    msg_Dbg( m_module, "s_chromecast_url: %s", chromecast_url.c_str());
 
-    ss << "\"contentId\":\"" << chromecast_url.str() << "\""
+    ss << "\"contentId\":\"" << chromecast_url << "\""
        << ",\"streamType\":\"LIVE\""
        << ",\"contentType\":\"" << mime << "\"";
 
