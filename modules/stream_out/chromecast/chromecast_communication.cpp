@@ -289,11 +289,15 @@ std::string ChromecastCommunication::getServerBaseURL() const
     
     builder << "http://";
     
-    const bool ipv6 = m_serverIp.find(":") != std::string::npos;
+    std::string ip =m_serverIp;
+    const bool ipv6 = ip.find(":") != std::string::npos;
+    size_t start_pos = ip.find("%");
+    if(start_pos != std::string::npos)
+        ip.replace(start_pos, 1u, "%25");
     if (ipv6)
-        builder << "[" << m_serverIp << "]";
+        builder << "[" << ip << "]";
     else
-        builder << m_serverIp;
+        builder << ip;
     
     builder << ":" << m_serverPort;
     return builder.str();

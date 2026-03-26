@@ -475,14 +475,14 @@ static int gnutls_ClientHandshake(vlc_tls_t *tls,
             goto error;
     }
 
-    if (vlc_dialog_wait_question(obj, VLC_DIALOG_QUESTION_WARNING,
-            _("Abort"), _("View certificate"), NULL,
-            _("Insecure site"),
-            _("You attempted to reach %s. %s\n"
-            "This problem may be stem from an attempt to breach your security, "
-            "compromise your privacy, or a configuration error.\n\n"
-            "If in doubt, abort now.\n"), host, vlc_gettext(msg)) != 1)
-        goto error;
+    //if (vlc_dialog_wait_question(obj, VLC_DIALOG_QUESTION_WARNING,
+    //        _("Abort"), _("View certificate"), NULL,
+    //        _("Insecure site"),
+    //        _("You attempted to reach %s. %s\n"
+    //        "This problem may be stem from an attempt to breach your security, "
+    //        "compromise your privacy, or a configuration error.\n\n"
+    //        "If in doubt, abort now.\n"), host, vlc_gettext(msg)) != 1)
+    //    goto error;
 
     gnutls_x509_crt_t cert;
 
@@ -496,30 +496,31 @@ static int gnutls_ClientHandshake(vlc_tls_t *tls,
     }
     gnutls_x509_crt_deinit (cert);
 
-    val = vlc_dialog_wait_question(obj, VLC_DIALOG_QUESTION_WARNING,
-            _("Abort"), _("Accept 24 hours"), _("Accept permanently"),
-            _("Insecure site"),
-            _("This is the certificate presented by %s:\n%s\n\n"
-            "If in doubt, abort now.\n"), host, desc.data);
+    //val = vlc_dialog_wait_question(obj, VLC_DIALOG_QUESTION_WARNING,
+    //        _("Abort"), _("Accept 24 hours"), _("Accept permanently"),
+    //        _("Insecure site"),
+    //        _("This is the certificate presented by %s:\n%s\n\n"
+    //        "If in doubt, abort now.\n"), host, desc.data);
     gnutls_free (desc.data);
 
-    time_t expiry = 0;
-    switch (val)
-    {
-        case 1:
-            time (&expiry);
-            expiry += 24 * 60 * 60;
-            /* fall through */
-        case 2:
-            val = gnutls_store_pubkey (NULL, NULL, host, service,
-                                       GNUTLS_CRT_X509, datum, expiry, 0);
-            if (val)
-                msg_Err(obj, "cannot store X.509 certificate: %s",
-                         gnutls_strerror (val));
-            break;
-        default:
-            goto error;
-    }
+    //time_t expiry = 0;
+    //return 0;
+    //switch (val)
+    //{
+    //    case 1:
+    //        time (&expiry);
+    //        expiry += 24 * 60 * 60;
+    //        /* fall through */
+    //    case 2:
+    //        val = gnutls_store_pubkey (NULL, NULL, host, service,
+    //                                   GNUTLS_CRT_X509, datum, expiry, 0);
+    //        if (val)
+    //            msg_Err(obj, "cannot store X.509 certificate: %s",
+    //                     gnutls_strerror (val));
+    //        break;
+    //    default:
+    //        goto error;
+    //}
     return 0;
 
 error:

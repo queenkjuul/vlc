@@ -265,8 +265,8 @@ static void resolve_callback(
         AvahiStringList *asl = NULL;
         input_item_t *p_input = NULL;
 
-        msg_Dbg( p_sys->parent, "service '%s' of type '%s' in domain '%s' port %i",
-                 name, type, domain, port );
+        msg_Dbg( p_sys->parent, "service '%s' of type '%s' in domain '%s' port %i %s",
+                 name, type, domain, port, host_name );
 
         avahi_address_snprint(a, sizeof(a)-1, address);
         if( protocol == AVAHI_PROTO_INET6 )
