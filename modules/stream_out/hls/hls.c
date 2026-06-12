@@ -1240,7 +1240,6 @@ static int Send(sout_stream_t *stream, void *id, vlc_frame_t *frame)
 {
     hls_track_t *track = id;
     assert(frame->p_next == NULL);
-    printf("send %ld\n", frame->i_dts - VLC_TICK_0);
     return sout_MuxSendBuffer(track->playlist_ref->mux, track->input, frame);
     (void)stream;
 }
