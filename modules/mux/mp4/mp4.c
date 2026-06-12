@@ -1347,6 +1347,7 @@ static void WriteFragments(sout_mux_t *p_mux, bool b_flush)
     vlc_tick_t i_barrier_time = p_sys->i_written_duration + FRAGMENT_LENGTH;
     size_t i_mdat_size = 0;
     bool b_has_samples = false;
+    bool iframe_first = true;
 
     if(!p_sys->b_header_sent)
     {
@@ -1364,6 +1365,8 @@ static void WriteFragments(sout_mux_t *p_mux, bool b_flush)
         if (p_stream->read.p_first)
         {
             b_has_samples = true;
+            if (!(p_stream->read.p_first->p_block->i_flags & BLOCK_FLAG_TYPE_I))
+                iframe_first = false;
 
             /* set a barrier so we try to align to keyframe */
             if (p_stream->b_hasiframes &&
@@ -1393,6 +1396,10 @@ static void WriteFragments(sout_mux_t *p_mux, bool b_flush)
 
     if (moof)
     {
+        if (iframe_first)
+            moof->b->i_flags |= MP4_MUX_BLOCK_FLAG_SYNC;
+        moof->b->i_flags |= MP4_MUX_BLOCK_FLAG_BOUNDARY;
+
         msg_Dbg(p_mux, "writing moof @ %"PRId64, p_sys->i_pos);
         p_sys->i_pos += bo_size(moof);
         assert(moof->b->i_flags & BLOCK_FLAG_TYPE_I); /* http sout */
