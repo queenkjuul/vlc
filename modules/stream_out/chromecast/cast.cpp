@@ -32,6 +32,7 @@
 
 #include "../renderer_common.hpp"
 #include "chromecast.h"
+#include "cc_startup_cache.h"
 #include <vlc_configuration.h>
 #include <vlc_dialog.h>
 
@@ -40,9 +41,11 @@
 #include <vlc_modules.h>
 #include <vlc_httpd.h>
 
+#include <vlc_tracer.h>
+
 #include <cassert>
 
-#define TRANSCODING_NONE 0x0
+#define TRANSCODING_NONE  0x0
 #define TRANSCODING_VIDEO 0x1
 #define TRANSCODING_AUDIO 0x2
 
@@ -53,142 +56,62 @@
 
 namespace {
 
-static constexpr vlc_tick_t CHROMECAST_HANDOFF_ATTACH_TIMEOUT = VLC_TICK_FROM_SEC(5);
-
-struct sout_access_out_sys_t
-{
-    sout_access_out_sys_t(httpd_host_t *httpd_host, intf_sys_t * const intf);
-    ~sout_access_out_sys_t();
-
-    void clear();
-    void stop();
-    void prepare(sout_stream_t *p_stream, const std::string &mime);
-    int url_cb(httpd_client_t *cl, httpd_message_t *answer, const httpd_message_t *query);
-    void fifo_put_back(block_t *);
-    bool waitForClient(vlc_tick_t timeout, bool drained = false);
-    ssize_t write(sout_access_out_t *p_access, block_t *p_block);
-    void close();
-
-
-private:
-    void clearUnlocked();
-    void initCopy();
-    void putCopy(block_t *p_block);
-    void restoreCopy();
-
-    intf_sys_t * const m_intf;
-    httpd_url_t       *m_url;
-    httpd_client_t    *m_client;
-    vlc_fifo_t        *m_fifo;
-    block_t           *m_header;
-    block_t           *m_copy_chain;
-    block_t           **m_copy_last;
-    size_t             m_copy_size;
-    bool               m_eof;
-    std::string        m_mime;
-};
-
-typedef struct sout_stream_id_sys_t sout_stream_id_sys_t;
-
 struct sout_stream_sys_t
 {
-    sout_stream_sys_t(httpd_host_t *httpd_host, intf_sys_t * const intf, bool has_video, int port)
+    sout_stream_sys_t(httpd_host_t *httpd_host, intf_sys_t * const intf,
+                      bool has_video, int port)
         : httpd_host(httpd_host)
-        , access_out_live(httpd_host, intf)
-        , p_out(NULL)
+        , p_cache(nullptr)
         , p_intf(intf)
         , b_supports_video(has_video)
         , i_port(port)
-        , first_video_keyframe_pts( -1 )
-        , es_changed( true )
-        , cc_has_input( false )
-        , cc_flushing( false )
-        , cc_eof( false )
-        , has_video( false )
-        , out_force_reload( false )
-        , perf_warning_shown( false )
-        , transcoding_state( TRANSCODING_NONE )
-        , venc_opt_idx ( -1 )
-        , out_streams_added( 0 )
+        , cc_has_input(false)
+        , cc_flushing(false)
+        , cc_eof(false)
+        , perf_warning_shown(false)
+        , transcoding_state(TRANSCODING_NONE)
+        , venc_opt_idx(-1)
     {
-        assert(p_intf != NULL);
+        assert(p_intf != nullptr);
         vlc_mutex_init(&lock);
     }
 
-    ~sout_stream_sys_t()
-    {
-    }
+    ~sout_stream_sys_t() = default;
 
-    bool canDecodeVideo( const es_format_t * ) const;
-    bool canDecodeAudio( sout_stream_t* p_stream, vlc_fourcc_t i_codec,
-                         const audio_format_t* p_fmt ) const;
-    bool startSoutChain(sout_stream_t* p_stream,
-                        const std::vector<sout_stream_id_sys_t*> &new_streams,
-                        const std::string &sout, int new_transcoding_state);
-    void stopSoutChain(sout_stream_t* p_stream);
-    sout_stream_id_sys_t *GetSubId( sout_stream_t*, sout_stream_id_sys_t*, bool update = true );
-    bool isFlushing( sout_stream_t* );
-    void setNextTranscodingState();
+    bool canDecodeVideo(const es_format_t *) const;
+    bool canDecodeAudio(sout_stream_t *, vlc_fourcc_t,
+                        const audio_format_t *) const;
     bool transcodingCanFallback() const;
+    void setNextTranscodingState();
+    std::string GetAcodecOption(sout_stream_t *, vlc_fourcc_t *,
+                                const audio_format_t *, int);
 
-    httpd_host_t      *httpd_host;
-    sout_access_out_sys_t access_out_live;
-
-    sout_stream_t     *p_out;
-    std::string        mime;
-
-    vlc_mutex_t        lock; /* for input events cb */
-
-    intf_sys_t * const p_intf;
-    const bool b_supports_video;
-    const int i_port;
-
-    sout_stream_id_sys_t *             video_proxy_id;
-    vlc_tick_t                         first_video_keyframe_pts;
-
-    bool                               es_changed;
-    bool                               cc_has_input;
-    bool                               cc_flushing;
-    bool                               cc_eof;
-    bool                               has_video;
-    bool                               out_force_reload;
-    bool                               perf_warning_shown;
-    int                                transcoding_state;
-    int                                venc_opt_idx;
-    std::vector<sout_stream_id_sys_t*> streams;
-    std::vector<sout_stream_id_sys_t*> out_streams;
-    unsigned int                       out_streams_added;
-    unsigned int                       spu_streams_count;
-
-private:
-    std::string GetAcodecOption( sout_stream_t *, vlc_fourcc_t *, const audio_format_t *, int );
-    bool UpdateOutput( sout_stream_t * );
-};
-
-struct sout_stream_id_sys_t
-{
-    es_format_t           fmt;
-    const char            *es_id;
-    sout_stream_id_sys_t  *p_sub_id;
-    bool                  flushed;
+    httpd_host_t    *httpd_host;
+    sout_stream_t   *p_cache;   /* startup-cache helper; always valid after Open */
+    std::string      mime;
+    vlc_mutex_t      lock;      /* guards all mutable state; taken by input events too */
+    intf_sys_t      * const p_intf;
+    const bool       b_supports_video;
+    const int        i_port;
+    bool             cc_has_input;
+    bool             cc_flushing;
+    bool             cc_eof;
+    bool             perf_warning_shown;
+    int              transcoding_state;
+    int              venc_opt_idx;
 };
 
 } // namespace
 
 #define SOUT_CFG_PREFIX "sout-chromecast-"
 
-static const char DEFAULT_MUXER[] = "avformat{mux=matroska,options={live=1},reset-ts}";
-static const char DEFAULT_MUXER_WEBM[] = "avformat{mux=webm,options={live=1},reset-ts}";
-
-
 /*****************************************************************************
  * Local prototypes
  *****************************************************************************/
-static int Open(vlc_object_t *);
+static int  Open(vlc_object_t *);
 static void Close(sout_stream_t *);
-static int ProxyOpen(vlc_object_t *);
-static int AccessOpen(vlc_object_t *);
-static void AccessClose(vlc_object_t *);
+static bool BuildHLSChain(void *opaque, sout_stream_t *cache,
+                          cc_startup_cache_sys_t *csys);
 
 static const char *const ppsz_sout_options[] = {
     "ip", "port", "http-port", "video", "device-name", NULL
@@ -207,11 +130,6 @@ static const char *const ppsz_sout_options[] = {
 #define PORT_TEXT N_("Chromecast port")
 #define PORT_LONGTEXT N_("The port used to talk to the Chromecast.")
 
-/* Fifo size after we tell the demux to pace */
-#define HTTPD_BUFFER_PACE INT64_C(2 * 1024 * 1024) /* 2 MB */
-/* Fifo size after we drop packets (should not happen) */
-#define HTTPD_BUFFER_MAX INT64_C(32 * 1024 * 1024) /* 32 MB */
-#define HTTPD_BUFFER_COPY_MAX INT64_C(10 * 1024 * 1024) /* 10 MB */
 
 vlc_module_begin ()
 
@@ -234,561 +152,11 @@ vlc_module_begin ()
     add_obsolete_string(SOUT_CFG_PREFIX "mux") /* since 4.0.0 */
     add_obsolete_string(SOUT_CFG_PREFIX "mime") /* since 4.0.0 */
     add_renderer_opts(SOUT_CFG_PREFIX)
-
-    add_submodule()
-        /* sout proxy that start the cc input when all streams are loaded */
-        add_shortcut("chromecast-proxy")
-        set_capability("sout filter", 0)
-        set_callback(ProxyOpen)
-    add_submodule()
-        set_subcategory(SUBCAT_SOUT_ACO)
-        add_shortcut("chromecast-http")
-        set_capability("sout access", 0)
-        set_callbacks(AccessOpen, AccessClose)
 vlc_module_end ()
 
-static void *ProxyAdd(sout_stream_t *p_stream, const es_format_t *p_fmt, const char* es_id)
-{
-    sout_stream_sys_t *p_sys = reinterpret_cast<sout_stream_sys_t *>( p_stream->p_sys );
-    sout_stream_id_sys_t *id = reinterpret_cast<sout_stream_id_sys_t *>( sout_StreamIdAdd(p_stream->p_next, p_fmt, es_id) );
-    if (id)
-    {
-        if (p_fmt->i_cat == VIDEO_ES)
-            p_sys->video_proxy_id = id;
-        p_sys->out_streams_added++;
-    }
-    return id;
-}
-
-static void ProxyDel(sout_stream_t *p_stream, void *_id)
-{
-    sout_stream_sys_t *p_sys = reinterpret_cast<sout_stream_sys_t *>( p_stream->p_sys );
-    sout_stream_id_sys_t *id = reinterpret_cast<sout_stream_id_sys_t *>( _id );
-    p_sys->out_streams_added--;
-    if (id == p_sys->video_proxy_id)
-        p_sys->video_proxy_id = NULL;
-    return sout_StreamIdDel(p_stream->p_next, id);
-}
-
-static int ProxySend(sout_stream_t *p_stream, void *_id, block_t *p_buffer)
-{
-    sout_stream_sys_t *p_sys = reinterpret_cast<sout_stream_sys_t *>( p_stream->p_sys );
-    sout_stream_id_sys_t *id = reinterpret_cast<sout_stream_id_sys_t *>( _id );
-    if (p_sys->cc_has_input
-     || p_sys->out_streams_added >= p_sys->out_streams.size() - p_sys->spu_streams_count)
-    {
-        if (p_sys->has_video)
-        {
-            // In case of video, the first block must be a keyframe
-            if (id == p_sys->video_proxy_id)
-            {
-                if (p_sys->first_video_keyframe_pts == -1
-                 && p_buffer->i_flags & BLOCK_FLAG_TYPE_I)
-                    p_sys->first_video_keyframe_pts = p_buffer->i_pts;
-            }
-            else // no keyframe for audio
-                p_buffer->i_flags &= ~BLOCK_FLAG_TYPE_I;
-
-            if (p_buffer->i_pts < p_sys->first_video_keyframe_pts
-             || p_sys->first_video_keyframe_pts == -1)
-            {
-                block_ChainRelease(p_buffer);
-                return VLC_SUCCESS;
-            }
-        }
-
-        int ret = sout_StreamIdSend(p_stream->p_next, id, p_buffer);
-        if (ret == VLC_SUCCESS && !p_sys->cc_has_input)
-        {
-            /* Start the chromecast only when all streams are added into the
-             * last sout (the http one) */
-            p_sys->p_intf->setHasInput(p_sys->mime);
-            p_sys->cc_has_input = true;
-        }
-        return ret;
-    }
-    else
-    {
-        block_ChainRelease(p_buffer);
-        return VLC_SUCCESS;
-    }
-}
-
-static void ProxyFlush(sout_stream_t *p_stream, void *id)
-{
-    sout_StreamFlush(p_stream->p_next, id);
-}
-
-static const struct sout_stream_operations proxy_ops = [] {
-    struct sout_stream_operations ops{};
-    ops.add = ProxyAdd;
-    ops.del = ProxyDel;
-    ops.send = ProxySend;
-    ops.flush = ProxyFlush;
-    return ops;
-}();
-
-static int ProxyOpen(vlc_object_t *p_this)
-{
-    sout_stream_t *p_stream = reinterpret_cast<sout_stream_t*>(p_this);
-    sout_stream_sys_t *p_sys = (sout_stream_sys_t *) var_InheritAddress(p_this, SOUT_CFG_PREFIX "sys");
-    if (p_sys == NULL)
-        return VLC_EGENERIC;
-
-    p_stream->p_sys = (sout_stream_sys_t *) p_sys;
-    p_sys->out_streams_added = 0;
-    p_stream->ops = &proxy_ops;
-    return VLC_SUCCESS;
-}
-
-static int httpd_url_cb(httpd_callback_sys_t *data, httpd_client_t *cl,
-                        httpd_message_t *answer, const httpd_message_t *query)
-{
-    sout_access_out_sys_t *p_sys = reinterpret_cast<sout_access_out_sys_t *>(data);
-    return p_sys->url_cb(cl, answer, query);
-}
-
-sout_access_out_sys_t::sout_access_out_sys_t(httpd_host_t *httpd_host,
-                                             intf_sys_t * const intf)
-    : m_intf(intf)
-    , m_client(NULL)
-    , m_header(NULL)
-    , m_copy_chain(NULL)
-    , m_eof(true)
-{
-    m_fifo = block_FifoNew();
-    if (!m_fifo)
-        throw std::runtime_error( "block_FifoNew failed" );
-    m_url = httpd_UrlNew(httpd_host, intf->getHttpStreamPath().c_str(), NULL, NULL);
-    if (m_url == NULL)
-    {
-        block_FifoRelease(m_fifo);
-        throw std::runtime_error( "httpd_UrlNew failed" );
-    }
-    httpd_UrlCatch(m_url, HTTPD_MSG_GET, httpd_url_cb,
-                   (httpd_callback_sys_t*)this);
-    initCopy();
-}
-
-sout_access_out_sys_t::~sout_access_out_sys_t()
-{
-    httpd_UrlDelete(m_url);
-    block_FifoRelease(m_fifo);
-}
-
-void sout_access_out_sys_t::clearUnlocked()
-{
-    block_ChainRelease(vlc_fifo_DequeueAllUnlocked(m_fifo));
-    if (m_header)
-    {
-        block_Release(m_header);
-        m_header = NULL;
-    }
-    m_eof = true;
-    initCopy();
-}
-
-void sout_access_out_sys_t::initCopy()
-{
-    block_ChainRelease(m_copy_chain);
-    m_copy_chain = NULL;
-    m_copy_last = &m_copy_chain;
-    m_copy_size = 0;
-}
-
-void sout_access_out_sys_t::putCopy(block_t *p_block)
-{
-    while (m_copy_size >= HTTPD_BUFFER_COPY_MAX)
-    {
-        assert(m_copy_chain);
-        block_t *copy = m_copy_chain;
-        m_copy_chain = copy->p_next;
-        m_copy_size -= copy->i_buffer;
-        block_Release(copy);
-    }
-    if (!m_copy_chain)
-    {
-        assert(m_copy_size == 0);
-        m_copy_last = &m_copy_chain;
-    }
-    block_ChainLastAppend(&m_copy_last, p_block);
-    m_copy_size += p_block->i_buffer;
-}
-
-void sout_access_out_sys_t::restoreCopy()
-{
-    if (m_copy_chain)
-    {
-        fifo_put_back(m_copy_chain);
-        m_copy_chain = NULL;
-        initCopy();
-    }
-}
-
-void sout_access_out_sys_t::clear()
-{
-    vlc_fifo_Lock(m_fifo);
-    clearUnlocked();
-    vlc_fifo_Unlock(m_fifo);
-    vlc_fifo_Signal(m_fifo);
-}
-
-void sout_access_out_sys_t::stop()
-{
-    vlc_fifo_Lock(m_fifo);
-    clearUnlocked();
-    m_intf->setPacing(false);
-    m_client = NULL;
-    vlc_fifo_Unlock(m_fifo);
-    vlc_fifo_Signal(m_fifo);
-}
-
-void sout_access_out_sys_t::prepare(sout_stream_t *p_stream, const std::string &mime)
-{
-    var_SetAddress(p_stream, SOUT_CFG_PREFIX "access-out-sys", this);
-
-    vlc_fifo_Lock(m_fifo);
-    clearUnlocked();
-    m_intf->setPacing(false);
-    m_mime = mime;
-    m_eof = false;
-    vlc_fifo_Unlock(m_fifo);
-}
-
-void sout_access_out_sys_t::fifo_put_back(block_t *p_block)
-{
-    block_t *p_fifo = vlc_fifo_DequeueAllUnlocked(m_fifo);
-    vlc_fifo_QueueUnlocked(m_fifo, p_block);
-    vlc_fifo_QueueUnlocked(m_fifo, p_fifo);
-}
-
-int sout_access_out_sys_t::url_cb(httpd_client_t *cl, httpd_message_t *answer,
-                                  const httpd_message_t *query)
-{
-    if (!answer || !query || !cl)
-        return VLC_SUCCESS;
-
-    vlc_fifo_Lock(m_fifo);
-
-    if (!answer->i_body_offset)
-    {
-        /* When doing a lot a load requests, we can serve data to a client that
-         * will be closed (the close request is already sent). In that case, we
-         * should also serve data used by the old client to the new one. */
-        restoreCopy();
-        m_client = cl;
-    }
-
-    /* Send data per 512kB minimum */
-    size_t i_min_buffer = 524288;
-    while (m_client && vlc_fifo_GetBytes(m_fifo) < i_min_buffer && !m_eof)
-        vlc_fifo_Wait(m_fifo);
-
-    block_t *p_block = NULL;
-    if (m_client && vlc_fifo_GetBytes(m_fifo) > 0)
-    {
-        /* if less data is available, then we must be EOF */
-        if (vlc_fifo_GetBytes(m_fifo) < i_min_buffer)
-        {
-            assert(m_eof);
-            i_min_buffer = vlc_fifo_GetBytes(m_fifo);
-        }
-        block_t *p_first = vlc_fifo_DequeueUnlocked(m_fifo);
-
-        assert(p_first);
-        size_t i_total_size = p_first->i_buffer;
-        block_t *p_next = NULL, *p_cur = p_first;
-
-        while (i_total_size < i_min_buffer)
-        {
-            p_next = vlc_fifo_DequeueUnlocked(m_fifo);
-            assert(p_next);
-            i_total_size += p_next->i_buffer;
-            p_cur->p_next = p_next;
-            p_cur = p_cur->p_next;
-        }
-        assert(i_total_size >= i_min_buffer);
-
-        if (p_next != NULL)
-        {
-            p_block = block_Alloc(i_total_size);
-            if (p_block)
-                block_ChainExtract(p_first, p_block->p_buffer, p_block->i_buffer);
-            block_ChainRelease(p_first);
-        }
-        else
-            p_block = p_first;
-
-        if (vlc_fifo_GetBytes(m_fifo) < HTTPD_BUFFER_PACE)
-            m_intf->setPacing(false);
-    }
-
-    answer->i_proto  = HTTPD_PROTO_HTTP;
-    answer->i_version= 0;
-    answer->i_type   = HTTPD_MSG_ANSWER;
-    answer->i_status = 200;
-
-    if (p_block)
-    {
-        if (answer->i_body_offset == 0)
-        {
-            httpd_MsgAdd(answer, "Content-type", "%s", m_mime.c_str());
-            httpd_MsgAdd(answer, "Cache-Control", "no-cache");
-            httpd_MsgAdd(answer, "Connection", "close");
-        }
-
-        const bool send_header = answer->i_body_offset == 0 && m_header != NULL;
-        size_t i_answer_size = p_block->i_buffer;
-        if (send_header)
-            i_answer_size += m_header->i_buffer;
-
-        answer->p_body = (uint8_t *) malloc(i_answer_size);
-        if (answer->p_body)
-        {
-            answer->i_body = i_answer_size;
-            answer->i_body_offset += answer->i_body;
-            size_t i_block_offset = 0;
-            if (send_header)
-            {
-                memcpy(answer->p_body, m_header->p_buffer, m_header->i_buffer);
-                i_block_offset = m_header->i_buffer;
-            }
-            memcpy(&answer->p_body[i_block_offset], p_block->p_buffer, p_block->i_buffer);
-        }
-
-        putCopy(p_block);
-    }
-    if (!answer->i_body)
-        httpd_MsgAdd(answer, "Connection", "close");
-
-    vlc_fifo_Unlock(m_fifo);
-    return VLC_SUCCESS;
-}
-
-bool sout_access_out_sys_t::waitForClient(vlc_tick_t timeout, bool drained)
-{
-    const vlc_tick_t deadline = vlc_tick_now() + timeout;
-    while (vlc_tick_now() < deadline)
-    {
-        vlc_fifo_Lock(m_fifo);
-        const bool has_client = m_client != NULL && (!drained || vlc_fifo_GetBytes(m_fifo) == 0);
-        vlc_fifo_Unlock(m_fifo);
-
-        if (has_client)
-            return true;
-
-        vlc_tick_sleep(VLC_TICK_FROM_MS(100));
-    }
-    return false;
-}
-
-ssize_t sout_access_out_sys_t::write(sout_access_out_t *p_access, block_t *p_block)
-{
-    size_t i_len = p_block->i_buffer;
-
-    vlc_fifo_Lock(m_fifo);
-
-    if (p_block->i_flags & BLOCK_FLAG_HEADER)
-    {
-        if (m_header)
-            block_Release(m_header);
-        m_header = p_block;
-    }
-    else
-    {
-        /* Drop buffer is the fifo is really full */
-        if (vlc_fifo_GetBytes(m_fifo) >= HTTPD_BUFFER_PACE)
-        {
-            /* XXX: Hackisk way to pace between the sout (controlled by the
-             * decoder thread) and the demux filter (controlled by the input
-             * thread). When the httpd FIFO reaches a specific size, we tell
-             * the demux filter to pace and wait a little before queueing this
-             * block, but not too long since we don't want to block decoder
-             * thread controls. If the pacing fails (should not happen), we
-             * drop the first block in order to make room. The demux filter
-             * will be unpaced when the data is read from the httpd thread. */
-
-            m_intf->setPacing(true);
-
-            while (vlc_fifo_GetBytes(m_fifo) >= HTTPD_BUFFER_MAX)
-            {
-                block_t *p_drop = vlc_fifo_DequeueUnlocked(m_fifo);
-                msg_Warn(p_access, "httpd buffer full: dropping %zuB", p_drop->i_buffer);
-                block_Release(p_drop);
-            }
-        }
-        vlc_fifo_QueueUnlocked(m_fifo, p_block);
-    }
-
-    m_eof = false;
-
-    vlc_fifo_Unlock(m_fifo);
-    vlc_fifo_Signal(m_fifo);
-
-    return i_len;
-}
-
-void sout_access_out_sys_t::close()
-{
-    vlc_fifo_Lock(m_fifo);
-    m_eof = true;
-    m_intf->setPacing(false);
-    vlc_fifo_Unlock(m_fifo);
-    vlc_fifo_Signal(m_fifo);
-}
-
-ssize_t AccessWrite(sout_access_out_t *p_access, block_t *p_block)
-{
-    sout_access_out_sys_t *p_sys = reinterpret_cast<sout_access_out_sys_t *>( p_access->p_sys );
-    return p_sys->write(p_access, p_block);
-}
-
-static int AccessControl(sout_access_out_t *p_access, int i_query, va_list args)
-{
-    (void) p_access;
-
-    switch (i_query)
-    {
-        case ACCESS_OUT_CONTROLS_PACE:
-            *va_arg(args, bool *) = true;
-            break;
-        default:
-            return VLC_EGENERIC;
-    }
-    return VLC_SUCCESS;
-}
-
-static int AccessOpen(vlc_object_t *p_this)
-{
-    sout_access_out_t *p_access = (sout_access_out_t*)p_this;
-
-    sout_access_out_sys_t *p_sys = (sout_access_out_sys_t *)
-        var_InheritAddress(p_access, SOUT_CFG_PREFIX "access-out-sys");
-    if (p_sys == NULL)
-        return VLC_EGENERIC;
-
-    p_access->pf_write       = AccessWrite;
-    p_access->pf_control     = AccessControl;
-    p_access->p_sys          = p_sys;
-
-    return VLC_SUCCESS;
-}
-
-static void AccessClose(vlc_object_t *p_this)
-{
-    sout_access_out_t *p_access = (sout_access_out_t*)p_this;
-    sout_access_out_sys_t *p_sys = reinterpret_cast<sout_access_out_sys_t *>( p_access->p_sys );
-
-    p_sys->close();
-}
-
 /*****************************************************************************
- * Sout callbacks
+ * Codec capability helpers (unchanged from original)
  *****************************************************************************/
-static void *Add(sout_stream_t *p_stream, const es_format_t *p_fmt, const char *es_id)
-{
-    sout_stream_sys_t *p_sys = reinterpret_cast<sout_stream_sys_t *>( p_stream->p_sys );
-    vlc_mutex_locker locker(&p_sys->lock);
-
-    if (!p_sys->b_supports_video)
-    {
-        if (p_fmt->i_cat != AUDIO_ES)
-            return NULL;
-    }
-
-    sout_stream_id_sys_t *p_sys_id = (sout_stream_id_sys_t *)malloc( sizeof(sout_stream_id_sys_t) );
-    if (p_sys_id != NULL)
-    {
-        es_format_Copy( &p_sys_id->fmt, p_fmt );
-        p_sys_id->es_id = es_id;
-        p_sys_id->p_sub_id = NULL;
-        p_sys_id->flushed = false;
-
-        p_sys->streams.push_back( p_sys_id );
-        p_sys->es_changed = true;
-    }
-    return p_sys_id;
-}
-
-
-static void DelInternal(sout_stream_t *p_stream, void *_id, bool reset_config)
-{
-    sout_stream_sys_t *p_sys = reinterpret_cast<sout_stream_sys_t *>( p_stream->p_sys );
-    sout_stream_id_sys_t *id = reinterpret_cast<sout_stream_id_sys_t *>( _id );
-
-    for (std::vector<sout_stream_id_sys_t*>::iterator it = p_sys->streams.begin();
-         it != p_sys->streams.end(); )
-    {
-        sout_stream_id_sys_t *p_sys_id = *it;
-        if ( p_sys_id == id )
-        {
-            if ( p_sys_id->p_sub_id != NULL )
-            {
-                sout_StreamIdDel( p_sys->p_out, p_sys_id->p_sub_id );
-                for (std::vector<sout_stream_id_sys_t*>::iterator out_it = p_sys->out_streams.begin();
-                     out_it != p_sys->out_streams.end(); )
-                {
-                    if (*out_it == id)
-                    {
-                        p_sys->out_streams.erase(out_it);
-                        p_sys->es_changed = reset_config;
-                        p_sys->out_force_reload = reset_config;
-                        if( p_sys_id->fmt.i_cat == VIDEO_ES )
-                            p_sys->has_video = false;
-                        else if( p_sys_id->fmt.i_cat == SPU_ES )
-                            p_sys->spu_streams_count--;
-                        break;
-                    }
-                    out_it++;
-                }
-            }
-
-            es_format_Clean( &p_sys_id->fmt );
-            free( p_sys_id );
-            p_sys->streams.erase( it );
-            break;
-        }
-        it++;
-    }
-
-    if ( p_sys->out_streams.empty() )
-    {
-        if (p_sys->access_out_live.waitForClient(CHROMECAST_HANDOFF_ATTACH_TIMEOUT))
-        {
-            p_sys->access_out_live.waitForClient(CHROMECAST_HANDOFF_ATTACH_TIMEOUT, true);
-            p_sys->p_intf->preservePlaybackOnTeardown();
-        }
-        p_sys->stopSoutChain(p_stream);
-        p_sys->p_intf->requestPlayerStop();
-        p_sys->access_out_live.clear();
-        p_sys->transcoding_state = TRANSCODING_NONE;
-    }
-}
-
-static void Del(sout_stream_t *p_stream, void *_id)
-{
-    sout_stream_sys_t *p_sys = reinterpret_cast<sout_stream_sys_t *>( p_stream->p_sys );
-    sout_stream_id_sys_t *id = reinterpret_cast<sout_stream_id_sys_t *>( _id );
-
-    vlc_mutex_locker locker(&p_sys->lock);
-    DelInternal(p_stream, id, true);
-}
-
-/**
- * Transcode steps:
- * 0: Accept HEVC/VP9 & all supported audio formats
- * 1: Transcode to h264 & accept all supported audio formats if the video codec
- *    was HEVC/VP9
- * 2: Transcode to H264 & MP3
- *
- * Additionally:
- * - Allow (E)AC3 passthrough depending on the audio-passthrough
- *   config value, except for the final step, where we just give up and transcode
- *   everything.
- * - Disallow multichannel AAC
- *
- * Supported formats: https://developers.google.com/cast/docs/media
- */
 
 bool sout_stream_sys_t::canDecodeVideo( const es_format_t *es ) const
 {
@@ -803,17 +171,16 @@ bool sout_stream_sys_t::canDecodeVideo( const es_format_t *es ) const
     switch( es->i_codec )
     {
         case VLC_CODEC_HEVC:
-            if (original_chromecast) 
-                // Original Chromecasts do not support HEVC
+            if (original_chromecast)
                 return false;
         case VLC_CODEC_H264:
             return true;
         case VLC_CODEC_VP8:
-            if (es_format_HasVpxAlpha(es)) // contains alpha extradata
+            if (es_format_HasVpxAlpha(es))
                 return false;
             return true;
         case VLC_CODEC_VP9:
-            if (es_format_HasVpxAlpha(es)) // contains alpha extradata
+            if (es_format_HasVpxAlpha(es))
                 return false;
             return true;
         default:
@@ -823,7 +190,7 @@ bool sout_stream_sys_t::canDecodeVideo( const es_format_t *es ) const
 
 bool sout_stream_sys_t::canDecodeAudio( sout_stream_t *p_stream,
                                         vlc_fourcc_t i_codec,
-                                        const audio_format_t* p_fmt ) const
+                                        const audio_format_t *p_fmt ) const
 {
     if( transcoding_state & TRANSCODING_AUDIO )
         return false;
@@ -848,111 +215,14 @@ bool sout_stream_sys_t::canDecodeAudio( sout_stream_t *p_stream,
     }
 }
 
-void sout_stream_sys_t::stopSoutChain(sout_stream_t *p_stream)
-{
-    (void) p_stream;
-
-    if ( unlikely( p_out != NULL ) )
-    {
-        for ( size_t i = 0; i < out_streams.size(); i++ )
-        {
-            if ( out_streams[i]->p_sub_id != NULL )
-            {
-                sout_StreamIdDel( p_out, out_streams[i]->p_sub_id );
-                out_streams[i]->p_sub_id = NULL;
-            }
-        }
-        out_streams.clear();
-        sout_StreamChainDelete( p_out, NULL );
-        p_out = NULL;
-    }
-}
-
-bool sout_stream_sys_t::startSoutChain(sout_stream_t *p_stream,
-                                       const std::vector<sout_stream_id_sys_t*> &new_streams,
-                                       const std::string &sout, int new_transcoding_state)
-{
-    stopSoutChain( p_stream );
-
-    msg_Dbg( p_stream, "Creating chain %s", sout.c_str() );
-    cc_has_input = false;
-    first_video_keyframe_pts = -1;
-    video_proxy_id = NULL;
-    has_video = false;
-    out_streams = new_streams;
-    spu_streams_count = 0;
-    transcoding_state = new_transcoding_state;
-
-    access_out_live.prepare( p_stream, mime );
-
-    p_out = sout_StreamChainNew(VLC_OBJECT(p_stream), sout.c_str(), NULL);
-    if (p_out == NULL) {
-        msg_Dbg(p_stream, "could not create sout chain:%s", sout.c_str());
-        out_streams.clear();
-        access_out_live.clear();
-        return false;
-    }
-
-    /* check the streams we can actually add */
-    for (std::vector<sout_stream_id_sys_t*>::iterator it = out_streams.begin();
-         it != out_streams.end(); )
-    {
-        sout_stream_id_sys_t *p_sys_id = *it;
-        p_sys_id->p_sub_id = reinterpret_cast<sout_stream_id_sys_t *>(
-            sout_StreamIdAdd(p_out, &p_sys_id->fmt, p_sys_id->es_id) );
-        if ( p_sys_id->p_sub_id == NULL )
-        {
-            msg_Err( p_stream, "can't handle %4.4s stream", (char *)&p_sys_id->fmt.i_codec );
-            es_format_Clean( &p_sys_id->fmt );
-            it = out_streams.erase( it );
-        }
-        else
-        {
-            if( p_sys_id->fmt.i_cat == VIDEO_ES )
-                has_video = true;
-            else if( p_sys_id->fmt.i_cat == SPU_ES )
-                spu_streams_count++;
-            ++it;
-        }
-    }
-
-    if (out_streams.empty())
-    {
-        stopSoutChain( p_stream );
-        access_out_live.clear();
-        return false;
-    }
-
-    /* Ask to retry if we are not transcoding everything (because we can trust
-     * what we encode) */
-    p_intf->setRetryOnFail(transcodingCanFallback());
-
-    return true;
-}
-
-void sout_stream_sys_t::setNextTranscodingState()
-{
-    if (!(transcoding_state & TRANSCODING_VIDEO))
-        transcoding_state |= TRANSCODING_VIDEO;
-    else if (!(transcoding_state & TRANSCODING_AUDIO))
-        transcoding_state = TRANSCODING_AUDIO;
-}
-
-bool sout_stream_sys_t::transcodingCanFallback() const
-{
-    return transcoding_state != (TRANSCODING_VIDEO|TRANSCODING_AUDIO);
-}
-
 std::string
-sout_stream_sys_t::GetAcodecOption( sout_stream_t *p_stream, vlc_fourcc_t *p_codec_audio,
+sout_stream_sys_t::GetAcodecOption( sout_stream_t *p_stream,
+                                    vlc_fourcc_t *p_codec_audio,
                                     const audio_format_t *p_aud, int i_quality )
 {
     std::stringstream ssout;
-
     bool b_audio_mp3;
 
-    /* If we were already transcoding: force mp3 because maybe the CC may
-     * have failed because of vorbis. */
     if( transcoding_state & TRANSCODING_AUDIO )
         b_audio_mp3 = true;
     else
@@ -971,7 +241,7 @@ sout_stream_sys_t::GetAcodecOption( sout_stream_t *p_stream, vlc_fourcc_t *p_cod
 
     if ( !b_audio_mp3
       && p_aud->i_channels > 2 && module_exists( "vorbis" ) )
-        *p_codec_audio = VLC_CODEC_VORBIS;
+        *p_codec_audio = VLC_CODEC_MP4A;
     else
         *p_codec_audio = VLC_CODEC_MP3;
 
@@ -983,318 +253,455 @@ sout_stream_sys_t::GetAcodecOption( sout_stream_t *p_stream, vlc_fourcc_t *p_cod
     fourcc[4] = '\0';
     ssout << fourcc << ',';
 
-    /* XXX: higher vorbis qualities can cause glitches on some CC
-     * devices (Chromecast 1 & 2) */
-    if( *p_codec_audio == VLC_CODEC_VORBIS )
-        ssout << "aenc=vorbis{quality=4},";
-    else if( *p_codec_audio == VLC_CODEC_MP3 )
-        ssout << "ab=320,";
+    //if( *p_codec_audio == VLC_CODEC_VORBIS )
+    //    ssout << "aenc=vorbis{quality=4},";
+    //else if( *p_codec_audio == VLC_CODEC_MP3 )
+    //    ssout << "ab=320,";
     return ssout.str();
 }
 
-bool sout_stream_sys_t::UpdateOutput( sout_stream_t *p_stream )
+bool sout_stream_sys_t::transcodingCanFallback() const
 {
-    assert( p_stream->p_sys == this );
+    return transcoding_state != (TRANSCODING_VIDEO | TRANSCODING_AUDIO);
+}
 
-    if ( !es_changed )
-        return true;
+void sout_stream_sys_t::setNextTranscodingState()
+{
+    if (!(transcoding_state & TRANSCODING_VIDEO))
+        transcoding_state |= TRANSCODING_VIDEO;
+    else if (!(transcoding_state & TRANSCODING_AUDIO))
+        transcoding_state = TRANSCODING_AUDIO;
+}
 
-    es_changed = false;
+/*****************************************************************************
+ * HLS readiness callback — fired by the hls module once enough segments exist
+ *****************************************************************************/
 
+static int OnHlsReady(vlc_object_t *, const char *, vlc_value_t,
+                      vlc_value_t newval, void *data)
+{
+    sout_stream_sys_t *p_sys = static_cast<sout_stream_sys_t *>(data);
+    if (newval.b_bool && !p_sys->cc_has_input)
+    {
+        p_sys->p_intf->setHasInput(p_sys->mime);
+        p_sys->cc_has_input = true;
+    }
+    return VLC_SUCCESS;
+}
+
+/*****************************************************************************
+ * BuildHLSChain — cc_cache_build_fn callback
+ *
+ * Called by the startup cache once CC_STARTUP_CACHING PCR has elapsed.
+ * Selects one audio and one video track, builds the HLS sout chain with
+ * the correct variants= list, wires the selected tracks into the chain,
+ * and replays the buffered event FIFO.
+ *****************************************************************************/
+
+/* Release all buffered events and clear selections — shared failure cleanup. */
+static void BuildFailCleanup(cc_startup_cache_sys_t *csys)
+{
+    for (auto *t : csys->tracks)
+    {
+        t->selected      = false;
+        t->downstream_id = nullptr;
+    }
+    for (auto &ev : csys->events)
+        if (!ev.is_pcr && ev.block)
+            block_ChainRelease(ev.block);
+    csys->events.clear();
+}
+
+static bool BuildHLSChain(void *opaque, sout_stream_t *cache,
+                           cc_startup_cache_sys_t *csys)
+{
+    sout_stream_t     *p_stream = static_cast<sout_stream_t *>(opaque);
+    sout_stream_sys_t *p_sys    =
+        static_cast<sout_stream_sys_t *>(p_stream->p_sys);
+
+    /* ---- ES selection ---- */
     bool canRemux = true;
     vlc_fourcc_t i_codec_video = 0, i_codec_audio = 0;
-    const es_format_t *p_original_audio = NULL;
-    const es_format_t *p_original_video = NULL;
-    const es_format_t *p_original_spu = NULL;
-    bool b_out_streams_changed = false;
-    std::vector<sout_stream_id_sys_t*> new_streams;
+    const es_format_t *p_original_audio = nullptr;
+    const es_format_t *p_original_video = nullptr;
 
-    for (std::vector<sout_stream_id_sys_t*>::iterator it = streams.begin(); it != streams.end(); ++it)
+    for (auto *track : csys->tracks)
     {
-        const es_format_t *p_es = &(*it)->fmt;
-        if (p_es->i_cat == AUDIO_ES && p_original_audio == NULL)
+        const es_format_t *p_es = &track->fmt;
+        if (p_es->i_cat == AUDIO_ES && !p_original_audio)
         {
-            if ( !canDecodeAudio( p_stream, p_es->i_codec, &p_es->audio ) )
+            if (!p_sys->canDecodeAudio(p_stream, p_es->i_codec, &p_es->audio))
             {
-                msg_Dbg( p_stream, "can't remux audio track %d codec %4.4s", p_es->i_id, (const char*)&p_es->i_codec );
+                msg_Dbg(p_stream, "can't remux audio track %d codec %4.4s",
+                        p_es->i_id, (const char*)&p_es->i_codec);
                 canRemux = false;
             }
-            else if (i_codec_audio == 0)
+            else if (!i_codec_audio)
                 i_codec_audio = p_es->i_codec;
             p_original_audio = p_es;
-            new_streams.push_back(*it);
+            track->selected  = true;
         }
-        else if (b_supports_video)
+        else if (p_sys->b_supports_video &&
+                 p_es->i_cat == VIDEO_ES && !p_original_video)
         {
-            if (p_es->i_cat == VIDEO_ES && p_original_video == NULL)
+            if (!p_sys->canDecodeVideo(p_es))
             {
-                if (!canDecodeVideo( p_es ))
-                {
-                    msg_Dbg( p_stream, "can't remux video track %d codec %4.4s",
-                             p_es->i_id, (const char*)&p_es->i_codec );
-                    canRemux = false;
-                }
-                else if (i_codec_video == 0 && !p_original_spu)
-                    i_codec_video = p_es->i_codec;
-                p_original_video = p_es;
-                new_streams.push_back(*it);
-            }
-#ifdef CC_ENABLE_SPU
-            else if (p_es->i_cat == SPU_ES && p_original_spu == NULL)
-            {
-                msg_Dbg( p_stream, "forcing video transcode because of subtitle '%4.4s'",
-                         (const char*)&p_es->i_codec );
+                msg_Dbg(p_stream, "can't remux video track %d codec %4.4s",
+                        p_es->i_id, (const char*)&p_es->i_codec);
                 canRemux = false;
-                i_codec_video = 0;
-                p_original_spu = p_es;
-                new_streams.push_back(*it);
             }
-#endif
-            else
-                continue;
+            else if (!i_codec_video)
+                i_codec_video = p_es->i_codec;
+            p_original_video = p_es;
+            track->selected  = true;
         }
-        else
-            continue;
-
-        bool b_found = out_force_reload;
-        for (std::vector<sout_stream_id_sys_t*>::iterator out_it = out_streams.begin();
-             out_it != out_streams.end() && !b_found; ++out_it)
+        else if (p_sys->b_supports_video && p_es->i_cat == SPU_ES)
         {
-            if (*out_it == *it)
-                b_found = true;
+            track->selected  = true;
         }
-        if (!b_found)
-            b_out_streams_changed = true;
     }
 
-    if (new_streams.empty())
+    if (!p_original_audio && !p_original_video)
     {
-        p_intf->requestPlayerStop();
-        return true;
+        BuildFailCleanup(csys);
+        p_sys->p_intf->requestPlayerStop();
+        return false;
     }
 
-    /* Don't restart sout and CC session if streams didn't change */
-    if (!out_force_reload && new_streams.size() == out_streams.size() && !b_out_streams_changed)
-        return true;
-
-    out_force_reload = false;
-
+    /* ---- Optional transcode prefix ---- */
     std::stringstream ssout;
     int new_transcoding_state = TRANSCODING_NONE;
-    if ( !canRemux )
+
+    if (!canRemux)
     {
-        if ( !perf_warning_shown && i_codec_video == 0 && p_original_video
-          && var_InheritInteger( p_stream, RENDERER_CFG_PREFIX "show-perf-warning" ) )
+        if (!p_sys->perf_warning_shown && !i_codec_video && p_original_video
+            && var_InheritInteger(p_stream,
+                                  RENDERER_CFG_PREFIX "show-perf-warning"))
         {
-            int res = vlc_dialog_wait_question( p_stream,
+            int res = vlc_dialog_wait_question(p_stream,
                           VLC_DIALOG_QUESTION_WARNING,
-                         _("Cancel"), _("OK"), _("OK, don't warn me again"),
-                         _("Performance warning"),
-                         _("Casting this video requires conversion. "
-                           "This conversion can use all the available power and "
-                           "could quickly drain your battery." ) );
-            perf_warning_shown = true;
-            if ( res <= 0 )
-                 return false;
-            if ( res == 2 )
-                config_PutInt(RENDERER_CFG_PREFIX "show-perf-warning", 0 );
+                          _("Cancel"), _("OK"), _("OK, don't warn me again"),
+                          _("Performance warning"),
+                          _("Casting this video requires conversion. "
+                            "This conversion can use all the available power and "
+                            "could quickly drain your battery."));
+            p_sys->perf_warning_shown = true;
+            if (res <= 0)
+            {
+                BuildFailCleanup(csys);
+                return false;
+            }
+            if (res == 2)
+                config_PutInt(RENDERER_CFG_PREFIX "show-perf-warning", 0);
         }
 
-        const int i_quality = var_InheritInteger( p_stream, SOUT_CFG_PREFIX "conversion-quality" );
+        const int i_quality =
+            var_InheritInteger(p_stream, SOUT_CFG_PREFIX "conversion-quality");
 
-        /* TODO: provide audio samplerate and channels */
         ssout << "transcode{";
-        if ( i_codec_audio == 0 && p_original_audio )
+        if (!i_codec_audio && p_original_audio)
         {
-            ssout << GetAcodecOption( p_stream, &i_codec_audio,
-                                      &p_original_audio->audio, i_quality );
+            ssout << p_sys->GetAcodecOption(p_stream, &i_codec_audio,
+                                            &p_original_audio->audio, i_quality);
             new_transcoding_state |= TRANSCODING_AUDIO;
         }
-        if ( i_codec_video == 0 && p_original_video )
+        if (!i_codec_video && p_original_video)
         {
             try {
-                ssout << vlc_sout_renderer_GetVcodecOption( p_stream,
-                                        { VLC_CODEC_H264, VLC_CODEC_VP8 },
-                                        &i_codec_video,
-                                        &p_original_video->video, i_quality );
+                ssout << vlc_sout_renderer_GetVcodecOption(p_stream,
+                            { VLC_CODEC_H264, VLC_CODEC_VP8 },
+                            &i_codec_video,
+                            &p_original_video->video, i_quality);
                 new_transcoding_state |= TRANSCODING_VIDEO;
-            } catch(const std::exception& e) {
+            }
+            catch (const std::exception &)
+            {
+                BuildFailCleanup(csys);
                 return false;
             }
         }
-        if ( p_original_spu )
-            ssout << "soverlay,";
         ssout << "}:";
     }
 
-    const bool is_webm = ( i_codec_audio == VLC_CODEC_VORBIS ||
-                           i_codec_audio == VLC_CODEC_OPUS ) &&
-                         ( i_codec_video == VLC_CODEC_VP8 ||
-                           i_codec_video == VLC_CODEC_VP9 );
+    p_sys->mime              = "application/vnd.apple.mpegurl";
+    p_sys->transcoding_state = new_transcoding_state;
 
-    if ( !p_original_video )
+    /* ---- Build the hls{} chain string ---- */
+    /* For fMP4, Chromecast's HLS pipeline (Shaka/MSE) expects demuxed
+     * renditions: a single multi-track fMP4 segment with audio+video muxed is
+     * not accepted (MSE uses one SourceBuffer per content type). Put only the
+     * video track in the variant map; the HLS module turns every ES left out
+     * of the map into its own EXT-X-MEDIA rendition, giving audio its own
+     * audio-only segments. With no video (audio-only cast) the audio track
+     * becomes the variant instead. */
+    const int variant_cat = (p_original_video != nullptr) ? VIDEO_ES : AUDIO_ES;
+    ssout << "hls{variants={{";
+    bool first = true;
+    for (auto *track : csys->tracks)
     {
-        if( is_webm )
-            mime = "audio/webm";
-        else
-            mime = "audio/x-matroska";
+        if (!track->selected) continue;
+        if (track->fmt.i_cat != variant_cat) continue;
+        if (!first) ssout << ',';
+        ssout << track->es_id;
+        first = false;
     }
-    else
+    ssout << "}},seg-type=fmp4,host-http"
+          << ",seg-len=" << CC_HLS_SEG_LEN_SEC
+          << ",max-seg-len=" << CC_HLS_MAX_SEG_LEN_SEC
+          << ",num-seg=" << CC_HLS_NUM_SEG
+          //<< ",out-dir=/tmp/hls,base-url="
+          << ",base-url="
+          << p_sys->p_intf->getHttpStreamRoot() << "}";
+
+    const std::string chain_str = ssout.str();
+    msg_Dbg(p_stream, "Creating chain %s", chain_str.c_str());
+
+    sout_stream_t *p_out =
+        sout_StreamChainNew(VLC_OBJECT(p_stream), chain_str.c_str(), nullptr);
+    if (!p_out)
     {
-        if ( is_webm )
-            mime = "video/webm";
-        else
-            mime = "video/x-matroska";
+        msg_Err(p_stream, "could not create sout chain: %s", chain_str.c_str());
+        BuildFailCleanup(csys);
+        p_sys->p_intf->requestPlayerStop();
+        return false;
     }
 
-    ssout << "chromecast-proxy:"
-          << "std{mux=" << ( is_webm ? DEFAULT_MUXER_WEBM : DEFAULT_MUXER )
-          << ",access=chromecast-http}";
+    /* Register hls-ready readiness var callback and record it so the cache
+     * can remove it cleanly on reset. */
+    sout_stream_t *hls_out =
+        (new_transcoding_state != TRANSCODING_NONE) ? p_out->p_next : p_out;
 
-    if ( !startSoutChain( p_stream, new_streams, ssout.str(),
-                          new_transcoding_state ) )
-        p_intf->requestPlayerStop();
+    // TODO del
+    //hls_out = hls_out->p_next;
+
+    var_AddCallback(hls_out, "hls-ready", OnHlsReady, p_sys);
+    csys->hls_out        = hls_out;
+    csys->hls_ready_fn   = OnHlsReady;
+    csys->hls_ready_data = p_sys;
+
+    /* ---- Wire selected tracks into the chain ---- */
+    cache->p_next  = p_out;
+    bool any_wired = false;
+    for (auto *track : csys->tracks)
+    {
+        if (!track->selected) continue;
+        track->downstream_id =
+            sout_StreamIdAdd(p_out, &track->fmt, track->es_id);
+        if (!track->downstream_id)
+        {
+            msg_Err(p_stream, "can't handle %4.4s stream",
+                    (const char*)&track->fmt.i_codec);
+            track->selected = false;
+        }
+        else
+            any_wired = true;
+    }
+
+    if (!any_wired)
+    {
+        var_DelCallback(hls_out, "hls-ready", OnHlsReady, p_sys);
+        sout_StreamChainDelete(p_out, nullptr);
+        cache->p_next        = nullptr;
+        csys->hls_out        = nullptr;
+        csys->hls_ready_fn   = nullptr;
+        csys->hls_ready_data = nullptr;
+        BuildFailCleanup(csys);
+        p_sys->p_intf->requestPlayerStop();
+        return false;
+    }
+
+    struct vlc_tracer *tracer = vlc_object_get_tracer(VLC_OBJECT(p_stream));
+
+    if (tracer != nullptr)
+        vlc_tracer_TraceEvent(tracer, "HELLO", "preroll", "preroll on");
+    /* ---- Replay the pre-roll FIFO ---- */
+    for (auto &ev : csys->events)
+    {
+        if (ev.is_pcr)
+            sout_StreamSetPCR(p_out, ev.pcr);
+        else if (ev.track->downstream_id)
+            sout_StreamIdSend(p_out, ev.track->downstream_id, ev.block);
+        else
+            block_ChainRelease(ev.block);
+    }
+    csys->events.clear();
+    if (tracer != nullptr)
+        vlc_tracer_TraceEvent(tracer, "HELLO", "preroll", "preroll off");
+
+    csys->ready = true;
+    msg_Dbg(p_stream, "HLS chain ready (transcoding=0x%x)", new_transcoding_state);
+    p_sys->p_intf->setRetryOnFail(p_sys->transcodingCanFallback());
     return true;
 }
 
-sout_stream_id_sys_t *sout_stream_sys_t::GetSubId( sout_stream_t *p_stream,
-                                                   sout_stream_id_sys_t *id,
-                                                   bool update )
+/*****************************************************************************
+ * Input event callback (from Chromecast control thread)
+ *****************************************************************************/
+
+static void on_input_event_cb(void *data, enum cc_input_event event,
+                              union cc_input_arg arg)
 {
-    size_t i;
-
-    assert( p_stream->p_sys == this );
-
-    if ( update && UpdateOutput( p_stream ) == false )
-        return NULL;
-
-    for (i = 0; i < out_streams.size(); ++i)
-    {
-        if ( id == (sout_stream_id_sys_t*) out_streams[i] )
-            return out_streams[i]->p_sub_id;
-    }
-
-    return NULL;
-}
-
-bool sout_stream_sys_t::isFlushing( sout_stream_t *p_stream )
-{
-    (void) p_stream;
-
-    /* Make sure that all out_streams are flushed when flushing. This avoids
-     * too many sout/cc restart when a stream is sending data while one other
-     * is flushing */
-
-    if (!cc_flushing)
-        return false;
-
-    for (size_t i = 0; i < out_streams.size(); ++i)
-    {
-        if ( !out_streams[i]->flushed )
-            return true;
-    }
-
-    cc_flushing = false;
-    for (size_t i = 0; i < out_streams.size(); ++i)
-        out_streams[i]->flushed = false;
-
-    return false;
-}
-
-static int Send(sout_stream_t *p_stream, void *_id, block_t *p_buffer)
-{
-    sout_stream_sys_t *p_sys = reinterpret_cast<sout_stream_sys_t *>( p_stream->p_sys );
-    sout_stream_id_sys_t *id = reinterpret_cast<sout_stream_id_sys_t *>( _id );
-    vlc_mutex_locker locker(&p_sys->lock);
-
-    if( p_sys->isFlushing( p_stream ) || p_sys->cc_eof )
-    {
-        block_ChainRelease( p_buffer );
-        return VLC_SUCCESS;
-    }
-
-    sout_stream_id_sys_t *next_id = p_sys->GetSubId( p_stream, id );
-    if ( next_id == NULL )
-    {
-        block_ChainRelease( p_buffer );
-        return VLC_EGENERIC;
-    }
-
-    int ret = sout_StreamIdSend(p_sys->p_out, next_id, p_buffer);
-    if (ret != VLC_SUCCESS)
-        DelInternal(p_stream, id, false);
-
-    return ret;
-}
-
-static void Flush( sout_stream_t *p_stream, void *_id )
-{
-    sout_stream_sys_t *p_sys = reinterpret_cast<sout_stream_sys_t *>( p_stream->p_sys );
-    sout_stream_id_sys_t *id = reinterpret_cast<sout_stream_id_sys_t *>( _id );
-    vlc_mutex_locker locker(&p_sys->lock);
-
-    sout_stream_id_sys_t *next_id = p_sys->GetSubId( p_stream, id, false );
-    if ( next_id == NULL )
-        return;
-    id->flushed = true;
-
-    if( !p_sys->cc_flushing )
-    {
-        p_sys->cc_flushing = true;
-
-        p_sys->stopSoutChain( p_stream );
-
-        p_sys->access_out_live.stop();
-
-        if (p_sys->cc_has_input)
-        {
-            p_sys->p_intf->requestPlayerStop();
-            p_sys->cc_has_input = false;
-        }
-        p_sys->out_force_reload = p_sys->es_changed = true;
-    }
-}
-
-static void on_input_event_cb(void *data, enum cc_input_event event, union cc_input_arg arg )
-{
-    sout_stream_t *p_stream = reinterpret_cast<sout_stream_t*>(data);
-    sout_stream_sys_t *p_sys = reinterpret_cast<sout_stream_sys_t *>( p_stream->p_sys );
+    sout_stream_t     *p_stream = static_cast<sout_stream_t *>(data);
+    sout_stream_sys_t *p_sys    =
+        static_cast<sout_stream_sys_t *>(p_stream->p_sys);
 
     vlc_mutex_locker locker(&p_sys->lock);
     switch (event)
     {
         case CC_INPUT_EVENT_EOF:
-            /* In case of EOF: stop the sout chain in order to drain all
-             * sout/demuxers/access. If EOF changes to false, reset es_changed
-             * in order to reload the sout from next Send calls. */
             p_sys->cc_eof = arg.eof;
-            if( p_sys->cc_eof )
-                p_sys->stopSoutChain( p_stream );
-            else
-                p_sys->out_force_reload = p_sys->es_changed = true;
+            if (p_sys->cc_eof)
+            {
+                cc_startup_cache_Reset(p_sys->p_cache);
+                p_sys->cc_has_input = false;
+            }
+            /* When EOF lifts (cc_eof → false) the cache is already in
+             * buffering mode from the earlier reset; the next PCR window
+             * will rebuild the chain. */
             break;
+
         case CC_INPUT_EVENT_RETRY:
-            p_sys->stopSoutChain( p_stream );
-            if( p_sys->transcodingCanFallback() )
+            cc_startup_cache_Reset(p_sys->p_cache);
+            p_sys->cc_has_input = false;
+            if (p_sys->transcodingCanFallback())
             {
                 p_sys->setNextTranscodingState();
-                msg_Warn(p_stream, "Load failed detected. Switching to next "
+                msg_Warn(p_stream,
+                         "Load failed detected. Switching to next "
                          "configuration. Transcoding video%s",
-                         p_sys->transcoding_state & TRANSCODING_AUDIO ? "/audio" : "");
-                p_sys->out_force_reload = p_sys->es_changed = true;
+                         p_sys->transcoding_state & TRANSCODING_AUDIO
+                             ? "/audio" : "");
             }
             break;
     }
 }
 
+/*****************************************************************************
+ * Sout callbacks — thin forwarders to the startup cache
+ *****************************************************************************/
+
+static void *Add(sout_stream_t *p_stream, const es_format_t *p_fmt,
+                 const char *es_id)
+{
+    sout_stream_sys_t *p_sys =
+        static_cast<sout_stream_sys_t *>(p_stream->p_sys);
+    vlc_mutex_locker locker(&p_sys->lock);
+
+    //if (p_fmt->i_cat == AUDIO_ES || p_fmt->i_cat == SPU_ES)
+    //    return nullptr;
+    if (!p_sys->b_supports_video && p_fmt->i_cat != AUDIO_ES)
+        return nullptr;
+
+    /* If the chain is live a new track forces a rebuild: tear down and let
+     * the next PCR window call BuildHLSChain with the updated track set. */
+    cc_startup_cache_sys_t *csys =
+        static_cast<cc_startup_cache_sys_t *>(p_sys->p_cache->p_sys);
+    if (csys->ready)
+    {
+        bool had_input = p_sys->cc_has_input;
+        cc_startup_cache_Reset(p_sys->p_cache);
+        p_sys->cc_has_input = false;
+        if (had_input)
+            p_sys->p_intf->requestPlayerStop();
+    }
+
+    return sout_StreamIdAdd(p_sys->p_cache, p_fmt, es_id);
+}
+
+static void Del(sout_stream_t *p_stream, void *id)
+{
+    sout_stream_sys_t *p_sys =
+        static_cast<sout_stream_sys_t *>(p_stream->p_sys);
+    vlc_mutex_locker locker(&p_sys->lock);
+
+    cc_startup_cache_sys_t *csys =
+        static_cast<cc_startup_cache_sys_t *>(p_sys->p_cache->p_sys);
+    bool was_selected = static_cast<cc_cache_track_t *>(id)->selected;
+    bool was_ready    = csys->ready;
+
+    sout_StreamIdDel(p_sys->p_cache, id); /* → CacheDel; frees the track */
+
+    if (was_ready && was_selected)
+    {
+        bool any_selected = false;
+        for (auto *t : csys->tracks)
+            if (t->selected) { any_selected = true; break; }
+
+        if (!any_selected)
+        {
+            /* TODO: with HLS there is no single long-lived client to drain;
+             * preserve unconditionally so the device can hand off without a
+             * STOP.  Gate on an HLS-appropriate signal in a future pass. */
+            p_sys->p_intf->preservePlaybackOnTeardown();
+            cc_startup_cache_Reset(p_sys->p_cache);
+            p_sys->cc_has_input = false;
+            p_sys->p_intf->requestPlayerStop();
+            p_sys->transcoding_state = TRANSCODING_NONE;
+        }
+    }
+    else if (!was_ready && csys->tracks.empty())
+        p_sys->transcoding_state = TRANSCODING_NONE;
+}
+
+static int Send(sout_stream_t *p_stream, void *id, block_t *p_buffer)
+{
+    sout_stream_sys_t *p_sys =
+        static_cast<sout_stream_sys_t *>(p_stream->p_sys);
+    vlc_mutex_locker locker(&p_sys->lock);
+
+    if (p_sys->cc_eof)
+    {
+        block_ChainRelease(p_buffer);
+        return VLC_SUCCESS;
+    }
+
+    return sout_StreamIdSend(p_sys->p_cache, id, p_buffer);
+}
+
+static void Flush(sout_stream_t *p_stream, void */* id */)
+{
+    sout_stream_sys_t *p_sys =
+        static_cast<sout_stream_sys_t *>(p_stream->p_sys);
+    vlc_mutex_locker locker(&p_sys->lock);
+
+    /* Tear down the chain on the first flush; ignore subsequent per-track
+     * flushes until the next PCR resets cc_flushing. */
+    if (!p_sys->cc_flushing)
+    {
+        p_sys->cc_flushing  = true;
+        bool had_input      = p_sys->cc_has_input;
+        cc_startup_cache_Reset(p_sys->p_cache);
+        p_sys->cc_has_input = false;
+        if (had_input)
+            p_sys->p_intf->requestPlayerStop();
+    }
+}
+
+static void SetPCR(sout_stream_t *p_stream, vlc_tick_t pcr)
+{
+    sout_stream_sys_t *p_sys =
+        static_cast<sout_stream_sys_t *>(p_stream->p_sys);
+    vlc_mutex_locker locker(&p_sys->lock);
+
+    if (p_sys->cc_eof)
+        return;
+
+    /* A PCR arriving after a flush means new data is flowing; the chain
+     * rebuild will happen inside CacheSetPCR once the window elapses. */
+    p_sys->cc_flushing = false;
+
+    sout_StreamSetPCR(p_sys->p_cache, pcr);
+}
+
 static const struct sout_stream_operations ops = [] {
-    struct sout_stream_operations ops{};
-    ops.add = Add;
-    ops.del = Del;
-    ops.send = Send;
-    ops.flush = Flush;
-    ops.close = Close;
-    return ops;
+    struct sout_stream_operations o{};
+    o.add     = Add;
+    o.del     = Del;
+    o.send    = Send;
+    o.flush   = Flush;
+    o.set_pcr = SetPCR;
+    o.close   = Close;
+    return o;
 }();
 
 /*****************************************************************************
@@ -1302,27 +709,27 @@ static const struct sout_stream_operations ops = [] {
  *****************************************************************************/
 static int Open(vlc_object_t *p_this)
 {
-    vlc_object_t *parent = vlc_object_parent(p_this);
-    sout_stream_t *p_stream = reinterpret_cast<sout_stream_t*>(p_this);
-    sout_stream_sys_t *p_sys = NULL;
-    intf_sys_t *p_intf = NULL;
-    char *psz_ip = NULL;
-    httpd_host_t *httpd_host = NULL;
-    bool b_supports_video = true;
-    int i_local_server_port;
-    int i_device_port;
-    std::stringstream ss;
+    vlc_object_t     *parent   = vlc_object_parent(p_this);
+    sout_stream_t    *p_stream = reinterpret_cast<sout_stream_t *>(p_this);
+    sout_stream_sys_t *p_sys   = nullptr;
+    intf_sys_t       *p_intf   = nullptr;
+    char             *psz_ip   = nullptr;
+    httpd_host_t     *httpd_host = nullptr;
+    bool              b_supports_video = true;
+    int               i_local_server_port;
+    int               i_device_port;
 
-    config_ChainParse(p_stream, SOUT_CFG_PREFIX, ppsz_sout_options, p_stream->p_cfg);
+    config_ChainParse(p_stream, SOUT_CFG_PREFIX, ppsz_sout_options,
+                      p_stream->p_cfg);
 
-    psz_ip = var_GetNonEmptyString( p_stream, SOUT_CFG_PREFIX "ip");
-    if ( psz_ip == NULL )
+    psz_ip = var_GetNonEmptyString(p_stream, SOUT_CFG_PREFIX "ip");
+    if (!psz_ip)
     {
-        msg_Err( p_this, "missing Chromecast IP address" );
+        msg_Err(p_this, "missing Chromecast IP address");
         goto error;
     }
 
-    i_device_port = var_InheritInteger(p_stream, SOUT_CFG_PREFIX "port");
+    i_device_port       = var_InheritInteger(p_stream, SOUT_CFG_PREFIX "port");
     i_local_server_port = var_InheritInteger(p_stream, SOUT_CFG_PREFIX "http-port");
 
     var_Create(p_stream, "http-port", VLC_VAR_INTEGER);
@@ -1330,22 +737,23 @@ static int Open(vlc_object_t *p_this)
     var_Create(p_stream, "http-host", VLC_VAR_STRING);
     var_SetString(p_stream, "http-host", "");
     httpd_host = vlc_http_HostNew(VLC_OBJECT(p_stream));
-    if (httpd_host == NULL)
+    if (!httpd_host)
         goto error;
 
     try
     {
-        p_intf = new intf_sys_t( p_this, i_local_server_port, psz_ip, i_device_port,
-                                 httpd_host );
+        p_intf = new intf_sys_t(p_this, i_local_server_port, psz_ip,
+                                i_device_port, httpd_host);
     }
-    catch (const std::runtime_error& err )
+    catch (const std::runtime_error &err)
     {
-        msg_Err( p_this, "cannot load the Chromecast controller (%s)", err.what() );
+        msg_Err(p_this, "cannot load the Chromecast controller (%s)",
+                err.what());
         goto error;
     }
-    catch (const std::bad_alloc& )
+    catch (const std::bad_alloc &)
     {
-        p_intf = NULL;
+        p_intf = nullptr;
         goto error;
     }
 
@@ -1353,33 +761,31 @@ static int Open(vlc_object_t *p_this)
 
     try
     {
-        p_sys = new sout_stream_sys_t( httpd_host, p_intf, b_supports_video,
-                                                    i_local_server_port );
+        p_sys = new sout_stream_sys_t(httpd_host, p_intf, b_supports_video,
+                                      i_local_server_port);
     }
-    catch ( std::exception& ex )
+    catch (const std::exception &ex)
     {
-        msg_Err( p_stream, "Failed to instantiate sout_stream_sys_t: %s", ex.what() );
-        p_sys = NULL;
+        msg_Err(p_stream, "Failed to instantiate sout_stream_sys_t: %s",
+                ex.what());
+        p_sys = nullptr;
         goto error;
     }
 
+    p_sys->p_cache = cc_startup_cache_New(p_stream, BuildHLSChain, p_stream);
+    if (!p_sys->p_cache)
+        goto error;
+
     p_intf->setOnInputEventCb(on_input_event_cb, p_stream);
 
-    /* prevent sout-mux-caching since chromecast-proxy is already doing it */
-    var_Create(parent, "sout-mux-caching", VLC_VAR_INTEGER);
-    var_SetInteger(parent, "sout-mux-caching", 0);
+    /* Disable extra mux caching ahead of the hls segmenter. */
+    //var_Create(parent, "sout-mux-caching", VLC_VAR_INTEGER);
+    //var_SetInteger(parent, "sout-mux-caching", 0);
 
-    var_Create(parent, SOUT_CFG_PREFIX "sys", VLC_VAR_ADDRESS);
-    var_SetAddress(parent, SOUT_CFG_PREFIX "sys", p_sys );
-
-    var_Create(p_stream, SOUT_CFG_PREFIX "access-out-sys", VLC_VAR_ADDRESS);
-
-    // Set the sout callbacks.
-    p_stream->ops = &ops;
+    p_stream->ops   = &ops;
     p_stream->p_sys = p_sys;
 
     free(psz_ip);
-
     return VLC_SUCCESS;
 
 error:
@@ -1392,22 +798,28 @@ error:
 }
 
 /*****************************************************************************
- * Close: destroy interface
+ * Close: destroy the interface and HTTP host
  *****************************************************************************/
 static void Close(sout_stream_t *p_stream)
 {
-    vlc_object_t *parent = vlc_object_parent(p_stream);
-    sout_stream_sys_t *p_sys = reinterpret_cast<sout_stream_sys_t *>( p_stream->p_sys );
+    vlc_object_t     *parent = vlc_object_parent(p_stream);
+    sout_stream_sys_t *p_sys =
+        static_cast<sout_stream_sys_t *>(p_stream->p_sys);
 
-    assert(p_sys->out_streams.empty() && p_sys->streams.empty());
-    var_Destroy(parent, SOUT_CFG_PREFIX "sys");
-    var_Destroy(parent, SOUT_CFG_PREFIX "sout-mux-caching");
+    /* By the sout contract every id added with Add has been Del'd; the track
+     * list should therefore be empty. */
+    assert(static_cast<cc_startup_cache_sys_t *>(p_sys->p_cache->p_sys)
+               ->tracks.empty());
 
-    assert(p_sys->streams.empty() && p_sys->out_streams.empty());
+    /* CacheClose (invoked by sout_StreamChainDelete) handles final cleanup
+     * of any live HLS chain and the cache sys. */
+    sout_StreamChainDelete(p_sys->p_cache, nullptr);
+
+    var_Destroy(parent, "sout-mux-caching");
 
     httpd_host_t *httpd_host = p_sys->httpd_host;
     delete p_sys->p_intf;
     delete p_sys;
-    /* Delete last since p_intf and p_sys depends on httpd_host */
+    /* Delete last: p_intf and p_sys reference httpd_host. */
     httpd_HostDelete(httpd_host);
 }

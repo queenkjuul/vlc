@@ -33,6 +33,14 @@ extern "C" {
 
 #define CC_SHARED_VAR_NAME "cc_sout"
 
+/* HLS rolling-window parameters for the cast sout chain. Shared between the
+ * sout (which builds the hls{} chain string from them) and the demux filter
+ * (which derives its pre-playback pacing cap from them) so the two can never
+ * disagree about the size of the segment window. */
+#define CC_HLS_SEG_LEN_SEC      5
+#define CC_HLS_MAX_SEG_LEN_SEC  10
+#define CC_HLS_NUM_SEG          4
+
 #define CC_PACE_ERR        (-2)
 #define CC_PACE_ERR_RETRY  (-1)
 #define CC_PACE_OK          (0)
@@ -71,6 +79,9 @@ typedef struct
     void (*pf_set_meta)(void*, vlc_meta_t *p_meta);
 
     void (*pf_set_input_length)(void*, vlc_tick_t length);
+
+    void (*pf_set_master_demux_time)(void*, vlc_tick_t);
+    vlc_tick_t (*pf_get_master_demux_time)(void*);
 
 } chromecast_common;
 

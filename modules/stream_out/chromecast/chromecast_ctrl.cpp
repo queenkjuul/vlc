@@ -162,7 +162,9 @@ intf_sys_t::intf_sys_t(vlc_object_t * const p_this, int port, std::string device
  , m_art_idx(0)
  , m_cc_time_date( VLC_TICK_INVALID )
  , m_cc_time( VLC_TICK_INVALID )
+ , m_master_demux_time( VLC_TICK_0 )
  , m_pingRetriesLeft( PING_WAIT_RETRIES )
+ , m_has_forced_tracks(false)
 {
     m_communication = new ChromecastCommunication( p_this,
         getHttpStreamPath(), getHttpStreamPort(),
@@ -189,6 +191,8 @@ intf_sys_t::intf_sys_t(vlc_object_t * const p_this, int port, std::string device
     m_common.pf_set_pause_state  = set_pause_state;
     m_common.pf_set_meta         = set_meta;
     m_common.pf_set_input_length = set_input_length;
+    m_common.pf_set_master_demux_time = set_master_demux_time;
+    m_common.pf_get_master_demux_time = get_master_demux_time;
 
     assert( var_Type( vlc_object_parent(vlc_object_parent(m_module)), CC_SHARED_VAR_NAME) == 0 );
     if (var_Create( vlc_object_parent(vlc_object_parent(m_module)), CC_SHARED_VAR_NAME, VLC_VAR_ADDRESS ) == VLC_SUCCESS )
@@ -652,28 +656,28 @@ intf_sys_t::httpd_info_t::httpd_info_t( httpd_host_t* host, int port )
     : m_host( host )
     , m_port( port )
 {
-    for( int i = 0; i < 3; ++i )
-    {
+ //   for( int i = 0; i < 3; ++i )
+ //   {
         std::ostringstream ss;
         ss << "/chromecast"
            << "/" << vlc_tick_now()
            << "/" << static_cast<uint64_t>( vlc_mrand48() );
 
         m_root = ss.str();
-        m_url = httpd_UrlNew( m_host, m_root.c_str(), NULL, NULL );
-        if( m_url )
-            break;
-    }
+//        m_url = httpd_UrlNew( m_host, m_root.c_str(), NULL, NULL );
+ //       if( m_url )
+ //           break;
+ //   }
 
-    if( m_url == NULL )
-        throw std::runtime_error( "unable to bind to http path" );
+  //  if( m_url == NULL )
+  //      throw std::runtime_error( "unable to bind to http path" );
 }
 
 intf_sys_t::httpd_info_t::~httpd_info_t()
 
 {
-    if( m_url )
-        httpd_UrlDelete( m_url );
+//    if( m_url )
+//        httpd_UrlDelete( m_url );
 }
 
 /*****************************************************************************
@@ -966,9 +970,40 @@ void intf_sys_t::processMediaMessage( const castchannel::CastMessage& msg , cons
                                                                       "currentTime"));
                     m_cc_time = currentTime;
                     m_cc_time_date = vlc_tick_now();
-                    
-                    setState( Playing );
                 }
+
+                /* The Default Media Receiver honors the HLS manifest DEFAULT
+                 * flag for audio but deliberately does NOT auto-enable text
+                 * tracks (captions are gated for accessibility). We must
+                 * explicitly activate them here once the receiver has published
+                 * the trackIds it assigned from the playlist.
+                 *
+                 * TEST: delay the activation until 10s of playback have elapsed
+                 * (gated on the receiver-reported currentTime in m_cc_time). */
+                if ( !m_has_forced_tracks  )
+                {
+                    msg_Err(m_module, "Hello world");
+                    const json_value *media = json_get(&status->array.entries[0].object, "media");
+                    if (media != nullptr)
+                    {
+                        const json_value *tracks = json_get(&media->object, "tracks");
+                        if (tracks != nullptr)
+                        {
+                            std::vector<int64_t> trackIds;
+                            for (size_t i = 0; i < tracks->array.size; ++i)
+                            {
+                                const std::string_view type = json_get_str_view(&tracks->array.entries[i].object, "type");
+                                if (type == "TEXT" || type == "AUDIO")
+                                    trackIds.push_back((int64_t)json_get_num(&tracks->array.entries[i].object, "trackId"));
+                            }
+                            m_communication->msgPlayerEnableTracks( m_appTransportId, m_mediaSessionId,
+                                                                    trackIds );
+                        }
+                    }
+                    m_has_forced_tracks = true;
+                }
+
+                setState( Playing );
             }
             else if (newPlayerState == "BUFFERING")
             {
@@ -1004,6 +1039,7 @@ void intf_sys_t::processMediaMessage( const castchannel::CastMessage& msg , cons
     else if (type == "LOAD_FAILED")
     {
         msg_Err( m_module, "Media load failed");
+        assert(false);
         setState( LoadFailed );
     }
     else if (type == "LOAD_CANCELLED")
@@ -1209,9 +1245,14 @@ unsigned int intf_sys_t::getHttpStreamPort() const
     return m_httpd.m_port;
 }
 
+std::string intf_sys_t::getHttpStreamRoot() const
+{
+    return m_httpd.m_root;
+}
+
 std::string intf_sys_t::getHttpStreamPath() const
 {
-    return m_httpd.m_root + "/stream";
+    return m_httpd.m_root + "/stream.m3u8";
 }
 
 std::string intf_sys_t::getHttpArtRoot() const
@@ -1340,4 +1381,16 @@ void intf_sys_t::set_input_length(void *pt, vlc_tick_t length)
 {
     intf_sys_t *p_this = static_cast<intf_sys_t*>(pt);
     p_this->setInputLength( length );
+}
+
+void intf_sys_t::set_master_demux_time(void *pt, vlc_tick_t time)
+{
+    intf_sys_t *p_this = static_cast<intf_sys_t*>(pt);
+    p_this->setMasterDemuxTime( time );
+}
+
+vlc_tick_t intf_sys_t::get_master_demux_time(void *pt)
+{
+    intf_sys_t *p_this = static_cast<intf_sys_t*>(pt);
+    return p_this->getMasterDemuxTime();
 }

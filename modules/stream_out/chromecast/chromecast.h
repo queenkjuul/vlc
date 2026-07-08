@@ -68,6 +68,7 @@ static const std::string NAMESPACE_RECEIVER         = "urn:x-cast:com.google.cas
 
 // Media player Chromecast app id
 #define APP_ID "CC1AD845" // Default media player aka DEFAULT_MEDIA_RECEIVER_APPLICATION_ID
+//#define APP_ID "75F5CCD0" // Sample chromecast application to ease debugging
 
 enum States
 {
@@ -131,6 +132,9 @@ public:
                             const std::string & currentTime );
     unsigned msgPlayerSetVolume( const std::string& destinationId, int64_t mediaSessionId,
                                  float volume, bool mute);
+    unsigned msgPlayerEnableTracks( const std::string &destinationId,
+                                    int64_t mediaSessionId,
+                                    const std::vector<int64_t> &trackIds );
     ssize_t receive( uint8_t *p_data, size_t i_size, int i_timeout, bool *pb_timeout );
 
     std::string getServerBaseURL() const;
@@ -186,6 +190,7 @@ struct intf_sys_t
     vlc_tick_t getPauseDelay();
 
     unsigned int getHttpStreamPort() const;
+    std::string getHttpStreamRoot() const;
     std::string getHttpStreamPath() const;
     std::string getHttpArtRoot() const;
 
@@ -211,6 +216,9 @@ private:
 
     void setMeta( vlc_meta_t *p_meta );
     void setInputLength( vlc_tick_t length );
+
+    void setMasterDemuxTime(vlc_tick_t time) { m_master_demux_time = time; }
+    vlc_tick_t getMasterDemuxTime() const { return m_master_demux_time; }
 
     vlc_tick_t getPlaybackTimestamp();
 
@@ -241,6 +249,9 @@ private:
 
     static void set_meta(void*, vlc_meta_t *p_meta);
     static void set_input_length(void*, vlc_tick_t length);
+
+    static void set_master_demux_time(void *, vlc_tick_t time);
+    static vlc_tick_t get_master_demux_time(void *);
 
     void prepareHttpArtwork();
 
@@ -306,12 +317,17 @@ private:
     vlc_tick_t        m_cc_time_last_request_date;
     vlc_tick_t        m_cc_time_date;
     vlc_tick_t        m_cc_time;
+    vlc_tick_t        m_master_demux_time;
+
+    int64_t           m_sub_track_id;
 
     /* shared structure with the demux-filter */
     chromecast_common      m_common;
 
     /* Heartbeat */
     uint8_t m_pingRetriesLeft;
+
+    bool m_has_forced_tracks;
 };
 
 #endif /* VLC_CHROMECAST_H */
