@@ -149,6 +149,11 @@ typedef struct
     mp4_fragqueue_t  towrite;
     vlc_tick_t       i_last_iframe_time;
     vlc_tick_t       i_written_duration;
+    /* Constant composition-time (pts-dts) reorder delay subtracted from every
+     * sample's trun composition offset so the earliest presented sample maps to
+     * baseMediaDecodeTime (EPT=0) without an edit list. Computed once, from the
+     * first fragment, and reused for every subsequent fragment of the track. */
+    vlc_tick_t       i_cts_shift;
     mp4_fragindex_t *p_indexentries;
     uint32_t         i_indexentriesmax;
     uint32_t         i_indexentries;
@@ -215,6 +220,7 @@ static mp4_stream_t *mp4_stream_New(void)
         p_stream->i_first_dts = VLC_TICK_INVALID;
         p_stream->i_last_dts = VLC_TICK_INVALID;
         p_stream->i_last_pts = VLC_TICK_INVALID;
+        p_stream->i_cts_shift = VLC_TICK_INVALID;
     }
     return p_stream;
 }
@@ -1151,25 +1157,52 @@ static bo_t *GetMoofBox(sout_mux_t *p_mux, size_t *pi_mdat_total_size,
             if (i_fixupoffset == 0)
                 i_trun_flags |= MP4_TRUN_DATA_OFFSET;
 
-            bo_t *trun = box_full_new("trun", 0, i_trun_flags);
+            /* CMAF: use trun version 1 (signed composition offsets) so the
+             * reorder delay can be normalised out directly, no edit list. */
+            const uint8_t i_trun_version =
+                (i_trun_flags & MP4_TRUN_SAMPLE_TIME_OFFSET) ? 1 : 0;
+
+            bo_t *trun = box_full_new("trun", i_trun_version, i_trun_flags);
             if(!trun)
             {
                 bo_free(traf);
                 continue;
             }
 
-            /* count entries */
+            /* count entries, and find the smallest composition offset in this
+             * run so we can normalise the presentation origin */
             uint32_t i_entry_count = 0;
             vlc_tick_t i_run_time = p_stream->i_written_duration;
+            vlc_tick_t i_min_cts = INT64_MAX;
             mp4_fragentry_t *p_entry = p_stream->read.p_first;
             while(p_entry)
             {
                 if ( i_barrier_time && i_run_time + p_entry->p_block->i_length > i_barrier_time )
                     break;
+                if ( (i_trun_flags & MP4_TRUN_SAMPLE_TIME_OFFSET) &&
+                     p_entry->p_block->i_dts != VLC_TICK_INVALID &&
+                     p_entry->p_block->i_pts != VLC_TICK_INVALID )
+                {
+                    vlc_tick_t i_cts = p_entry->p_block->i_pts - p_entry->p_block->i_dts;
+                    if ( i_cts < i_min_cts )
+                        i_min_cts = i_cts;
+                }
                 i_entry_count++;
                 i_run_time += p_entry->p_block->i_length;
                 p_entry = p_entry->p_next;
             }
+
+            /* Latch the reorder delay on the first fragment that carries a
+             * composition offset, then reuse it for every following fragment so
+             * the presentation timeline stays continuous across the track. */
+            if ( (i_trun_flags & MP4_TRUN_SAMPLE_TIME_OFFSET) &&
+                 p_stream->i_cts_shift == VLC_TICK_INVALID &&
+                 i_min_cts != INT64_MAX )
+                p_stream->i_cts_shift = i_min_cts;
+
+            const vlc_tick_t i_cts_shift =
+                (p_stream->i_cts_shift != VLC_TICK_INVALID) ? p_stream->i_cts_shift : 0;
+
             bo_add_32be(trun, i_entry_count); // sample count
 
             if (i_trun_flags & MP4_TRUN_DATA_OFFSET)
@@ -1196,13 +1229,19 @@ static bo_t *GetMoofBox(sout_mux_t *p_mux, size_t *pi_mdat_total_size,
 
                 if (i_trun_flags & MP4_TRUN_SAMPLE_TIME_OFFSET)
                 {
+                    /* Signed (trun v1) composition offset, with the track's
+                     * constant reorder delay removed so the earliest presented
+                     * sample lands on baseMediaDecodeTime (EPT=0), no edit list. */
                     vlc_tick_t i_diff = 0;
-                    if ( p_entry->p_block->i_dts  != VLC_TICK_INVALID &&
-                         p_entry->p_block->i_pts > p_entry->p_block->i_dts )
+                    if ( p_entry->p_block->i_dts != VLC_TICK_INVALID &&
+                         p_entry->p_block->i_pts != VLC_TICK_INVALID )
                     {
                         i_diff = p_entry->p_block->i_pts - p_entry->p_block->i_dts;
                     }
-                    bo_add_32be(trun, samples_from_vlc_tick(i_diff, mp4mux_track_GetTimescale(p_stream->tinfo))); // ctts
+                    i_diff -= i_cts_shift;
+                    int64_t i_cts = samples_from_vlc_tick(i_diff,
+                                        mp4mux_track_GetTimescale(p_stream->tinfo));
+                    bo_add_32be(trun, i_cts); // ctts
                 }
 
                 *pi_mdat_total_size += p_entry->p_block->i_buffer;
