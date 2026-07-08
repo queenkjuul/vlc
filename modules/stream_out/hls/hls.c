@@ -192,12 +192,15 @@ static int HTTPCallback(httpd_callback_sys_t *sys,
 
     httpd_MsgAdd(answer, "Content-Type", "%s", storage->mime);
     httpd_MsgAdd(answer, "Cache-Control", "no-cache");
+    httpd_MsgAdd(answer, "Access-Control-Allow-Origin", "*");
+    httpd_MsgAdd(answer, "Access-Control-Expose-Headers", "Content-Length");
 
     answer->i_proto = HTTPD_PROTO_HTTP;
     answer->i_version = 0;
     answer->i_type = HTTPD_MSG_ANSWER;
 
     const ssize_t size = storage->get_content(storage, &answer->p_body);
+    printf("FETCHING %s %ld\n", query->psz_url, size);
     if (size != -1)
     {
         answer->i_body = size;
@@ -804,7 +807,20 @@ static bool IsSegmentSelfDecodable(const hls_block_chain_t *segment,
 static int ExtractAndAddSegment(hls_playlist_t *playlist,
                                 sout_stream_sys_t *sys)
 {
+    const vlc_tick_t buffered_before = playlist->muxed_output.length;
     hls_block_chain_t segment = ExtractSegment(playlist);
+
+    vlc_debug(playlist->logger,
+              "extract: range=[%" PRId64 ",%" PRId64 "]ms buffered %" PRId64
+              "ms->%" PRId64 "ms seg=%" PRId64 "ms muxed_dur=%" PRId64
+              "ms elapsed=%" PRId64 "ms",
+              MS_FROM_VLC_TICK(playlist->config->segment_length),
+              MS_FROM_VLC_TICK(playlist->config->max_segment_length),
+              MS_FROM_VLC_TICK(buffered_before),
+              MS_FROM_VLC_TICK(playlist->muxed_output.length),
+              MS_FROM_VLC_TICK(segment.length),
+              MS_FROM_VLC_TICK(playlist->muxed_duration),
+              MS_FROM_VLC_TICK(sys->elapsed_stream_time));
 
     size_t segment_size;
     block_ChainProperties(segment.begin, NULL, &segment_size, NULL);
