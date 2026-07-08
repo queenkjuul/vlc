@@ -1066,7 +1066,10 @@ static bo_t *GetMoofBox(sout_mux_t *p_mux, size_t *pi_mdat_total_size,
             }
         }
 
-        uint32_t i_tfhd_flags = 0x0;
+        /* Sample data offsets in trun are authored relative to the start of
+         * the enclosing moof; advertise that explicitly as CMAF/DASH mandate,
+         * rather than relying on the implicit single-track default. */
+        uint32_t i_tfhd_flags = MP4_TFHD_DEFAULT_BASE_IS_MOOF;
         if (p_stream->read.p_first)
         {
             /* Current segment have all same duration value, different than trex's default */
