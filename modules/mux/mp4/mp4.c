@@ -49,6 +49,24 @@
 #include "../extradata.h"
 #include "../../codec/ttml/ttml.h"
 
+/* Synthetic composition-time offset applied to every sample of a non-reordered
+ * (PTS==DTS) video track.
+ *
+ * Rationale: spec-correct muxers (ffmpeg included) emit no composition offset at
+ * all for PTS==DTS video, but some CMAF receivers -- notably the Chromecast CAF
+ * receiver -- then disable their WebVTT text pipeline and never render
+ * subtitles. Advertising a non-zero sample_composition_time_offset keeps that
+ * pipeline engaged.
+ *
+ * Ideally this offset would be trimmed back by a CMAF "offset edit" (elst) so
+ * the first presented sample stays anchored to baseMediaDecodeTime. That is not
+ * possible in the fragmented path: the init moov is written before any sample is
+ * known, so no edit list is emitted (verified: the HLS init carries no elst).
+ * We therefore leave the shift uncompensated and keep it deliberately small so
+ * the resulting presentation shift stays imperceptible (well under one frame and
+ * below A/V-sync perception). */
+#define MP4_CMAF_VIDEO_CTS_SHIFT VLC_TICK_FROM_MS(1)
+
 /*****************************************************************************
  * Module descriptor
  *****************************************************************************/
@@ -1151,8 +1169,20 @@ static bo_t *GetMoofBox(sout_mux_t *p_mux, size_t *pi_mdat_total_size,
                   mp4mux_track_GetDefaultSampleSize(p_stream->tinfo) == 0 ))
                 i_trun_flags |= MP4_TRUN_SAMPLE_SIZE;
 
-            if (mp4mux_track_HasBFrames(p_stream->tinfo))
+            /* Advertise composition-time offsets whenever presentation order
+             * may differ from decode order (any B-frame track), matching what
+             * ffmpeg's CMAF muxer does. We also always emit them for video so
+             * the workaround below can guarantee a non-zero entry (see there). */
+            const bool b_video =
+                mp4mux_track_GetFmt(p_stream->tinfo)->i_cat == VIDEO_ES;
+            if (mp4mux_track_HasBFrames(p_stream->tinfo) || b_video)
                 i_trun_flags |= MP4_TRUN_SAMPLE_TIME_OFFSET;
+
+            /* Non-reordered video: synthesise MP4_CMAF_VIDEO_CTS_SHIFT on every
+             * sample so the trun carries a non-zero composition offset (see that
+             * constant for the why and the uncompensated-shift caveat). */
+            const bool b_force_cts_workaround =
+                b_video && !mp4mux_track_HasBFrames(p_stream->tinfo);
 
             if (i_fixupoffset == 0)
                 i_trun_flags |= MP4_TRUN_DATA_OFFSET;
@@ -1239,6 +1269,8 @@ static bo_t *GetMoofBox(sout_mux_t *p_mux, size_t *pi_mdat_total_size,
                         i_diff = p_entry->p_block->i_pts - p_entry->p_block->i_dts;
                     }
                     i_diff -= i_cts_shift;
+                    if (b_force_cts_workaround)
+                        i_diff += MP4_CMAF_VIDEO_CTS_SHIFT;
                     int64_t i_cts = samples_from_vlc_tick(i_diff,
                                         mp4mux_track_GetTimescale(p_stream->tinfo));
                     bo_add_32be(trun, i_cts); // ctts
