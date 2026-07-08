@@ -162,11 +162,11 @@ VLC_API void vlc_tracer_Destroy(struct vlc_tracer *tracer);
 VLC_API void vlc_tracer_TraceWithTs(struct vlc_tracer *tracer, vlc_tick_t ts,
                                     const struct vlc_tracer_trace *trace);
 #define vlc_tracer_TraceWithTs(tracer, ts, ...) \
-    (vlc_tracer_TraceWithTs)(tracer, ts, &(const struct vlc_tracer_trace) { \
-        .entries = (const struct vlc_tracer_entry[]) { \
-            __VA_ARGS__ \
-        } \
-    })
+    do { \
+        const struct vlc_tracer_entry vlc_tracer_entries_[] = { __VA_ARGS__ }; \
+        const struct vlc_tracer_trace vlc_tracer_trace_ = { vlc_tracer_entries_ }; \
+        (vlc_tracer_TraceWithTs)(tracer, ts, &vlc_tracer_trace_); \
+    } while(0)
 
 #define vlc_tracer_Trace(tracer, ...) \
     vlc_tracer_TraceWithTs(tracer, vlc_tick_now(), __VA_ARGS__)
