@@ -1128,8 +1128,12 @@ static bo_t *GetMoofBox(sout_mux_t *p_mux, size_t *pi_mdat_total_size,
         {
             uint32_t i_trun_flags = 0x0;
 
-            if (p_stream->b_hasiframes && !(p_stream->read.p_first->p_block->i_flags & BLOCK_FLAG_TYPE_I))
-                i_trun_flags |= MP4_TRUN_FIRST_FLAGS;
+            /* Emit per-sample flags so that each frame's sync/non-sync state is
+             * described explicitly. Relying on trex's default (sync) plus a
+             * single first-sample override mislabels every non-first P-frame of
+             * a fragment as a random-access point. */
+            if (p_stream->b_hasiframes)
+                i_trun_flags |= MP4_TRUN_SAMPLE_FLAGS;
 
             if (!b_allsamelength ||
                 ( !(i_tfhd_flags & MP4_TFHD_DFLT_SAMPLE_DURATION) &&
@@ -1174,9 +1178,6 @@ static bo_t *GetMoofBox(sout_mux_t *p_mux, size_t *pi_mdat_total_size,
                 bo_add_32be(trun, 0xdeadbeef); // data offset
             }
 
-            if (i_trun_flags & MP4_TRUN_FIRST_FLAGS)
-                bo_add_32be(trun, 1<<16); // flag as non keyframe
-
             while(p_stream->read.p_first && i_entry_count)
             {
                 DEQUEUE_ENTRY(p_stream->read, p_entry);
@@ -1187,6 +1188,11 @@ static bo_t *GetMoofBox(sout_mux_t *p_mux, size_t *pi_mdat_total_size,
 
                 if (i_trun_flags & MP4_TRUN_SAMPLE_SIZE)
                     bo_add_32be(trun, p_entry->p_block->i_buffer); // sample size
+
+                if (i_trun_flags & MP4_TRUN_SAMPLE_FLAGS)
+                    bo_add_32be(trun, (p_entry->p_block->i_flags & BLOCK_FLAG_TYPE_I)
+                                        ? 0x02000000  // depends-on=2 (I), sync sample
+                                        : 0x01010000); // depends-on=1 (P/B), non-sync sample
 
                 if (i_trun_flags & MP4_TRUN_SAMPLE_TIME_OFFSET)
                 {
