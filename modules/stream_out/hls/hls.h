@@ -53,7 +53,15 @@ struct hls_config
     char *outdir;
     unsigned int max_segments;
     bool pace;
+    /** Target segment length: the segmenter aims for this and cuts on the
+     * first keyframe at or after it. Segments are never shorter (barring
+     * end-of-stream). */
     vlc_tick_t segment_length;
+    /** Hard cap on segment length, advertised as EXT-X-TARGETDURATION. A
+     * segment never exceeds this even if no keyframe is available, so it stays
+     * spec-compliant. Equal to segment_length to keep the legacy behavior of
+     * cutting on the last keyframe at or before segment_length. */
+    vlc_tick_t max_segment_length;
     size_t max_memory;
     enum hls_playlist_type preferred_type;
 };
