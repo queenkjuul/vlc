@@ -346,6 +346,10 @@ static int GenerateMainManifest(const sout_stream_sys_t *sys,
         [SPU_ES] = "subtitles",
     };
 
+    /* At most one rendition per group may be DEFAULT (RFC 8216 4.3.4.1). */
+    bool audio_default_set = false;
+    bool spu_default_set = false;
+
     const hls_playlist_t *playlist;
     vlc_list_foreach_const (playlist, &sys->media_playlists, node)
     {
@@ -360,6 +364,30 @@ static int GenerateMainManifest(const sout_stream_sys_t *sys,
 
             const char *group_id = GROUP_IDS[fmt->i_cat];
             MANIFEST_ADD_ATTRIBUTE("GROUP-ID=\"%s\"", group_id);
+
+            /* The receiver must pick up the audio rendition automatically;
+             * only the first one in the group is flagged as the default. */
+            if (fmt->i_cat == AUDIO_ES)
+            {
+                if (!audio_default_set)
+                {
+                    MANIFEST_ADD_ATTRIBUTE("DEFAULT=%s", "YES");
+                    audio_default_set = true;
+                }
+                MANIFEST_ADD_ATTRIBUTE("AUTOSELECT=%s", "YES");
+            }
+            /* Flag the subtitle rendition as default so the receiver (e.g. the
+             * Chromecast CAF receiver) auto-activates it on LOAD without an
+             * explicit EDIT_TRACKS_INFO. Only the first one is the default. */
+            else if (fmt->i_cat == SPU_ES)
+            {
+                if (!spu_default_set)
+                {
+                    MANIFEST_ADD_ATTRIBUTE("DEFAULT=%s", "YES");
+                    spu_default_set = true;
+                }
+                MANIFEST_ADD_ATTRIBUTE("AUTOSELECT=%s", "YES");
+            }
 
             const iso639_lang_t *lang =
                 (fmt->psz_language != NULL)
