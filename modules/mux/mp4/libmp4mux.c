@@ -349,6 +349,12 @@ mp4mux_handle_t * mp4mux_New(enum mp4mux_options options)
     h->brands.i_major = 0;
     h->brands.i_minor = 0;
     h->options = options;
+    /* Fragmented output carries tfdt boxes; advertise the iso6 compatible brand
+     * so players that key timing off tfdt engage it (same rationale as ffmpeg's
+     * movenc). We deliberately do not claim iso5 (no default-base-is-moof) nor
+     * cmfc (not full CMAF conformance), which would be inaccurate here. */
+    if(options & FRAGMENTED)
+        mp4mux_AddExtraBrand(h, BRAND_iso6);
     return h;
 }
 
