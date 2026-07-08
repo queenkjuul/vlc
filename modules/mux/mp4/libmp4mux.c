@@ -1184,7 +1184,16 @@ static bo_t *GetSounBox(vlc_object_t *p_obj, mp4mux_trackinfo_t *p_track, bool b
                     bo_add_32be(extraboxes[0], 0);
                 extraboxes[1] = GetESDS(p_track);
                 specificbox = GetWaveTag("mp4a", extraboxes, 2);
-            } else b_descr = true;
+            } else {
+                b_descr = true;
+                /* In ISO BMFF (non-MOV), the AudioSampleEntry must be a
+                 * version-0 SoundDescription: no QuickTime V1 extension fields
+                 * (samples/bytes-per-packet/frame/sample) before the esds.
+                 * Strict fMP4/CMAF parsers (HLS on Chromecast/Shaka, MSE)
+                 * reject a version-1 entry, even though QuickTime-derived
+                 * readers like VLC/ffmpeg tolerate it. */
+                i_qt_version = 0;
+            }
             break;
         case VLC_CODEC_MPGA:
         case VLC_CODEC_MP2:
