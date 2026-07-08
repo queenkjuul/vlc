@@ -171,6 +171,9 @@ typedef struct
     vlc_tick_t first_pcr;
 
     size_t current_memory_cached;
+
+    sout_stream_t *owner;
+    bool ready;
 } sout_stream_sys_t;
 
 #define hls_playlists_foreach(it)                                              \
@@ -1058,6 +1061,22 @@ static ssize_t AccessOutWrite(sout_access_out_t *access, block_t *block)
                     return -1;
             }
         }
+
+        if (!sys->ready)
+        {
+            bool all_ready = !vlc_list_is_empty(&sys->variant_playlists);
+            hls_playlist_t *check;
+            hls_playlists_foreach(check)
+            {
+                if (check->segments.total_segments == 0)
+                    all_ready = false;
+            }
+            if (all_ready)
+            {
+                sys->ready = true;
+                var_SetBool(sys->owner, "hls-ready", true);
+            }
+        }
     }
     return size;
 }
@@ -1571,6 +1590,9 @@ static int Open(vlc_object_t *this)
 
     sys->manifest = NULL;
 
+    var_Create( stream, "hls-ready", VLC_VAR_BOOL );
+    sys->owner = stream;
+    sys->ready = false;
     sys->playlist_created_count = 0;
 
     vlc_list_init(&sys->variant_playlists);
