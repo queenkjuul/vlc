@@ -64,6 +64,9 @@ struct hls_config
     vlc_tick_t max_segment_length;
     size_t max_memory;
     enum hls_playlist_type preferred_type;
+    /** Origin allowed to read the served content cross-origin, or NULL to send
+     * no Access-Control-Allow-Origin header at all. */
+    char *cors_origin;
 };
 
 #define BYTES_FROM_KB(x) ((x) * 1000)
@@ -73,6 +76,7 @@ static inline void hls_config_Clean(struct hls_config *config)
 {
     free(config->base_url);
     free(config->outdir);
+    free(config->cors_origin);
 }
 
 static inline bool

@@ -313,7 +313,10 @@ int hls_storage_FromBlocks(block_t *content,
         ret = fs_storage_FromBlock(content, config, hls_config, out);
 
     if (ret == 0)
+    {
         (*out)->mime = config->mime;
+        (*out)->cors_origin = hls_config->cors_origin;
+    }
     return ret;
 }
 
@@ -330,7 +333,10 @@ int hls_storage_FromBytes(void *data,
         ret = fs_storage_FromBytes(data, size, config, hls_config, out);
 
     if (ret == 0)
+    {
         (*out)->mime = config->mime;
+        (*out)->cors_origin = hls_config->cors_origin;
+    }
     return ret;
 }
 

@@ -35,6 +35,13 @@ typedef struct hls_storage
 {
     const char *mime;
     /**
+     * Origin allowed to read this storage cross-origin, or NULL for none.
+     *
+     * Borrowed from the global hls config, which outlives every storage.
+     * Needed by the HTTP callbacks, which only receive the storage.
+     */
+    const char *cors_origin;
+    /**
      * Get a copy of the whole storage content.
      *
      * \param[out] dest Pointer on a byte buffer, will be freshly allocated by
