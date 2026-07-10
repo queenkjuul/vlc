@@ -195,8 +195,10 @@ static int HTTPCallback(httpd_callback_sys_t *sys,
 
     httpd_MsgAdd(answer, "Content-Type", "%s", storage->mime);
     httpd_MsgAdd(answer, "Cache-Control", "no-cache");
-    httpd_MsgAdd(answer, "Access-Control-Allow-Origin", "*");
-    httpd_MsgAdd(answer, "Access-Control-Expose-Headers", "Content-Length");
+
+    if (storage->cors_origin != NULL)
+        httpd_MsgAdd(answer, "Access-Control-Allow-Origin", "%s",
+                     storage->cors_origin);
 
     answer->i_proto = HTTPD_PROTO_HTTP;
     answer->i_version = 0;
@@ -1496,6 +1498,7 @@ static int Open(vlc_object_t *this)
 
     static const char *const options[] = {
         "base-url",
+        "cors-origin",
         "host-http",
         "max-memory",
         "num-seg",
@@ -1510,6 +1513,10 @@ static int Open(vlc_object_t *this)
     config_ChainParse(stream, SOUT_CFG_PREFIX, options, stream->p_cfg);
 
     sys->config.base_url = var_GetString(stream, SOUT_CFG_PREFIX "base-url");
+    /* Inherited: the chromecast stream, our parent object, sets this since it
+     * knows its receiver fetches our URLs from a web page. */
+    sys->config.cors_origin =
+        var_GetNonEmptyString(stream, SOUT_CFG_PREFIX "cors-origin");
     sys->config.outdir =
         var_GetNonEmptyString(stream, SOUT_CFG_PREFIX "out-dir");
     sys->config.max_segments =
@@ -1639,6 +1646,13 @@ variant_error:
        "quick testing on networks with a small load")
 #define HOSTHTTP_TEXT                                                          \
     N_("Enable hosting the HLS output on the internal HTTP server")
+#define CORSORIGIN_LONGTEXT                                                    \
+    N_("Sent as Access-Control-Allow-Origin on every response of the internal " \
+       "HTTP server, allowing web pages served from that origin to read the "  \
+       "output. Empty by default, which sends no such header and lets "        \
+       "browsers apply the same-origin policy. Only simple requests are "      \
+       "supported: a CORS preflight cannot be answered")
+#define CORSORIGIN_TEXT N_("Origin allowed to read the HLS output")
 #define MAXMEMORY_LONGTEXT                                                     \
     N_("Maximum allowed memory for segment storage in Kb. This option is "     \
        "only relevant when segments are stored in internal memory. If the "    \
@@ -1689,6 +1703,8 @@ vlc_module_begin()
 
     add_string(SOUT_CFG_PREFIX "base-url", "", BASEURL_TEXT, BASEURL_TEXT)
     add_bool(SOUT_CFG_PREFIX "host-http", false, HOSTHTTP_TEXT, HOSTHTTP_LONGTEXT)
+    add_string(SOUT_CFG_PREFIX "cors-origin", NULL, CORSORIGIN_TEXT,
+               CORSORIGIN_LONGTEXT)
     add_integer(SOUT_CFG_PREFIX "max-memory", 20000, MAXMEMORY_TEXT, MAXMEMORY_LONGTEXT)
     add_integer(SOUT_CFG_PREFIX "num-seg", 0, NUMSEG_TEXT, NUMSEG_TEXT)
     add_string(SOUT_CFG_PREFIX "out-dir", NULL, OUTDIR_TEXT, OUTDIR_LONGTEXT)

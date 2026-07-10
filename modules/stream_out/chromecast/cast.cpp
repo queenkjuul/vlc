@@ -49,6 +49,11 @@
 #define TRANSCODING_VIDEO 0x1
 #define TRANSCODING_AUDIO 0x2
 
+/* Origin the Default Media Receiver web application is served from, and thus
+ * the only one allowed to read the HLS output cross-origin. A custom receiver
+ * would run from a different origin and be denied. */
+#define CC_RECEIVER_ORIGIN "https://www.gstatic.com"
+
 #if 0
 /* TODO: works only with internal spu and transcoding/blending for now */
 #define CC_ENABLE_SPU
@@ -449,6 +454,7 @@ static bool BuildHLSChain(void *opaque, sout_stream_t *cache,
           << ",seg-len=" << CC_HLS_SEG_LEN_SEC
           << ",max-seg-len=" << CC_HLS_MAX_SEG_LEN_SEC
           << ",num-seg=" << CC_HLS_NUM_SEG
+          << ",cors-origin=" << CC_RECEIVER_ORIGIN
           //<< ",out-dir=/tmp/hls,base-url="
           << ",base-url="
           << p_sys->p_intf->getHttpStreamRoot() << "}";
@@ -709,7 +715,6 @@ static const struct sout_stream_operations ops = [] {
  *****************************************************************************/
 static int Open(vlc_object_t *p_this)
 {
-    vlc_object_t     *parent   = vlc_object_parent(p_this);
     sout_stream_t    *p_stream = reinterpret_cast<sout_stream_t *>(p_this);
     sout_stream_sys_t *p_sys   = nullptr;
     intf_sys_t       *p_intf   = nullptr;
@@ -736,6 +741,7 @@ static int Open(vlc_object_t *p_this)
     var_SetInteger(p_stream, "http-port", i_local_server_port);
     var_Create(p_stream, "http-host", VLC_VAR_STRING);
     var_SetString(p_stream, "http-host", "");
+
     httpd_host = vlc_http_HostNew(VLC_OBJECT(p_stream));
     if (!httpd_host)
         goto error;
