@@ -1294,7 +1294,11 @@ static void *
 Add(sout_stream_t *stream, const es_format_t *fmt, const char *es_id)
 {
     if (!hls_codec_IsSupported(fmt))
+    {
+        msg_Err(stream, "Unsupported codec '%4.4s' for ES '%s': track dropped",
+                (const char *)&fmt->i_codec, es_id);
         return NULL;
+    }
 
     sout_stream_sys_t *sys = stream->p_sys;
 
