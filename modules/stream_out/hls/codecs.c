@@ -157,6 +157,23 @@ static int FormatMP4A(struct vlc_memstream *ms, const es_format_t *fmt)
     return (written < 0) ? VLC_ENOMEM : VLC_SUCCESS;
 }
 
+/* Self-describing codecs, no profile suffix.
+ * NOTE: the MP4RA sample entry names are "Opus"/"fLaC", but the lowercase
+ * spellings are what browser MSE implementations actually accept (and what
+ * ffmpeg emits). Cast receivers (Shaka/MSE) reject the MP4RA casing outright
+ * with LOAD_FAILED, so emit lowercase here. */
+static int FormatOpus(struct vlc_memstream *ms)
+{
+    const int written = vlc_memstream_puts(ms, "opus");
+    return (written <= 0) ? VLC_ENOMEM : VLC_SUCCESS;
+}
+
+static int FormatFLAC(struct vlc_memstream *ms)
+{
+    const int written = vlc_memstream_puts(ms, "flac");
+    return (written <= 0) ? VLC_ENOMEM : VLC_SUCCESS;
+}
+
 static int FormatWebVTT(struct vlc_memstream *ms)
 {
     const int written = vlc_memstream_puts(ms, "wvtt");
@@ -173,6 +190,10 @@ int hls_codec_Format(struct vlc_memstream *ms, const es_format_t *fmt)
             return FormatHEVC(ms, fmt);
         case VLC_CODEC_MP4A:
             return FormatMP4A(ms, fmt);
+        case VLC_CODEC_OPUS:
+            return FormatOpus(ms);
+        case VLC_CODEC_FLAC:
+            return FormatFLAC(ms);
         case VLC_CODEC_TEXT:
         case VLC_CODEC_WEBVTT:
             return FormatWebVTT(ms);
@@ -184,6 +205,7 @@ int hls_codec_Format(struct vlc_memstream *ms, const es_format_t *fmt)
 bool hls_codec_IsSupported(const es_format_t *fmt)
 {
     return fmt->i_codec == VLC_CODEC_H264 || fmt->i_codec == VLC_CODEC_HEVC ||
-           fmt->i_codec == VLC_CODEC_MP4A || fmt->i_codec == VLC_CODEC_TEXT ||
+           fmt->i_codec == VLC_CODEC_MP4A || fmt->i_codec == VLC_CODEC_OPUS ||
+           fmt->i_codec == VLC_CODEC_FLAC || fmt->i_codec == VLC_CODEC_TEXT ||
            fmt->i_codec == VLC_CODEC_WEBVTT;
 }
