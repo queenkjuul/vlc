@@ -220,8 +220,20 @@ static void CacheSetPCR(sout_stream_t *stream, vlc_tick_t pcr)
                 MS_FROM_VLC_TICK(elapsed), sys->events.size());
         if (!sys->build_cb(sys->build_opaque, stream, sys))
         {
-            sys->hls_failed = true;
-            msg_Err(stream, "HLS chain build failed");
+            if (sys->build_retry)
+            {
+                /* The callback changed configuration and wants another go:
+                 * re-arm the caching window rather than giving up. */
+                sys->build_retry = false;
+                sys->first_pcr   = VLC_TICK_INVALID;
+                msg_Warn(stream, "HLS chain build failed — retrying with a "
+                                 "different configuration");
+            }
+            else
+            {
+                sys->hls_failed = true;
+                msg_Err(stream, "HLS chain build failed");
+            }
         }
     }
 }
@@ -292,6 +304,7 @@ sout_stream_t *cc_startup_cache_New(sout_stream_t *parent,
     sys->first_pcr      = VLC_TICK_INVALID;
     sys->ready          = false;
     sys->hls_failed     = false;
+    sys->build_retry    = false;
     sys->hls_out        = nullptr;
     sys->hls_ready_fn   = nullptr;
     sys->hls_ready_data = nullptr;
@@ -318,7 +331,8 @@ void cc_startup_cache_Reset(sout_stream_t *cache)
         t->selected      = false;
     }
 
-    sys->ready      = false;
-    sys->hls_failed = false;
-    sys->first_pcr  = VLC_TICK_INVALID;
+    sys->ready       = false;
+    sys->hls_failed  = false;
+    sys->build_retry = false;
+    sys->first_pcr   = VLC_TICK_INVALID;
 }

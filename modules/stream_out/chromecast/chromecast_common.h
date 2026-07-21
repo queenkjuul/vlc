@@ -33,6 +33,19 @@ extern "C" {
 
 #define CC_SHARED_VAR_NAME "cc_sout"
 
+/* HLS rolling-window parameters for the cast sout chain. Shared between the
+ * sout (which builds the hls{} chain string from them) and the demux filter
+ * (which derives its pre-playback pacing cap from them) so the two can never
+ * disagree about the size of the segment window. */
+#define CC_HLS_SEG_LEN_SEC      5
+#define CC_HLS_MAX_SEG_LEN_SEC  10
+#define CC_HLS_NUM_SEG          4
+
+/* Target bitrate for transcoded audio, in kbps. AAC-LC stereo at 192k is
+ * transparent enough for the cases that reach the encoder at all (the
+ * passthrough codecs are handled without re-encoding). */
+#define CC_AUDIO_BITRATE_KBPS   192
+
 #define CC_PACE_ERR        (-2)
 #define CC_PACE_ERR_RETRY  (-1)
 #define CC_PACE_OK          (0)
@@ -72,8 +85,6 @@ typedef struct
 
     void (*pf_set_input_length)(void*, vlc_tick_t length);
 
-    /* The time of the master demuxer, published by the demux filter driving
-     * playback and read back by the slave ones. */
     void (*pf_set_master_demux_time)(void*, vlc_tick_t);
     vlc_tick_t (*pf_get_master_demux_time)(void*);
 

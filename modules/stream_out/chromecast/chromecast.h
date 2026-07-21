@@ -192,6 +192,7 @@ struct intf_sys_t
     vlc_tick_t getPauseDelay();
 
     unsigned int getHttpStreamPort() const;
+    std::string getHttpStreamRoot() const;
     std::string getHttpStreamPath() const;
     std::string getHttpArtRoot() const;
 
@@ -302,13 +303,13 @@ private:
 
     vlc_interrupt_t *m_ctl_thread_interrupt;
 
+    /* The root path is only a namespace: the HLS output registers the playlist
+     * and segment URLs under it on its own. */
     struct httpd_info_t {
         httpd_info_t( httpd_host_t* host, int port );
-        ~httpd_info_t();
 
         httpd_host_t *m_host;
         int           m_port;
-        httpd_url_t  *m_url;
         std::string   m_root;
     } const m_httpd;
 

@@ -70,6 +70,13 @@ struct cc_startup_cache_sys_t;
  *   - clear track->selected / downstream_id on all tracks
  *   - release and clear sys->events
  *   - return false (the cache marks hls_failed and stops retrying until reset)
+ *
+ * A failing callback MAY additionally set sys->build_retry, meaning "this
+ * configuration did not work but another might". The cache then re-arms the
+ * caching window instead of latching hls_failed, and calls the callback again
+ * on the next window. The callback is responsible for changing something
+ * between attempts (e.g. escalating the transcoding state) so that retrying
+ * terminates.
  */
 typedef bool (*cc_cache_build_fn)(void *opaque, sout_stream_t *cache,
                                   cc_startup_cache_sys_t *sys);
@@ -82,6 +89,7 @@ struct cc_startup_cache_sys_t
     vlc_tick_t          first_pcr;     /* VLC_TICK_INVALID until first SetPCR */
     bool                ready;         /* false = buffering, true = pass-through */
     bool                hls_failed;    /* build_cb returned false; stop retrying */
+    bool                build_retry;   /* build_cb asked to be called again */
 
     /* Set by build_cb when it registers a readiness var callback; cleared on
      * reset so cc_startup_cache_Reset can remove the callback cleanly. */

@@ -165,7 +165,7 @@ intf_sys_t::intf_sys_t(vlc_object_t * const p_this, int port, std::string device
  , m_cc_time( VLC_TICK_INVALID )
  , m_master_demux_time( VLC_TICK_0 )
  , m_pingRetriesLeft( PING_WAIT_RETRIES )
- , m_has_forced_tracks( false )
+ , m_has_forced_tracks(false)
 {
     m_communication = new ChromecastCommunication( p_this,
         getHttpStreamPath(), getHttpStreamPort(),
@@ -424,8 +424,7 @@ void intf_sys_t::tryLoad()
     // Reset the mediaSessionID to allow the new session to become the current one.
     // we cannot start a new load when the last one is still processing
     m_last_request_id =
-        m_communication->msgPlayerLoad( m_appTransportId, m_mime, m_audio_only,
-                                       m_meta, m_input_length );
+        m_communication->msgPlayerLoad( m_appTransportId, m_mime, m_audio_only, m_meta, m_input_length );
     if( m_last_request_id != ChromecastCommunication::kInvalidId )
         m_state = Loading;
 }
@@ -659,28 +658,12 @@ intf_sys_t::httpd_info_t::httpd_info_t( httpd_host_t* host, int port )
     : m_host( host )
     , m_port( port )
 {
-    for( int i = 0; i < 3; ++i )
-    {
-        std::ostringstream ss;
-        ss << "/chromecast"
-           << "/" << vlc_tick_now()
-           << "/" << static_cast<uint64_t>( vlc_mrand48() );
+    std::ostringstream ss;
+    ss << "/chromecast"
+       << "/" << vlc_tick_now()
+       << "/" << static_cast<uint64_t>( vlc_mrand48() );
 
-        m_root = ss.str();
-        m_url = httpd_UrlNew( m_host, m_root.c_str(), NULL, NULL );
-        if( m_url )
-            break;
-    }
-
-    if( m_url == NULL )
-        throw std::runtime_error( "unable to bind to http path" );
-}
-
-intf_sys_t::httpd_info_t::~httpd_info_t()
-
-{
-    if( m_url )
-        httpd_UrlDelete( m_url );
+    m_root = ss.str();
 }
 
 /*****************************************************************************
@@ -1247,9 +1230,14 @@ unsigned int intf_sys_t::getHttpStreamPort() const
     return m_httpd.m_port;
 }
 
+std::string intf_sys_t::getHttpStreamRoot() const
+{
+    return m_httpd.m_root;
+}
+
 std::string intf_sys_t::getHttpStreamPath() const
 {
-    return m_httpd.m_root + "/stream";
+    return m_httpd.m_root + "/stream.m3u8";
 }
 
 std::string intf_sys_t::getHttpArtRoot() const

@@ -55,6 +55,8 @@ vlc_modules += {
     'name' : 'stream_out_chromecast',
     'sources' : files(
         'cast.cpp',
+        'cc_startup_cache.cpp',
+        'cc_startup_cache.h',
         'chromecast.h',
         'chromecast_common.h',
         'chromecast_ctrl.cpp',
