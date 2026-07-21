@@ -186,8 +186,7 @@ struct intf_sys_t
     void requestPlayerStop();
     States state() const;
 
-    void setPacing(bool do_pace);
-    int pace();
+    enum cc_device_state getDeviceState();
     void sendInputEvent(enum cc_input_event event, union cc_input_arg arg);
     vlc_tick_t getPauseDelay();
 
@@ -199,7 +198,6 @@ struct intf_sys_t
     std::string getDeviceName() const { return m_device_name; };
 
     int httpd_file_fill( uint8_t *psz_request, uint8_t **pp_data, size_t *pi_data );
-    void interrupt_wake_up();
     void preservePlaybackOnTeardown();
 private:
     void reinit();
@@ -209,7 +207,6 @@ private:
     void queueMessage( QueueableMessages msg );
 
     void setPauseState(bool paused);
-    bool isFinishedPlaying();
     bool isStateError() const;
     bool isStatePlaying() const;
     bool isStateReady() const;
@@ -244,7 +241,7 @@ private:
 
     static vlc_tick_t get_time(void*);
 
-    static int pace(void*);
+    static enum cc_device_state get_device_state(void*);
     static void send_input_event(void *, enum cc_input_event event, union cc_input_arg arg);
     static void set_demux_enabled(void *, bool, on_paused_changed_itf, void *);
 
@@ -275,7 +272,6 @@ private:
 
     mutable vlc::threads::mutex  m_lock;
     vlc::threads::condition_variable m_stateChangedCond;
-    vlc::threads::condition_variable m_pace_cond;
     vlc_thread_t m_chromecastThread;
 
     on_input_event_itf    m_on_input_event;
@@ -294,10 +290,9 @@ private:
     bool m_request_load;
     bool m_paused;
     vlc_tick_t m_input_length;
+    /* Only used to drop duplicate CC_INPUT_EVENT_EOF events. */
     bool m_input_eof;
     bool m_cc_eof;
-    bool m_pace;
-    bool m_interrupted;
 
     vlc_meta_t *m_meta;
 

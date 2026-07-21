@@ -46,11 +46,15 @@ extern "C" {
  * passthrough codecs are handled without re-encoding). */
 #define CC_AUDIO_BITRATE_KBPS   192
 
-#define CC_PACE_ERR        (-2)
-#define CC_PACE_ERR_RETRY  (-1)
-#define CC_PACE_OK          (0)
-#define CC_PACE_OK_WAIT     (1)
-#define CC_PACE_OK_ENDED    (2)
+/* State of the receiver, as last reported by its MEDIA_STATUS messages. */
+enum cc_device_state
+{
+    CC_DEVICE_OK,     /* Nothing to report, keep feeding. */
+    CC_DEVICE_RETRY,  /* The load failed and a fallback is armed. Consumed by
+                       * the call reporting it, so it is reported once. */
+    CC_DEVICE_ERROR,  /* Errored or stopped, give up. */
+    CC_DEVICE_ENDED,  /* Done playing what it had fetched. */
+};
 
 enum cc_input_event
 {
@@ -75,7 +79,7 @@ typedef struct
 
     vlc_tick_t (*pf_get_time)(void*);
 
-    int (*pf_pace)(void*);
+    enum cc_device_state (*pf_get_device_state)(void*);
 
     void (*pf_send_input_event)(void*, enum cc_input_event, union cc_input_arg);
 

@@ -31,11 +31,31 @@
 #include <vlc_common.h>
 #include <vlc_plugin.h>
 #include <vlc_demux.h>
+#include <vlc_interrupt.h>
 
 #include "chromecast_common.h"
 
 #include <cassert>
 #include <new>
+
+/* Pacing caps, relative to the HLS rolling window the device prefetches from
+ * (CC_HLS_NUM_SEG * CC_HLS_SEG_LEN_SEC), so they follow the segment defines.
+ *
+ * CC_PACING_AHEAD: how far ahead of the device the demuxer may run once
+ * playback started, one segment above the window.
+ *
+ * CC_PRELOAD_AHEAD: how much to produce before it starts, one segment below
+ * the window so the head cannot be pruned before the device fetches it. */
+#define CC_PACING_AHEAD \
+    VLC_TICK_FROM_SEC((CC_HLS_NUM_SEG + 1) * CC_HLS_SEG_LEN_SEC)
+#define CC_PRELOAD_AHEAD \
+    VLC_TICK_FROM_SEC((CC_HLS_NUM_SEG - 1) * CC_HLS_SEG_LEN_SEC)
+
+/* Sleep between re-evaluations while holding the input back. Sleeping is not
+ * optional: the input's wake-up date comes from the es_out clock, which stops
+ * advancing once we stop demuxing, so returning without it spins the input
+ * thread. Interruptible, so a stop is immediate; controls wait for it. */
+#define CC_PACING_POLL VLC_TICK_FROM_MS(500)
 
 static void on_paused_changed_cb(void *data, bool paused);
 
@@ -241,14 +261,14 @@ struct demux_cc
             return ret;
         }
 
-        /* The CC sout is not pacing, so we pace here */
-        int pace = p_renderer->pf_pace( p_renderer->p_opaque );
-        switch (pace)
+        /* The only path by which a load failure, a transcoding fallback or
+         * the end of playback reaches the input. */
+        bool device_ended = false;
+        switch( p_renderer->pf_get_device_state( p_renderer->p_opaque ) )
         {
-            case CC_PACE_ERR:
+            case CC_DEVICE_ERROR:
                 return VLC_DEMUXER_EGENERIC;
-            case CC_PACE_ERR_RETRY:
-            {
+            case CC_DEVICE_RETRY:
                 /* Seek back to started position */
                 seekBack(m_start_time, m_start_pos);
 
@@ -257,15 +277,63 @@ struct demux_cc
                                                  CC_INPUT_EVENT_RETRY,
                                                  cc_input_arg{false} );
                 break;
-            }
-            case CC_PACE_OK_WAIT:
-                /* Yield: return to let the input thread doing controls  */
-                return VLC_DEMUXER_SUCCESS;
-            case CC_PACE_OK:
-            case CC_PACE_OK_ENDED:
+            case CC_DEVICE_ENDED:
+                device_ended = true;
                 break;
-            default:
-                vlc_assert_unreachable();
+            case CC_DEVICE_OK:
+                break;
+        }
+
+        /* The device pulls segments on its own schedule, so the sout exerts no
+         * back pressure and the input has to be paced here. getCCTime() is only
+         * valid once playback started, which is what selects the cap: the
+         * preload one until then, the device's position after. m_start_time < 0
+         * means no timeline yet, so nothing to pace against. */
+        vlc_tick_t demux_time;
+        if (!m_demux_eof && m_start_time >= 0
+         && demux_Control(p_demux->s, DEMUX_GET_TIME, &demux_time)
+                == VLC_SUCCESS)
+        {
+            const vlc_tick_t cc_time = getCCTime();
+            const char *phase;
+            bool throttle;
+
+            if (cc_time != VLC_TICK_INVALID)
+            {
+                /* Device is playing: pace against its actual position. */
+                throttle = demux_time - (m_start_time + cc_time) > CC_PACING_AHEAD;
+                phase = throttle ? "playing/throttling" : "playing/feeding";
+            }
+            else
+            {
+                /* Device hasn't started playing yet: fill the preload window,
+                 * then hold so the rolling window can't prune the start. */
+                throttle = demux_time - m_start_time > CC_PRELOAD_AHEAD;
+                phase = throttle ? "prestart/holding" : "prestart/feeding";
+            }
+
+            /* On every transition, once a second otherwise. */
+            const vlc_tick_t now = vlc_tick_now();
+            if (throttle != m_pacing_throttled
+             || now - m_pacing_log_date > VLC_TICK_FROM_SEC(1))
+            {
+                msg_Dbg(p_demux, "pacing: %s (demuxer %" PRId64 "ms, "
+                        "device %" PRId64 "ms, target %" PRId64 "ms)",
+                        phase,
+                        MS_FROM_VLC_TICK(demux_time - m_start_time),
+                        cc_time != VLC_TICK_INVALID
+                            ? MS_FROM_VLC_TICK(cc_time) : 0,
+                        MS_FROM_VLC_TICK(cc_time != VLC_TICK_INVALID
+                            ? CC_PACING_AHEAD : CC_PRELOAD_AHEAD));
+                m_pacing_log_date = now;
+                m_pacing_throttled = throttle;
+            }
+
+            if (throttle)
+            {
+                vlc_msleep_i11e(CC_PACING_POLL);
+                return VLC_DEMUXER_SUCCESS;
+            }
         }
 
         int ret = VLC_DEMUXER_SUCCESS;
@@ -291,11 +359,15 @@ struct demux_cc
                                                  CC_INPUT_EVENT_EOF,
                                                  cc_input_arg{ true } );
 
-            /* Don't return EOF until the chromecast is not EOF. This allows
-             * this demux filter to have more controls over the sout. Indeed,
-             * we still can seek or change tracks when the input is EOF and we
-             * should continue to handle CC errors. */
-            ret = pace == CC_PACE_OK ? VLC_DEMUXER_SUCCESS : VLC_DEMUXER_EOF;
+            /* Hold EOF back until the device played what it fetched: the input
+             * would tear the sout down under it. Seeks, track changes and
+             * device errors keep being handled meanwhile. */
+            if( !device_ended )
+            {
+                vlc_msleep_i11e(CC_PACING_POLL);
+                return VLC_DEMUXER_SUCCESS;
+            }
+            ret = VLC_DEMUXER_EOF;
         }
 
         return ret;
@@ -458,6 +530,10 @@ protected:
     double        m_last_pos;
     vlc_tick_t    m_start_time;
     vlc_tick_t    m_last_time;
+
+    /* Pacing log throttling (see Demux()). */
+    vlc_tick_t    m_pacing_log_date = VLC_TICK_INVALID;
+    bool          m_pacing_throttled = false;
 };
 
 static void on_paused_changed_cb( void *data, bool paused )

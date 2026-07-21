@@ -155,7 +155,6 @@ intf_sys_t::intf_sys_t(vlc_object_t * const p_this, int port, std::string device
  , m_input_length( VLC_TICK_INVALID )
  , m_input_eof( false )
  , m_cc_eof( false )
- , m_pace( false )
  , m_meta( NULL )
  , m_httpd( httpd_host, port )
  , m_httpd_file(NULL)
@@ -187,7 +186,7 @@ intf_sys_t::intf_sys_t(vlc_object_t * const p_this, int port, std::string device
     m_common.p_opaque = this;
     m_common.pf_set_demux_enabled = set_demux_enabled;
     m_common.pf_get_time         = get_time;
-    m_common.pf_pace             = pace;
+    m_common.pf_get_device_state = get_device_state;
     m_common.pf_send_input_event = send_input_event;
     m_common.pf_set_pause_state  = set_pause_state;
     m_common.pf_set_meta         = set_meta;
@@ -512,58 +511,25 @@ bool intf_sys_t::isStateReady() const
     }
 }
 
-void intf_sys_t::setPacing(bool do_pace)
+enum cc_device_state intf_sys_t::getDeviceState()
 {
     vlc::threads::mutex_locker locker( m_lock );
-    if( m_pace == do_pace )
-        return;
-    m_pace = do_pace;
-    m_pace_cond.signal();
-}
-
-static void interrupt_wake_up_cb( void *data )
-{
-    intf_sys_t *p_sys = static_cast<intf_sys_t*>((void *)data);
-    p_sys->interrupt_wake_up();
-}
-
-void intf_sys_t::interrupt_wake_up()
-{
-    vlc::threads::mutex_locker locker( m_lock );
-    m_interrupted = true;
-    m_pace_cond.signal();
-}
-
-int intf_sys_t::pace()
-{
-    vlc::threads::mutex_locker locker( m_lock );
-
-    m_interrupted = false;
-    vlc_interrupt_register( interrupt_wake_up_cb, this );
-    int ret = 0;
-    vlc_tick_t deadline = vlc_tick_now() + VLC_TICK_FROM_MS(500);
-
-    /* Wait for the sout to send more data via http (m_pace), or wait for the
-     * CC to finish. In case the demux filter is EOF, we always wait for
-     * 500msec (unless interrupted from the input thread). */
-    while( !isFinishedPlaying() && ( m_pace || m_input_eof ) && !m_interrupted && ret == 0 )
-        ret = m_pace_cond.timedwait( m_lock, deadline );
-
-    vlc_interrupt_unregister();
 
     if( m_cc_eof )
-        return CC_PACE_OK_ENDED;
-    else if( isStateError() || m_state == Stopped )
+        return CC_DEVICE_ENDED;
+
+    if( !isStateError() && m_state != Stopped )
+        return CC_DEVICE_OK;
+
+    if( m_state == LoadFailed && m_retry_on_fail )
     {
-        if( m_state == LoadFailed && m_retry_on_fail )
-        {
-            m_state = Ready;
-            return CC_PACE_ERR_RETRY;
-        }
-        return CC_PACE_ERR;
+        /* Test and clear: the fallback must be tried once per failure,
+         * however often the demux filter polls us. */
+        m_state = Ready;
+        return CC_DEVICE_RETRY;
     }
 
-    return ret == 0 ? CC_PACE_OK : CC_PACE_OK_WAIT;
+    return CC_DEVICE_ERROR;
 }
 
 void intf_sys_t::sendInputEvent(enum cc_input_event event, union cc_input_arg arg)
@@ -1245,11 +1211,6 @@ std::string intf_sys_t::getHttpArtRoot() const
     return m_httpd.m_root + "/art";
 }
 
-bool intf_sys_t::isFinishedPlaying()
-{
-    return m_cc_eof || isStateError() || m_state == Stopped;
-}
-
 void intf_sys_t::setMeta(vlc_meta_t *p_meta)
 {
     vlc::threads::mutex_locker lock( m_lock );
@@ -1321,7 +1282,6 @@ void intf_sys_t::setState( States state )
                 break;
         }
         m_stateChangedCond.signal();
-        m_pace_cond.signal();
     }
 }
 
@@ -1338,10 +1298,10 @@ void intf_sys_t::set_demux_enabled(void *pt, bool enabled,
     p_this->setDemuxEnabled(enabled, itf, data);
 }
 
-int intf_sys_t::pace(void *pt)
+enum cc_device_state intf_sys_t::get_device_state(void *pt)
 {
     intf_sys_t *p_this = static_cast<intf_sys_t*>(pt);
-    return p_this->pace();
+    return p_this->getDeviceState();
 }
 
 void intf_sys_t::send_input_event(void *pt, enum cc_input_event event, union cc_input_arg arg)
