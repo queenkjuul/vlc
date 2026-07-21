@@ -935,7 +935,10 @@ void sout_stream_sys_t::setNextTranscodingState()
     if (!(transcoding_state & TRANSCODING_VIDEO))
         transcoding_state |= TRANSCODING_VIDEO;
     else if (!(transcoding_state & TRANSCODING_AUDIO))
-        transcoding_state = TRANSCODING_AUDIO;
+        /* |=, not =: dropping the VIDEO bit here would leave
+         * transcodingCanFallback() permanently true and cycle the ladder
+         * forever instead of terminating at VIDEO|AUDIO. */
+        transcoding_state |= TRANSCODING_AUDIO;
 }
 
 bool sout_stream_sys_t::transcodingCanFallback() const
