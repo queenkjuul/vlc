@@ -45,6 +45,7 @@ struct demux_cc
         :p_demux(demux)
         ,p_renderer(renderer)
         ,m_enabled( true )
+        ,m_slave( false )
     {
         init();
     }
@@ -162,6 +163,7 @@ struct demux_cc
 
         m_last_time = m_start_time;
         m_last_pos = m_start_pos;
+        p_renderer->pf_set_master_demux_time( p_renderer->p_opaque, m_start_time );
     }
 
     ~demux_cc()
@@ -230,7 +232,14 @@ struct demux_cc
     int Demux()
     {
         if ( !m_enabled )
-            return demux_Demux( p_demux->s );
+        {
+            /* Keep publishing the master time while disabled, so a slave
+             * enabling later has something to sync against. */
+            const int ret = demux_Demux( p_demux->s );
+            if( !m_slave )
+                initTimes();
+            return ret;
+        }
 
         /* The CC sout is not pacing, so we pace here */
         int pace = p_renderer->pf_pace( p_renderer->p_opaque );
@@ -312,7 +321,18 @@ struct demux_cc
         }
         case DEMUX_GET_TIME:
         {
-            vlc_tick_t time = getTime();
+            vlc_tick_t time;
+            const int status = demux_Control( p_demux->s, DEMUX_GET_TIME, &time );
+            if( status != VLC_SUCCESS )
+                return status;
+            if( m_slave )
+            {
+                *va_arg(args, vlc_tick_t *) = time;
+                return VLC_SUCCESS;
+            }
+
+            p_renderer->pf_set_master_demux_time( p_renderer->p_opaque, time );
+            time = getTime();
             if( time >= 0 )
             {
                 *va_arg(args, vlc_tick_t *) = time;
@@ -398,6 +418,17 @@ struct demux_cc
             init();
             return VLC_SUCCESS;
 
+        case DEMUX_SET_NEXT_DEMUX_TIME:
+        {
+            /* Slave demuxers are driven by the master's timeline, not their
+             * own: hand them the time the master last published. */
+            m_slave = true;
+
+            const vlc_tick_t master_time =
+                p_renderer->pf_get_master_demux_time( p_renderer->p_opaque );
+            return demux_Control( p_demux->s, DEMUX_SET_NEXT_DEMUX_TIME,
+                                  master_time );
+        }
         case DEMUX_FILTER_DISABLE:
 
             deinit();
@@ -422,6 +453,7 @@ protected:
     vlc_tick_t    m_length;
     bool          m_can_seek;
     bool          m_enabled;
+    bool          m_slave;
     bool          m_demux_eof;
     double        m_start_pos;
     double        m_last_pos;

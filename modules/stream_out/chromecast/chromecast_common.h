@@ -72,6 +72,11 @@ typedef struct
 
     void (*pf_set_input_length)(void*, vlc_tick_t length);
 
+    /* The time of the master demuxer, published by the demux filter driving
+     * playback and read back by the slave ones. */
+    void (*pf_set_master_demux_time)(void*, vlc_tick_t);
+    vlc_tick_t (*pf_get_master_demux_time)(void*);
+
 } chromecast_common;
 
 # ifdef __cplusplus
