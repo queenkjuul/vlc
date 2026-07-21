@@ -40,6 +40,7 @@
 #include <atomic>
 #include <sstream>
 #include <queue>
+#include <vector>
 
 #ifndef PROTOBUF_INLINE_NOT_IN_HEADERS
 # define PROTOBUF_INLINE_NOT_IN_HEADERS 0
@@ -131,6 +132,9 @@ public:
                             const std::string & currentTime );
     unsigned msgPlayerSetVolume( const std::string& destinationId, int64_t mediaSessionId,
                                  float volume, bool mute);
+    unsigned msgPlayerEnableTracks( const std::string &destinationId,
+                                    int64_t mediaSessionId,
+                                    const std::vector<int64_t> &trackIds );
     ssize_t receive( uint8_t *p_data, size_t i_size, int i_timeout, bool *pb_timeout );
 
     std::string getServerBaseURL() const;
