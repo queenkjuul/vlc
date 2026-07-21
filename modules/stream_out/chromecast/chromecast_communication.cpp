@@ -326,12 +326,15 @@ std::string ChromecastCommunication::getServerBaseURL() const
 }
 
 std::string ChromecastCommunication::GetMedia( const std::string& mime,
+                                               bool b_audio_only,
                                                const vlc_meta_t *p_meta,
                                                vlc_tick_t input_length )
 {
     std::stringstream ss;
 
-    bool b_music = strncmp(mime.c_str(), "audio", strlen("audio")) == 0;
+    /* The mime cannot always be sniffed for this -- an HLS manifest has the
+     * same type either way -- so the sout tells us instead. */
+    bool b_music = b_audio_only;
 
     std::string title;
     std::string artwork;
@@ -416,12 +419,13 @@ std::string ChromecastCommunication::GetMedia( const std::string& mime,
 }
 
 unsigned ChromecastCommunication::msgPlayerLoad( const std::string& destinationId,
-                                             const std::string& mime, const vlc_meta_t *p_meta, vlc_tick_t input_length )
+                                             const std::string& mime, bool b_audio_only,
+                                             const vlc_meta_t *p_meta, vlc_tick_t input_length )
 {
     unsigned id = getNextRequestId();
     std::stringstream ss;
     ss << "{\"type\":\"LOAD\","
-       <<  "\"media\":{" << GetMedia( mime, p_meta, input_length ) << "},"
+       <<  "\"media\":{" << GetMedia( mime, b_audio_only, p_meta, input_length ) << "},"
        <<  "\"requestId\":" << id
        << "}";
 

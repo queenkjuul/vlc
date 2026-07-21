@@ -123,7 +123,8 @@ public:
     unsigned msgReceiverClose(const std::string& destinationId);
     unsigned msgAuth();
     unsigned msgPlayerLoad( const std::string& destinationId,
-                            const std::string& mime, const vlc_meta_t *p_meta, vlc_tick_t input_length );
+                            const std::string& mime, bool b_audio_only,
+                            const vlc_meta_t *p_meta, vlc_tick_t input_length );
     unsigned msgPlayerPlay( const std::string& destinationId, int64_t mediaSessionId );
     unsigned msgPlayerStop( const std::string& destinationId, int64_t mediaSessionId );
     unsigned msgPlayerPause( const std::string& destinationId, int64_t mediaSessionId );
@@ -147,7 +148,8 @@ private:
                      const std::string & destinationId = DEFAULT_CHOMECAST_RECEIVER,
                      castchannel::CastMessage_PayloadType payloadType = castchannel::CastMessage_PayloadType_STRING);
     int pushMediaPlayerMessage( const std::string& destinationId, const std::stringstream & payload );
-    std::string GetMedia( const std::string& mime, const vlc_meta_t *p_meta, vlc_tick_t input_length );
+    std::string GetMedia( const std::string& mime, bool b_audio_only,
+                          const vlc_meta_t *p_meta, vlc_tick_t input_length );
     unsigned getNextReceiverRequestId();
     unsigned getNextRequestId();
 
@@ -176,7 +178,7 @@ struct intf_sys_t
     ~intf_sys_t();
 
     void setRetryOnFail(bool);
-    void setHasInput(const std::string mime_type = "");
+    void setHasInput(const std::string mime_type = "", bool b_audio_only = false);
 
     void setOnInputEventCb(on_input_event_itf on_input_event, void *on_input_event_data);
     void setDemuxEnabled(bool enabled, on_paused_changed_itf on_paused_changed,
@@ -256,6 +258,7 @@ private:
     vlc_object_t  * const m_module;
     const int      m_device_port;
     std::string    m_mime;
+    bool           m_audio_only;
     std::string    m_device_addr;
     std::string    m_device_name;
 

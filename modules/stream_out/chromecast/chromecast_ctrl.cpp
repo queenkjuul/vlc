@@ -136,6 +136,7 @@ intf_sys_t::intf_sys_t(vlc_object_t * const p_this, int port, std::string device
                        int device_port, httpd_host_t *httpd_host)
  : m_module(p_this)
  , m_device_port(device_port)
+ , m_audio_only(false)
  , m_device_addr(device_addr)
  , m_device_name(_("Unknown"))
  , m_last_request_id( 0 )
@@ -420,7 +421,8 @@ void intf_sys_t::tryLoad()
     // Reset the mediaSessionID to allow the new session to become the current one.
     // we cannot start a new load when the last one is still processing
     m_last_request_id =
-        m_communication->msgPlayerLoad( m_appTransportId, m_mime, m_meta, m_input_length );
+        m_communication->msgPlayerLoad( m_appTransportId, m_mime, m_audio_only,
+                                       m_meta, m_input_length );
     if( m_last_request_id != ChromecastCommunication::kInvalidId )
         m_state = Loading;
 }
@@ -431,7 +433,7 @@ void intf_sys_t::setRetryOnFail( bool enabled )
     m_retry_on_fail = enabled;
 }
 
-void intf_sys_t::setHasInput( const std::string mime_type )
+void intf_sys_t::setHasInput( const std::string mime_type, bool b_audio_only )
 {
     vlc::threads::mutex_locker locker(m_lock);
     msg_Dbg( m_module, "Loading content" );
@@ -440,6 +442,7 @@ void intf_sys_t::setHasInput( const std::string mime_type )
         reinit();
 
     this->m_mime = mime_type;
+    this->m_audio_only = b_audio_only;
 
     /* new input: clear message queue */
     std::queue<QueueableMessages> empty;
