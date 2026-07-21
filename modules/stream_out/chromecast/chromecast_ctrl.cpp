@@ -163,6 +163,7 @@ intf_sys_t::intf_sys_t(vlc_object_t * const p_this, int port, std::string device
  , m_cc_time_date( VLC_TICK_INVALID )
  , m_cc_time( VLC_TICK_INVALID )
  , m_pingRetriesLeft( PING_WAIT_RETRIES )
+ , m_has_forced_tracks( false )
 {
     m_communication = new ChromecastCommunication( p_this,
         getHttpStreamPath(), getHttpStreamPort(),
@@ -873,6 +874,33 @@ bool intf_sys_t::processReceiverMessage( const castchannel::CastMessage& msg , c
     return ret;
 }
 
+/* The receiver never auto-enables text tracks, so ask for them once it has
+ * published its trackIds. */
+bool intf_sys_t::forceTextTracks( const struct json_object *status )
+{
+    const json_object *media = json_get_object( status, "media" );
+    const json_array *tracks = media ? json_get_array( media, "tracks" ) : nullptr;
+    if ( tracks == nullptr )
+        return false;
+
+    std::vector<int64_t> ids;
+    for ( size_t i = 0; i < tracks->size; ++i )
+    {
+        const json_object *track = &tracks->entries[i].object;
+        if ( json_get_str_view( track, "type" ) == "TEXT" )
+            ids.push_back( (int64_t)json_get_num( track, "trackId" ) );
+    }
+    if ( !ids.empty() )
+    {
+        const json_array *active = json_get_array( status, "activeTrackIds" );
+        for ( size_t i = 0; active != nullptr && i < active->size; ++i )
+            ids.push_back( (int64_t)active->entries[i].number );
+        m_communication->msgPlayerEnableTracks( m_appTransportId,
+                                                m_mediaSessionId, ids );
+    }
+    return true;
+}
+
 void intf_sys_t::processMediaMessage( const castchannel::CastMessage& msg , const struct json_object *entry )
 {
     const std::string_view type = json_get_str_view(entry, "type");
@@ -966,9 +994,13 @@ void intf_sys_t::processMediaMessage( const castchannel::CastMessage& msg , cons
                                                                       "currentTime"));
                     m_cc_time = currentTime;
                     m_cc_time_date = vlc_tick_now();
-                    
-                    setState( Playing );
+
+                    if ( !m_has_forced_tracks )
+                        m_has_forced_tracks =
+                            forceTextTracks( &status->array.entries[0].object );
                 }
+
+                setState( Playing );
             }
             else if (newPlayerState == "BUFFERING")
             {

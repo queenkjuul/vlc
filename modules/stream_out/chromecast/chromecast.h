@@ -231,6 +231,7 @@ private:
     bool processReceiverMessage( const castchannel::CastMessage& msg , const struct json_object *entry );
     void processMediaMessage( const castchannel::CastMessage& msg , const struct json_object *entry );
     void processConnectionMessage( const castchannel::CastMessage& msg , const struct json_object *entry );
+    bool forceTextTracks( const struct json_object *status );
 
 private:
     static void* ChromecastThread(void* p_data);
@@ -316,6 +317,10 @@ private:
 
     /* Heartbeat */
     uint8_t m_pingRetriesLeft;
+
+    /* Whether the receiver-assigned tracks have been activated for the
+     * current media session. */
+    bool m_has_forced_tracks;
 };
 
 #endif /* VLC_CHROMECAST_H */
