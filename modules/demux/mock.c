@@ -1336,21 +1336,23 @@ Demux(demux_t *demux)
 
     const vlc_tick_t step_length = __MAX(audio_step_length, video_step_length);
 
+    /* All timestamps are absolute, ie. shifted by VLC_TICK_0 + pts_offset. */
+    const vlc_tick_t last_pts = VLC_TICK_0 + sys->pts_offset + sys->length;
+    const vlc_tick_t end_pts = __MIN(sys->clock + step_length, last_pts);
+
     bool eof = !created;
     if (sys->audio_track_count > 0)
     {
-        ret = DemuxAudio(demux, audio_step_length,
-                         __MIN(step_length + sys->clock - VLC_TICK_0, sys->length));
-        if (sys->audio_pts - VLC_TICK_0 + audio_step_length <= sys->length)
+        ret = DemuxAudio(demux, audio_step_length, end_pts);
+        if (sys->audio_pts + audio_step_length <= last_pts)
             eof = false;
     }
 
     if (ret == VLC_SUCCESS
      && (sys->video_track_count > 0 || sys->sub_track_count > 0))
     {
-        ret = DemuxVideo(demux,
-                         __MIN(step_length + sys->clock - VLC_TICK_0 - sys->pts_offset, sys->length));
-        if (date_Get(&sys->video_date) - VLC_TICK_0 - sys->pts_offset + video_step_length <= sys->length)
+        ret = DemuxVideo(demux, end_pts);
+        if (date_Get(&sys->video_date) + video_step_length <= last_pts)
             eof = false;
     }
 
@@ -1358,7 +1360,7 @@ Demux(demux_t *demux)
     if (step_length == 0)
     {
         sys->clock += sys->input_sample_length;
-        if (sys->clock - VLC_TICK_0 - sys->pts_offset + sys->input_sample_length <= sys->length)
+        if (sys->clock + sys->input_sample_length <= last_pts)
             eof = false;
     }
 
