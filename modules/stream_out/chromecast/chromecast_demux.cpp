@@ -55,7 +55,7 @@
  * optional: the input's wake-up date comes from the es_out clock, which stops
  * advancing once we stop demuxing, so returning without it spins the input
  * thread. Interruptible, so a stop is immediate; controls wait for it. */
-#define CC_PACING_POLL VLC_TICK_FROM_MS(500)
+#define CC_PACING_POLL VLC_TICK_FROM_MS(50)
 
 static void on_paused_changed_cb(void *data, bool paused);
 

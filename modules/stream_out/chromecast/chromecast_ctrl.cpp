@@ -1234,12 +1234,17 @@ vlc_tick_t intf_sys_t::getPlaybackTimestamp()
         case Paused:
             if( !m_played_once )
                 return VLC_TICK_INVALID;
-            /* fallthrough */
+            /* m_cc_time is only refreshed by PLAYING status updates, so the
+             * device position is standing still here. Extrapolating it would
+             * let the pacing feed a device that is not consuming anything,
+             * and the HLS rolling window would prune the very segments it is
+             * still waiting for. */
+            return m_cc_time;
         case Playing:
         {
             assert( m_communication );
             vlc_tick_t now = vlc_tick_now();
-            if( m_state == Playing && m_last_request_id == 0
+            if( m_last_request_id == 0
              && now - m_cc_time_last_request_date > VLC_TICK_FROM_SEC(4) )
             {
                 m_cc_time_last_request_date = now;
