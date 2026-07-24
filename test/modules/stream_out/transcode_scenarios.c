@@ -36,6 +36,8 @@ static struct scenario_data
     vlc_sem_t wait_stop;
     struct vlc_video_context *decoder_vctx;
     unsigned output_frame_count;
+    unsigned pcr_count;
+    vlc_tick_t last_pcr;
     bool converter_opened;
     bool encoder_opened;
     bool encoder_closed;
@@ -222,6 +224,29 @@ static void wait_output_reported(const vlc_frame_t *out)
     vlc_sem_post(&scenario_data.wait_stop);
 }
 
+static void output_ignored(const vlc_frame_t *out)
+    { (void)out; }
+
+/* PCR is a program level timestamp, forwarded to the stream output chain
+ * independently of the tracks. Whatever the transcoder does with it
+ * (pass-through before any track is transcoded, re-synthesis afterwards), the
+ * values reaching the next stream out must never go backward. */
+static void wait_pcr_50_reported(vlc_tick_t pcr)
+{
+    if (scenario_data.last_pcr != VLC_TICK_INVALID)
+        assert(pcr >= scenario_data.last_pcr);
+    scenario_data.last_pcr = pcr;
+
+    if (++scenario_data.pcr_count == 50)
+        vlc_sem_post(&scenario_data.wait_stop);
+}
+
+static void pcr_not_expected(vlc_tick_t pcr)
+{
+    (void)pcr;
+    assert(!"PCR forwarded while forward-pcr is disabled");
+}
+
 static void converter_fixed_size(filter_t *filter, vlc_fourcc_t chroma_in,
         vlc_fourcc_t chroma_out, unsigned width, unsigned height)
 {
@@ -357,6 +382,29 @@ struct transcode_scenario transcode_scenarios[] =
     .converter_setup = converter_nv12_to_i420_800_600_vctx,
     .report_output = wait_output_10_frames_reported,
 },{
+    /* Check that PCRs reach the next stream out, in order, while a track is
+     * being transcoded. */
+    .source = source_800_600,
+    .sout = "sout=#transcode:output_checker",
+    .decoder_setup = decoder_i420_800_600,
+    .decoder_decode = decoder_decode_dummy,
+    .encoder_setup = encoder_i420_800_600,
+    .encoder_encode = encoder_encode_dummy,
+    .encoder_close = encoder_close,
+    .report_output = output_ignored,
+    .report_pcr = wait_pcr_50_reported,
+},{
+    /* no-forward-pcr must mute PCR forwarding entirely. */
+    .source = source_800_600,
+    .sout = "sout=#transcode{no-forward-pcr}:output_checker",
+    .decoder_setup = decoder_i420_800_600,
+    .decoder_decode = decoder_decode_dummy,
+    .encoder_setup = encoder_i420_800_600,
+    .encoder_encode = encoder_encode_dummy,
+    .encoder_close = encoder_close,
+    .report_output = wait_output_10_frames_reported,
+    .report_pcr = pcr_not_expected,
+},{
     /* Ensure that error are correctly forwarded back to the stream output
      * pipeline. */
     .source = source_800_600,
@@ -372,6 +420,8 @@ void transcode_scenario_init(void)
 {
     scenario_data.decoder_vctx = NULL;
     scenario_data.output_frame_count = 0;
+    scenario_data.pcr_count = 0;
+    scenario_data.last_pcr = VLC_TICK_INVALID;
     scenario_data.converter_opened = false;
     scenario_data.encoder_opened = false;
     vlc_sem_init(&scenario_data.wait_stop, 0);
@@ -393,4 +443,7 @@ void transcode_scenario_check(struct transcode_scenario *scenario)
 
     if (scenario_data.encoder_opened && scenario->encoder_close != NULL)
         assert(scenario_data.encoder_closed);
+
+    if (scenario->report_pcr == wait_pcr_50_reported)
+        assert(scenario_data.pcr_count > 0);
 }

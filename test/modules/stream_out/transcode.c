@@ -264,6 +264,15 @@ static void *OutputCheckerAdd(sout_stream_t *stream, const es_format_t *fmt,
 static void OutputCheckerDel(sout_stream_t *stream, void *id)
     { (void)stream; (void)id; }
 
+static void OutputCheckerSetPCR(sout_stream_t *stream, vlc_tick_t pcr)
+{
+    (void)stream;
+    struct transcode_scenario *scenario = &transcode_scenarios[current_scenario];
+
+    if (scenario->report_pcr != NULL)
+        scenario->report_pcr(pcr);
+}
+
 static int OpenOutputChecker(vlc_object_t *obj)
 {
     sout_stream_t *stream = (sout_stream_t *)obj;
@@ -272,6 +281,7 @@ static int OpenOutputChecker(vlc_object_t *obj)
         .add = OutputCheckerAdd,
         .del = OutputCheckerDel,
         .send = OutputCheckerSend,
+        .set_pcr = OutputCheckerSetPCR,
     };
     stream->ops = &ops;
     return VLC_SUCCESS;
