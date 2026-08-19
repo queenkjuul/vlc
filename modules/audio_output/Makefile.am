@@ -193,3 +193,5 @@ libemworklet_audio_plugin_la_SOURCES = audio_output/emscripten.c audio_output/we
 if HAVE_EMSCRIPTEN
 aout_PLUGINS += libemworklet_audio_plugin.la
 endif
+EXTRA_DIST += audio_output/webaudio/webaudio.js \
+	audio_output/webaudio/audio-worklet-processor.js
