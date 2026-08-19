@@ -264,7 +264,6 @@ static int Open(vlc_object_t *obj)
     aout->play = Play;
     aout->pause = Pause;
     aout->flush = Flush;
-    aout->time_get = NULL;
 
     /* This is async because there is chances that the Open method of the audio
      * output gets called on the main runtime.
