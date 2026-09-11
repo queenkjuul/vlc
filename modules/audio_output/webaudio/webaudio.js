@@ -42,8 +42,8 @@ mergeInto(LibraryManager.library, {
                 latency = 'balanced';
                 break;
             default:
-                console.error("error: bad latency setting!");
-                return;
+                console.error(`Invalid latency setting: ${latency}`);
+                return -1;
         }
 
         var audioCtx = new AudioContext({
@@ -56,16 +56,17 @@ mergeInto(LibraryManager.library, {
         try {
             await audioCtx.audioWorklet.addModule('./vlc/modules/audio_output/webaudio/audio-worklet-processor.js');
         } catch (error) {
-            console.error('could not add worklet module error: ' + error);
-            return;
+            console.error(`Couldn't add worklet module: ${error}`);
+	        return -1;
         }
         Module.webaudioContext = audioCtx;
+        return 0;
     },
     webaudio_start__async: 'auto',
     webaudio_start: async function(channels, webaudio_buffer) {
         if (Module.webaudioContext === undefined) {
             console.error("No audio context");
-            return;
+            return -1;
         }
 
         const is_paused = new Int32Array(wasmMemory.buffer, webaudio_buffer, 1);

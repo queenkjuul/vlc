@@ -51,6 +51,9 @@ typedef struct aout_sys_t
 
     /* Task queue for the main runtime. */
     em_proxying_queue *proxying_queue;
+    /* Signal main runtime task failure. */
+    bool error;
+
     /* Web audio context initialization notifier. */
     atomic_uint context_ready;
 
@@ -157,30 +160,19 @@ static void FixChannelMapping(audio_sample_format_t *restrict fmt)
     }
 }
 
-static void StartTask(void *userData)
+static void StartTask(void *opaque)
 {
-    audio_output_t *aout = (audio_output_t *) userData;
-    aout_sys_t *sys = aout->sys;
+    aout_sys_t *sys = opaque;
 
-    webaudio_init(sys->sample_rate, WEBAUDIO_LATENCY_PLAYBACK);
-    webaudio_start(sys->channel_count, sys->sab);
-    unsigned rate = webaudio_getSampleRate();
-    unsigned channels = webaudio_getChannels();
-
-    if ((rate == 0) || (channels == 0))
+    sys->error = webaudio_init(sys->sample_rate, WEBAUDIO_LATENCY_PLAYBACK) == -1;
+    if (!sys->error)
     {
-        sys->sample_rate = 0;
-        sys->channel_count = 0;
-        msg_Err(aout, "error: broken webaudio device, could not get a valid sample rate or channelNumber");
-        goto init_done;
+        sys->sample_rate = webaudio_getSampleRate();
+        sys->error = webaudio_start(sys->channel_count, sys->sab) == -1;
     }
+    if (!sys->error)
+        sys->channel_count = webaudio_getChannels();
 
-    if (rate != sys->sample_rate)
-        sys->sample_rate = rate;
-    if (channels != sys->channel_count)
-        sys->channel_count = channels;
-
-init_done:
     atomic_store(&sys->context_ready, 1);
     vlc_atomic_notify_all(&sys->context_ready);
 }
@@ -203,7 +195,7 @@ static int Start(audio_output_t *aout, audio_sample_format_t *restrict fmt)
         const int ret = emscripten_proxy_sync(
             sys->proxying_queue,
             emscripten_main_runtime_thread_id(),
-            StartTask, aout);
+            StartTask, sys);
         if (!ret)
         {
             msg_Err(aout, "error: could not proxy Init to main runtime!");
@@ -213,7 +205,7 @@ static int Start(audio_output_t *aout, audio_sample_format_t *restrict fmt)
         // Wait until initialization ended.
         vlc_atomic_wait(&sys->context_ready, 0);
 
-        if ((sys->channel_count == 0) && (sys->sample_rate == 0))
+        if (sys->error || ((sys->channel_count == 0) && (sys->sample_rate == 0)))
             return VLC_EGENERIC;
     }
 
@@ -252,6 +244,7 @@ static int Open(vlc_object_t *obj)
 
     sys->channel_count = 0;
     sys->sample_rate = 0;
+    sys->error = false;
     atomic_init(&sys->context_ready, 0);
 
     aout->start = Start;

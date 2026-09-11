@@ -61,8 +61,8 @@ typedef enum latency_hint {
 
 extern int webaudio_getSampleRate(void);
 extern int webaudio_getChannels(void);
-extern void webaudio_init(int rate, latency_hint latency);
-extern void webaudio_start(int channels, webaudio_buffer_t *buffer);
+extern int webaudio_init(int rate, latency_hint latency);
+extern int webaudio_start(int channels, webaudio_buffer_t *buffer);
 extern int webaudio_stop(void);
 int webaudio_worklet_push(void *user_data, int8_t *buffer, size_t data_size);
 
